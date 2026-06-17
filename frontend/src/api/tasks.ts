@@ -1,0 +1,57 @@
+const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8080";
+
+export type TaskStatus = "todo" | "doing" | "done";
+
+export interface Task {
+  id: number;
+  title: string;
+  description: string;
+  status: TaskStatus;
+  due_date?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewTask {
+  title: string;
+  description?: string;
+  status?: TaskStatus;
+  due_date?: string | null;
+}
+
+export async function listTasks(): Promise<Task[]> {
+  const res = await fetch(`${API_BASE}/api/tasks`);
+  if (!res.ok) throw new Error(`listTasks failed: ${res.status}`);
+  return res.json();
+}
+
+export async function createTask(input: NewTask): Promise<Task> {
+  const res = await fetch(`${API_BASE}/api/tasks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`createTask failed: ${res.status}`);
+  return res.json();
+}
+
+export async function updateTask(id: number, input: Partial<Task>): Promise<Task> {
+  const res = await fetch(`${API_BASE}/api/tasks/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`updateTask failed: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteTask(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/tasks/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`deleteTask failed: ${res.status}`);
+}
+
+export async function checkHealth(): Promise<{ status: string }> {
+  const res = await fetch(`${API_BASE}/health`);
+  if (!res.ok) throw new Error(`health failed: ${res.status}`);
+  return res.json();
+}
