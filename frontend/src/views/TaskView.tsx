@@ -721,7 +721,12 @@ export function TaskView() {
           </div>
         </div>
         {isOpen && hasChildren && (
-          <ul className="space-y-0.5">
+          <ul className="relative space-y-0.5">
+            <span
+              aria-hidden
+              className="pointer-events-none absolute bottom-1 top-0 w-px bg-slate-200"
+              style={{ left: depth * 16 + 12 }}
+            />
             {subProjects.map((sp) => renderTreeProject(sp, depth + 1))}
             {subTasks.map((t) => renderTreeTask(t, depth + 1))}
           </ul>
