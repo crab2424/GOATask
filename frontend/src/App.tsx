@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
 import { checkHealth } from "./api/tasks";
+import { HomeView } from "./views/HomeView";
 import { TaskView } from "./views/TaskView";
 import { MemoView } from "./views/MemoView";
 
-type Mode = "tasks" | "memos";
+type Mode = "home" | "tasks" | "memos";
 
 const TABS: { id: Mode; label: string; icon: string }[] = [
+  { id: "home", label: "ホーム", icon: "🏠" },
   { id: "tasks", label: "タスク", icon: "✓" },
   { id: "memos", label: "メモ", icon: "📝" },
 ];
 
 function App() {
-  const [mode, setMode] = useState<Mode>("tasks");
+  const [mode, setMode] = useState<Mode>("home");
   const [health, setHealth] = useState<string>("確認中...");
 
   useEffect(() => {
@@ -49,6 +51,7 @@ function App() {
       </nav>
 
       <main className="flex-1 p-6">
+        {mode === "home" && <HomeView />}
         {mode === "tasks" && <TaskView />}
         {mode === "memos" && <MemoView />}
       </main>
