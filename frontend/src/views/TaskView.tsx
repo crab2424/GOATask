@@ -25,6 +25,15 @@ import {
   updateProject,
   type Project,
 } from "../api/projects";
+import {
+  buildBreadcrumb,
+  buildChildMap,
+  buildItemsByParent,
+  expandAncestors,
+  flatTreeOptions,
+  isDescendant,
+} from "../lib/directoryTree";
+import { useHoverExpand } from "../lib/useHoverExpand";
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: "未着手",
@@ -120,30 +129,17 @@ export function TaskView() {
   const [dragItem, setDragItem] = useState<DragItem>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget>(null);
   const dragItemRef = useRef<DragItem>(null);
-  const hoverExpandRef = useRef<{ id: number; timer: number } | null>(null);
 
-  const clearHoverExpand = () => {
-    if (hoverExpandRef.current) {
-      window.clearTimeout(hoverExpandRef.current.timer);
-      hoverExpandRef.current = null;
-    }
-  };
-
-  const scheduleHoverExpand = (projectId: number) => {
-    if (hoverExpandRef.current?.id === projectId) return;
-    clearHoverExpand();
-    if (expanded.has(projectId)) return;
-    const timer = window.setTimeout(() => {
+  const hoverExpand = useHoverExpand(
+    (id) =>
       setExpanded((prev) => {
-        if (prev.has(projectId)) return prev;
+        if (prev.has(id)) return prev;
         const next = new Set(prev);
-        next.add(projectId);
+        next.add(id);
         return next;
-      });
-      hoverExpandRef.current = null;
-    }, 500);
-    hoverExpandRef.current = { id: projectId, timer };
-  };
+      }),
+    (id) => expanded.has(id),
+  );
 
   const reload = async () => {
     try {
@@ -172,52 +168,22 @@ export function TaskView() {
 
   // --- Computed ---
 
-  const childProjectsMap = useMemo(() => {
-    const map = new Map<number | null, Project[]>();
-    for (const p of projects) {
-      const key = p.parent_id ?? null;
-      const arr = map.get(key) ?? [];
-      arr.push(p);
-      map.set(key, arr);
-    }
-    return map;
-  }, [projects]);
+  const childProjectsMap = useMemo(() => buildChildMap(projects), [projects]);
 
-  const tasksByProject = useMemo(() => {
-    const map = new Map<number | null, Task[]>();
-    for (const t of tasks) {
-      const key = t.project_id ?? null;
-      const arr = map.get(key) ?? [];
-      arr.push(t);
-      map.set(key, arr);
-    }
-    return map;
-  }, [tasks]);
+  const tasksByProject = useMemo(
+    () => buildItemsByParent(tasks, (t) => t.project_id ?? null),
+    [tasks],
+  );
 
-  const breadcrumb = useMemo(() => {
-    const path: Project[] = [];
-    let id = currentProjectId;
-    while (id !== null) {
-      const p = projects.find((proj) => proj.id === id);
-      if (!p) break;
-      path.unshift(p);
-      id = p.parent_id ?? null;
-    }
-    return path;
-  }, [currentProjectId, projects]);
+  const breadcrumb = useMemo(
+    () => buildBreadcrumb(projects, currentProjectId),
+    [currentProjectId, projects],
+  );
 
-  const flatProjectOptions = useMemo(() => {
-    const out: { id: number; label: string }[] = [];
-    const walk = (parent: number | null, depth: number) => {
-      const list = childProjectsMap.get(parent) ?? [];
-      for (const p of list) {
-        out.push({ id: p.id, label: `${"　".repeat(depth)}${p.name}` });
-        walk(p.id, depth + 1);
-      }
-    };
-    walk(null, 0);
-    return out;
-  }, [childProjectsMap]);
+  const flatProjectOptions = useMemo(
+    () => flatTreeOptions(childProjectsMap),
+    [childProjectsMap],
+  );
 
   const recursiveTaskCount = useMemo(() => {
     const map = new Map<number | null, number>();
@@ -244,17 +210,6 @@ export function TaskView() {
 
   // --- DnD helpers ---
 
-  const isDescendantOf = (
-    ancestorId: number,
-    checkId: number | null,
-  ): boolean => {
-    if (checkId === null) return false;
-    if (checkId === ancestorId) return true;
-    const p = projects.find((proj) => proj.id === checkId);
-    if (!p) return false;
-    return isDescendantOf(ancestorId, p.parent_id ?? null);
-  };
-
   const canDrop = (targetProjectId: number | null): boolean => {
     const item = dragItemRef.current;
     if (!item) return false;
@@ -266,7 +221,7 @@ export function TaskView() {
       if (targetProjectId === item.id) return false;
       if (
         targetProjectId !== null &&
-        isDescendantOf(item.id, targetProjectId)
+        isDescendant(projects, item.id, targetProjectId)
       )
         return false;
       const p = projects.find((proj) => proj.id === item.id);
@@ -302,16 +257,7 @@ export function TaskView() {
   const navigateTo = (id: number | null) => {
     setCurrentProjectId(id);
     if (id !== null) {
-      setExpanded((prev) => {
-        const next = new Set(prev);
-        let cur: number | null = id;
-        while (cur !== null) {
-          next.add(cur);
-          const p = projects.find((proj) => proj.id === cur);
-          cur = p?.parent_id ?? null;
-        }
-        return next;
-      });
+      setExpanded((prev) => expandAncestors(projects, prev, id));
     }
   };
 
@@ -342,7 +288,7 @@ export function TaskView() {
     dragItemRef.current = null;
     setDragItem(null);
     setDropTarget(null);
-    clearHoverExpand();
+    hoverExpand.clear();
   };
 
   const handleFolderDragOver = (
@@ -353,13 +299,13 @@ export function TaskView() {
     e.stopPropagation();
     if (!canDrop(targetProjectId)) {
       setDropTarget((prev) => (prev === null ? prev : null));
-      clearHoverExpand();
+      hoverExpand.clear();
       return;
     }
     e.preventDefault();
     setDropTarget({ kind: "folder", projectId: targetProjectId });
-    if (targetProjectId !== null) scheduleHoverExpand(targetProjectId);
-    else clearHoverExpand();
+    if (targetProjectId !== null) hoverExpand.schedule(targetProjectId);
+    else hoverExpand.clear();
   };
 
   const handleFolderDragLeave = (
@@ -368,11 +314,10 @@ export function TaskView() {
   ) => {
     e.stopPropagation();
     if (
-      hoverExpandRef.current &&
       targetProjectId !== null &&
-      hoverExpandRef.current.id === targetProjectId
+      hoverExpand.currentId() === targetProjectId
     ) {
-      clearHoverExpand();
+      hoverExpand.clear();
     }
   };
 
@@ -382,7 +327,7 @@ export function TaskView() {
   ) => {
     e.preventDefault();
     e.stopPropagation();
-    clearHoverExpand();
+    hoverExpand.clear();
     const item = dragItemRef.current;
     if (!item) return;
     try {
@@ -433,7 +378,7 @@ export function TaskView() {
     dragItemRef.current = null;
     setDragItem(null);
     setDropTarget(null);
-    clearHoverExpand();
+    hoverExpand.clear();
     if (!item || item.type !== "task") return;
     if (!target || target.kind !== "reorder" || target.taskId !== overTaskId)
       return;

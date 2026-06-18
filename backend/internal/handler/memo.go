@@ -23,14 +23,32 @@ func (h *MemoHandler) Register(g *echo.Group) {
 	g.GET("/memos/:id", h.get)
 	g.PUT("/memos/:id", h.update)
 	g.DELETE("/memos/:id", h.delete)
+	g.PUT("/memos-reorder", h.reorder)
 }
 
 func (h *MemoHandler) list(c echo.Context) error {
 	var memos []model.Memo
-	if err := h.DB.Order("updated_at DESC").Find(&memos).Error; err != nil {
+	if err := h.DB.Order("position ASC, updated_at DESC").Find(&memos).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusOK, memos)
+}
+
+type memoReorderReq struct {
+	IDs []uint `json:"ids"`
+}
+
+func (h *MemoHandler) reorder(c echo.Context) error {
+	var req memoReorderReq
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	for i, id := range req.IDs {
+		if err := h.DB.Model(&model.Memo{}).Where("id = ?", id).Update("position", i).Error; err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		}
+	}
+	return c.NoContent(http.StatusNoContent)
 }
 
 func (h *MemoHandler) create(c echo.Context) error {

@@ -49,3 +49,12 @@ export async function deleteMemo(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/memos/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`deleteMemo failed: ${res.status}`);
 }
+
+export async function reorderMemos(ids: number[]): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/memos-reorder`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) throw new Error(`reorderMemos failed: ${res.status}`);
+}

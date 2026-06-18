@@ -11,6 +11,7 @@ type Memo struct {
 	Title     string         `gorm:"not null" json:"title"`
 	Content   string         `gorm:"type:text" json:"content"`
 	FolderID  *uint          `gorm:"index" json:"folder_id,omitempty"`
+	Position  int            `gorm:"not null;default:0" json:"position"`
 	Color     string         `gorm:"type:varchar(16);default:''" json:"color"`
 	FontSize  string         `gorm:"type:varchar(8);default:''" json:"font_size"`
 	CreatedAt time.Time      `json:"created_at"`
