@@ -4,6 +4,7 @@ export interface Memo {
   id: number;
   title: string;
   content: string;
+  folder_id?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -11,6 +12,7 @@ export interface Memo {
 export interface NewMemo {
   title: string;
   content?: string;
+  folder_id?: number | null;
 }
 
 export async function listMemos(): Promise<Memo[]> {
