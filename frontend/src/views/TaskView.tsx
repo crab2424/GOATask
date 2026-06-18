@@ -85,7 +85,10 @@ function stripBulletLines(description: string): string {
 }
 
 type DragItem = { type: "task" | "project"; id: number } | null;
-type DropTarget = { projectId: number | null } | null;
+type DropTarget =
+  | { kind: "folder"; projectId: number | null }
+  | { kind: "reorder"; taskId: number; before: boolean }
+  | null;
 
 export function TaskView() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -113,11 +116,36 @@ export function TaskView() {
   const [editProjectId, setEditProjectId] = useState<number | null>(null);
 
   const [showDone, setShowDone] = useState(false);
+  const [showNewTaskForm, setShowNewTaskForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [dragItem, setDragItem] = useState<DragItem>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget>(null);
   const dragItemRef = useRef<DragItem>(null);
+  const hoverExpandRef = useRef<{ id: number; timer: number } | null>(null);
+
+  const clearHoverExpand = () => {
+    if (hoverExpandRef.current) {
+      window.clearTimeout(hoverExpandRef.current.timer);
+      hoverExpandRef.current = null;
+    }
+  };
+
+  const scheduleHoverExpand = (projectId: number) => {
+    if (hoverExpandRef.current?.id === projectId) return;
+    clearHoverExpand();
+    if (expanded.has(projectId)) return;
+    const timer = window.setTimeout(() => {
+      setExpanded((prev) => {
+        if (prev.has(projectId)) return prev;
+        const next = new Set(prev);
+        next.add(projectId);
+        return next;
+      });
+      hoverExpandRef.current = null;
+    }, 500);
+    hoverExpandRef.current = { id: projectId, timer };
+  };
 
   const reload = async () => {
     try {
@@ -291,7 +319,25 @@ export function TaskView() {
   };
 
   const isDropTargetFor = (projectId: number | null) =>
-    dropTarget !== null && dropTarget.projectId === projectId;
+    dropTarget !== null &&
+    dropTarget.kind === "folder" &&
+    dropTarget.projectId === projectId;
+
+  const reorderIndicatorFor = (taskId: number): "before" | "after" | null => {
+    if (!dropTarget || dropTarget.kind !== "reorder") return null;
+    if (dropTarget.taskId !== taskId) return null;
+    return dropTarget.before ? "before" : "after";
+  };
+
+  const canReorderTask = (overTaskId: number): boolean => {
+    const item = dragItemRef.current;
+    if (!item || item.type !== "task") return false;
+    if (item.id === overTaskId) return false;
+    const dragged = tasks.find((t) => t.id === item.id);
+    const over = tasks.find((t) => t.id === overTaskId);
+    if (!dragged || !over) return false;
+    return (dragged.project_id ?? null) === (over.project_id ?? null);
+  };
 
   // --- Navigation ---
 
@@ -338,24 +384,42 @@ export function TaskView() {
     dragItemRef.current = null;
     setDragItem(null);
     setDropTarget(null);
+    clearHoverExpand();
   };
 
-  const handleDragOver = (
+  const handleFolderDragOver = (
     e: ReactDragEvent,
     targetProjectId: number | null,
   ) => {
     if (!canDrop(targetProjectId)) return;
     e.preventDefault();
     e.stopPropagation();
-    setDropTarget({ projectId: targetProjectId });
+    setDropTarget({ kind: "folder", projectId: targetProjectId });
+    if (targetProjectId !== null) scheduleHoverExpand(targetProjectId);
+    else clearHoverExpand();
   };
 
-  const handleDrop = async (
+  const handleFolderDragLeave = (
+    e: ReactDragEvent,
+    targetProjectId: number | null,
+  ) => {
+    e.stopPropagation();
+    if (
+      hoverExpandRef.current &&
+      targetProjectId !== null &&
+      hoverExpandRef.current.id === targetProjectId
+    ) {
+      clearHoverExpand();
+    }
+  };
+
+  const handleFolderDrop = async (
     e: ReactDragEvent,
     targetProjectId: number | null,
   ) => {
     e.preventDefault();
     e.stopPropagation();
+    clearHoverExpand();
     const item = dragItemRef.current;
     if (!item) return;
     try {
@@ -376,6 +440,59 @@ export function TaskView() {
     setDropTarget(null);
   };
 
+  const handleTaskReorderDragOver = (e: ReactDragEvent, overTaskId: number) => {
+    if (!canReorderTask(overTaskId)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const before = e.clientY < rect.top + rect.height / 2;
+    setDropTarget((prev) => {
+      if (
+        prev &&
+        prev.kind === "reorder" &&
+        prev.taskId === overTaskId &&
+        prev.before === before
+      ) {
+        return prev;
+      }
+      return { kind: "reorder", taskId: overTaskId, before };
+    });
+  };
+
+  const handleTaskReorderDrop = async (
+    e: ReactDragEvent,
+    overTaskId: number,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const item = dragItemRef.current;
+    const target = dropTarget;
+    dragItemRef.current = null;
+    setDragItem(null);
+    setDropTarget(null);
+    clearHoverExpand();
+    if (!item || item.type !== "task") return;
+    if (!target || target.kind !== "reorder" || target.taskId !== overTaskId)
+      return;
+    if (!canReorderTask(overTaskId)) return;
+
+    const draggedId = item.id;
+    const active = activeTasks.filter((t) => t.id !== draggedId);
+    const overIdx = active.findIndex((t) => t.id === overTaskId);
+    if (overIdx < 0) return;
+    const insertAt = target.before ? overIdx : overIdx + 1;
+    const dragged = activeTasks.find((t) => t.id === draggedId);
+    if (!dragged) return;
+    active.splice(insertAt, 0, dragged);
+    const allIds = [...active, ...doneTasks].map((t) => t.id);
+    try {
+      await reorderTasks(allIds);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   // --- Task CRUD ---
 
   const onSubmit = async (e: FormEvent) => {
@@ -391,6 +508,7 @@ export function TaskView() {
       setTitle("");
       setDescription("");
       setDueDate("");
+      setShowNewTaskForm(false);
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -591,8 +709,9 @@ export function TaskView() {
           draggable
           onDragStart={(e) => handleDragStart(e, "project", p.id)}
           onDragEnd={handleDragEnd}
-          onDragOver={(e) => handleDragOver(e, p.id)}
-          onDrop={(e) => handleDrop(e, p.id)}
+          onDragOver={(e) => handleFolderDragOver(e, p.id)}
+          onDragLeave={(e) => handleFolderDragLeave(e, p.id)}
+          onDrop={(e) => handleFolderDrop(e, p.id)}
         >
           <button
             onClick={(e) => {
@@ -672,17 +791,26 @@ export function TaskView() {
     const subs = t.subtasks ?? [];
     const subDoneCount = subs.filter((s) => s.done).length;
     const isDragging = dragItem?.type === "task" && dragItem.id === t.id;
+    const indicator = reorderIndicatorFor(t.id);
 
     return (
       <li
         key={t.id}
-        className={`flex items-start justify-between rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-opacity ${
+        className={`relative flex items-start justify-between rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-opacity ${
           isDragging ? "opacity-40" : ""
         }`}
         draggable
         onDragStart={(e) => handleDragStart(e, "task", t.id)}
         onDragEnd={handleDragEnd}
+        onDragOver={(e) => handleTaskReorderDragOver(e, t.id)}
+        onDrop={(e) => handleTaskReorderDrop(e, t.id)}
       >
+        {indicator === "before" && (
+          <span className="pointer-events-none absolute -top-1 left-0 right-0 h-0.5 rounded-full bg-blue-500" />
+        )}
+        {indicator === "after" && (
+          <span className="pointer-events-none absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-blue-500" />
+        )}
         {editingId === t.id ? (
           <div className="flex-1">
             <input
@@ -900,8 +1028,8 @@ export function TaskView() {
             ? "border-blue-400 ring-2 ring-blue-400"
             : "border-slate-200"
         }`}
-        onDragOver={(e) => handleDragOver(e, null)}
-        onDrop={(e) => handleDrop(e, null)}
+        onDragOver={(e) => handleFolderDragOver(e, null)}
+        onDrop={(e) => handleFolderDrop(e, null)}
       >
         <div className="mb-2 px-1">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -966,6 +1094,12 @@ export function TaskView() {
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-2xl font-bold">{currentLabel}</h1>
           <div className="flex gap-2">
+            <button
+              onClick={() => setShowNewTaskForm((v) => !v)}
+              className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-700"
+            >
+              {showNewTaskForm ? "× 閉じる" : "＋ タスク"}
+            </button>
             {canCreateSubHere && (
               <button
                 onClick={() => onCreateProjectIn(currentProjectId)}
@@ -1002,8 +1136,8 @@ export function TaskView() {
                   draggable
                   onDragStart={(e) => handleDragStart(e, "project", p.id)}
                   onDragEnd={handleDragEnd}
-                  onDragOver={(e) => handleDragOver(e, p.id)}
-                  onDrop={(e) => handleDrop(e, p.id)}
+                  onDragOver={(e) => handleFolderDragOver(e, p.id)}
+                  onDrop={(e) => handleFolderDrop(e, p.id)}
                 >
                   <span className="text-2xl">📁</span>
                   <div className="min-w-0 flex-1">
@@ -1040,12 +1174,14 @@ export function TaskView() {
         {/* Drag hint */}
         {dragItem && (
           <div className="mb-4 rounded border border-dashed border-blue-300 bg-blue-50 px-3 py-2 text-center text-sm text-blue-600">
-            {dragItem.type === "task" ? "📋 タスク" : "📁 プロジェクト"}
-            をドラッグ中 — プロジェクトにドロップして移動できます
+            {dragItem.type === "task"
+              ? "📋 タスクをドラッグ中 — フォルダにドロップで移動 / 一覧内で並び替え"
+              : "📁 プロジェクトをドラッグ中 — フォルダにドロップで階層変更（500ms ホバーで自動展開）"}
           </div>
         )}
 
         {/* New task form */}
+        {showNewTaskForm && (
         <form
           onSubmit={onSubmit}
           className="mb-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
@@ -1080,17 +1216,40 @@ export function TaskView() {
               />
             </label>
           </div>
-          <button
-            type="submit"
-            disabled={!title.trim()}
-            className="rounded bg-slate-900 px-4 py-2 text-white hover:bg-slate-700 disabled:bg-slate-400"
-          >
-            追加
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={!title.trim()}
+              className="rounded bg-slate-900 px-4 py-2 text-white hover:bg-slate-700 disabled:bg-slate-400"
+            >
+              追加
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTitle("");
+                setDescription("");
+                setDueDate("");
+                setShowNewTaskForm(false);
+              }}
+              className="rounded border border-slate-300 px-4 py-2 text-slate-700 hover:bg-slate-100"
+            >
+              キャンセル
+            </button>
+          </div>
         </form>
+        )}
 
         {/* Task list */}
-        <section>
+        <section
+          className={`rounded-lg p-2 transition-colors ${
+            dragItem && isDropTargetFor(currentProjectId)
+              ? "bg-blue-50 ring-2 ring-blue-300"
+              : ""
+          }`}
+          onDragOver={(e) => handleFolderDragOver(e, currentProjectId)}
+          onDrop={(e) => handleFolderDrop(e, currentProjectId)}
+        >
           <h2 className="mb-3 text-lg font-semibold">
             タスク一覧
             {activeTasks.length > 0 && (
