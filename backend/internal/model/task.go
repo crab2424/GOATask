@@ -21,6 +21,7 @@ type Task struct {
 	Status      TaskStatus     `gorm:"type:varchar(16);default:'todo'" json:"status"`
 	Position    int            `gorm:"not null;default:0" json:"position"`
 	DueDate     *time.Time     `json:"due_date,omitempty"`
+	ProjectID   *uint          `gorm:"index" json:"project_id,omitempty"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`

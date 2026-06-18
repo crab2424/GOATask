@@ -1,4 +1,12 @@
-import { useEffect, useState, type FormEvent } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+  type FormEvent,
+} from "react";
 import {
   createTask,
   deleteTask,
@@ -10,6 +18,15 @@ import {
   type Task,
   type TaskStatus,
 } from "../api/tasks";
+import {
+  createProject,
+  deleteProject,
+  listProjects,
+  updateProject,
+  type Project,
+} from "../api/projects";
+
+const MAX_DEPTH = 3;
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: "未着手",
@@ -25,10 +42,7 @@ const STATUS_STYLES: Record<TaskStatus, string> = {
 
 function todayStr() {
   const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function isoToDateInput(iso: string | null | undefined): string {
@@ -51,11 +65,14 @@ function dueLabel(iso: string | null | undefined, status: TaskStatus) {
       ? "text-amber-600"
       : "text-slate-500";
   const suffix = overdue ? "（期限超過）" : isToday ? "（今日）" : "";
-  return <span className={`text-xs ${cls}`}>期限 {date}{suffix}</span>;
+  return (
+    <span className={`text-xs ${cls}`}>
+      期限 {date}
+      {suffix}
+    </span>
+  );
 }
 
-// Hide the bullet lines from the free-text body — they're rendered as
-// subtasks below instead.
 function stripBulletLines(description: string): string {
   return description
     .split("\n")
@@ -67,21 +84,49 @@ function stripBulletLines(description: string): string {
     .trim();
 }
 
+type DragItem = { type: "task" | "project"; id: number } | null;
+type DropTarget = { projectId: number | null } | null;
+
 export function TaskView() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [currentProjectId, setCurrentProjectId] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<Set<number>>(() => {
+    try {
+      const saved = localStorage.getItem("goatask-project-expanded");
+      return saved
+        ? new Set(JSON.parse(saved) as number[])
+        : new Set<number>();
+    } catch {
+      return new Set<number>();
+    }
+  });
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [dueDate, setDueDate] = useState("");
+
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
+  const [editProjectId, setEditProjectId] = useState<number | null>(null);
+
   const [showDone, setShowDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [dragItem, setDragItem] = useState<DragItem>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget>(null);
+  const dragItemRef = useRef<DragItem>(null);
 
   const reload = async () => {
     try {
-      setTasks(await listTasks());
+      const [t, p] = await Promise.all([listTasks(), listProjects()]);
+      setTasks(t);
+      setProjects(p);
+      setCurrentProjectId((cur) =>
+        cur !== null && !p.some((proj) => proj.id === cur) ? null : cur,
+      );
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -92,6 +137,247 @@ export function TaskView() {
     reload();
   }, []);
 
+  useEffect(() => {
+    localStorage.setItem(
+      "goatask-project-expanded",
+      JSON.stringify([...expanded]),
+    );
+  }, [expanded]);
+
+  // --- Computed ---
+
+  const childProjectsMap = useMemo(() => {
+    const map = new Map<number | null, Project[]>();
+    for (const p of projects) {
+      const key = p.parent_id ?? null;
+      const arr = map.get(key) ?? [];
+      arr.push(p);
+      map.set(key, arr);
+    }
+    return map;
+  }, [projects]);
+
+  const tasksByProject = useMemo(() => {
+    const map = new Map<number | null, Task[]>();
+    for (const t of tasks) {
+      const key = t.project_id ?? null;
+      const arr = map.get(key) ?? [];
+      arr.push(t);
+      map.set(key, arr);
+    }
+    return map;
+  }, [tasks]);
+
+  const breadcrumb = useMemo(() => {
+    const path: Project[] = [];
+    let id = currentProjectId;
+    while (id !== null) {
+      const p = projects.find((proj) => proj.id === id);
+      if (!p) break;
+      path.unshift(p);
+      id = p.parent_id ?? null;
+    }
+    return path;
+  }, [currentProjectId, projects]);
+
+  const projectDepthMap = useMemo(() => {
+    const map = new Map<number, number>();
+    const calc = (id: number): number => {
+      if (map.has(id)) return map.get(id)!;
+      const p = projects.find((proj) => proj.id === id);
+      if (!p || p.parent_id == null) {
+        map.set(id, 0);
+        return 0;
+      }
+      const d = calc(p.parent_id) + 1;
+      map.set(id, d);
+      return d;
+    };
+    projects.forEach((p) => calc(p.id));
+    return map;
+  }, [projects]);
+
+  const flatProjectOptions = useMemo(() => {
+    const out: { id: number; label: string }[] = [];
+    const walk = (parent: number | null, depth: number) => {
+      const list = childProjectsMap.get(parent) ?? [];
+      for (const p of list) {
+        out.push({ id: p.id, label: `${"　".repeat(depth)}${p.name}` });
+        walk(p.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    return out;
+  }, [childProjectsMap]);
+
+  const recursiveTaskCount = useMemo(() => {
+    const map = new Map<number | null, number>();
+    const calc = (projectId: number | null): number => {
+      if (map.has(projectId)) return map.get(projectId)!;
+      const direct = (tasksByProject.get(projectId) ?? []).filter(
+        (t) => t.status !== "done",
+      ).length;
+      const children = childProjectsMap.get(projectId) ?? [];
+      let total = direct;
+      for (const c of children) total += calc(c.id);
+      map.set(projectId, total);
+      return total;
+    };
+    projects.forEach((p) => calc(p.id));
+    calc(null);
+    return map;
+  }, [projects, tasks, childProjectsMap, tasksByProject]);
+
+  const directProjects = childProjectsMap.get(currentProjectId) ?? [];
+  const directTasks = tasksByProject.get(currentProjectId) ?? [];
+  const activeTasks = directTasks.filter((t) => t.status !== "done");
+  const doneTasks = directTasks.filter((t) => t.status === "done");
+
+  const currentDepth =
+    currentProjectId !== null
+      ? (projectDepthMap.get(currentProjectId) ?? 0)
+      : -1;
+  const canCreateSubHere = currentDepth + 1 < MAX_DEPTH;
+
+  // --- DnD helpers ---
+
+  const subtreeMaxDepthCalc = (projectId: number): number => {
+    const children = childProjectsMap.get(projectId) ?? [];
+    if (children.length === 0) return 0;
+    let max = 0;
+    for (const c of children) {
+      const d = subtreeMaxDepthCalc(c.id) + 1;
+      if (d > max) max = d;
+    }
+    return max;
+  };
+
+  const isDescendantOf = (
+    ancestorId: number,
+    checkId: number | null,
+  ): boolean => {
+    if (checkId === null) return false;
+    if (checkId === ancestorId) return true;
+    const p = projects.find((proj) => proj.id === checkId);
+    if (!p) return false;
+    return isDescendantOf(ancestorId, p.parent_id ?? null);
+  };
+
+  const canDrop = (targetProjectId: number | null): boolean => {
+    const item = dragItemRef.current;
+    if (!item) return false;
+    if (item.type === "task") {
+      const task = tasks.find((t) => t.id === item.id);
+      return !!task && (task.project_id ?? null) !== targetProjectId;
+    }
+    if (item.type === "project") {
+      if (targetProjectId === item.id) return false;
+      if (
+        targetProjectId !== null &&
+        isDescendantOf(item.id, targetProjectId)
+      )
+        return false;
+      const p = projects.find((proj) => proj.id === item.id);
+      if (p && (p.parent_id ?? null) === targetProjectId) return false;
+      const targetDepth =
+        targetProjectId !== null
+          ? (projectDepthMap.get(targetProjectId) ?? 0)
+          : -1;
+      const stDepth = subtreeMaxDepthCalc(item.id);
+      if (targetDepth + 1 + stDepth >= MAX_DEPTH) return false;
+      return true;
+    }
+    return false;
+  };
+
+  const isDropTargetFor = (projectId: number | null) =>
+    dropTarget !== null && dropTarget.projectId === projectId;
+
+  // --- Navigation ---
+
+  const navigateTo = (id: number | null) => {
+    setCurrentProjectId(id);
+    if (id !== null) {
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        let cur: number | null = id;
+        while (cur !== null) {
+          next.add(cur);
+          const p = projects.find((proj) => proj.id === cur);
+          cur = p?.parent_id ?? null;
+        }
+        return next;
+      });
+    }
+  };
+
+  const toggleExpand = (id: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // --- DnD handlers ---
+
+  const handleDragStart = (
+    e: ReactDragEvent,
+    type: "task" | "project",
+    id: number,
+  ) => {
+    const item = { type, id };
+    dragItemRef.current = item;
+    setDragItem(item);
+    e.dataTransfer.setData("text/plain", JSON.stringify(item));
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragEnd = () => {
+    dragItemRef.current = null;
+    setDragItem(null);
+    setDropTarget(null);
+  };
+
+  const handleDragOver = (
+    e: ReactDragEvent,
+    targetProjectId: number | null,
+  ) => {
+    if (!canDrop(targetProjectId)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDropTarget({ projectId: targetProjectId });
+  };
+
+  const handleDrop = async (
+    e: ReactDragEvent,
+    targetProjectId: number | null,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const item = dragItemRef.current;
+    if (!item) return;
+    try {
+      if (item.type === "task") {
+        const task = tasks.find((t) => t.id === item.id);
+        if (task) {
+          await updateTask(task.id, { ...task, project_id: targetProjectId });
+        }
+      } else if (item.type === "project") {
+        await updateProject(item.id, { parent_id: targetProjectId });
+      }
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+    dragItemRef.current = null;
+    setDragItem(null);
+    setDropTarget(null);
+  };
+
+  // --- Task CRUD ---
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
@@ -100,6 +386,7 @@ export function TaskView() {
         title: title.trim(),
         description: description.trim(),
         due_date: dateInputToIso(dueDate),
+        project_id: currentProjectId,
       });
       setTitle("");
       setDescription("");
@@ -132,21 +419,29 @@ export function TaskView() {
     }
   };
 
-  const onDelete = async (id: number) => {
-    if (!window.confirm("このタスクを削除しますか？（取り消せません）")) return;
-    await deleteTask(id);
+  const onDeleteTask = async (t: Task) => {
+    const subs = t.subtasks ?? [];
+    const msg = [
+      `タスク「${t.title}」を削除しますか？`,
+      "",
+      "【影響範囲】",
+      subs.length > 0 ? `・サブタスク ${subs.length}件も削除されます` : null,
+      "・この操作は取り消せません",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    if (!confirm(msg)) return;
+    await deleteTask(t.id);
     await reload();
   };
 
   const moveTask = async (taskId: number, direction: "up" | "down") => {
-    const active = tasks.filter((t) => t.status !== "done");
-    const idx = active.findIndex((t) => t.id === taskId);
+    const idx = activeTasks.findIndex((t) => t.id === taskId);
     if (idx < 0) return;
     const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= active.length) return;
-    const reordered = [...active];
+    if (swapIdx < 0 || swapIdx >= activeTasks.length) return;
+    const reordered = [...activeTasks];
     [reordered[idx], reordered[swapIdx]] = [reordered[swapIdx], reordered[idx]];
-    const doneTasks = tasks.filter((t) => t.status === "done");
     const allIds = [...reordered, ...doneTasks].map((t) => t.id);
     try {
       await reorderTasks(allIds);
@@ -161,6 +456,7 @@ export function TaskView() {
     setEditTitle(t.title);
     setEditDescription(t.description);
     setEditDueDate(isoToDateInput(t.due_date));
+    setEditProjectId(t.project_id ?? null);
   };
 
   const cancelEdit = () => {
@@ -168,6 +464,7 @@ export function TaskView() {
     setEditTitle("");
     setEditDescription("");
     setEditDueDate("");
+    setEditProjectId(null);
   };
 
   const saveEdit = async (t: Task) => {
@@ -178,6 +475,7 @@ export function TaskView() {
         title: editTitle.trim(),
         description: editDescription.trim(),
         due_date: dateInputToIso(editDueDate),
+        project_id: editProjectId,
       });
       cancelEdit();
       await reload();
@@ -186,14 +484,204 @@ export function TaskView() {
     }
   };
 
+  // --- Project CRUD ---
+
+  const onCreateProjectIn = async (
+    parentId: number | null,
+    e?: React.MouseEvent,
+  ) => {
+    e?.stopPropagation();
+    const name = prompt("プロジェクト名");
+    if (!name?.trim()) return;
+    try {
+      const p = await createProject({
+        name: name.trim(),
+        parent_id: parentId,
+      });
+      if (parentId !== null) {
+        setExpanded((prev) => new Set(prev).add(parentId));
+      }
+      setExpanded((prev) => new Set(prev).add(p.id));
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const onRenameProject = async (p: Project, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const name = prompt("新しいプロジェクト名", p.name);
+    if (!name?.trim() || name.trim() === p.name) return;
+    try {
+      await updateProject(p.id, {
+        name: name.trim(),
+        parent_id: p.parent_id ?? null,
+      });
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const onDeleteProject = async (p: Project, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const subProjects = childProjectsMap.get(p.id) ?? [];
+    const pTasks = tasksByProject.get(p.id) ?? [];
+    const activeInProject = pTasks.filter((t) => t.status !== "done").length;
+    const totalDescendant = recursiveTaskCount.get(p.id) ?? 0;
+    const parentLabel = p.parent_id ? "親プロジェクト" : "ルート";
+    const msg = [
+      `プロジェクト「${p.name}」を削除しますか？`,
+      "",
+      "【影響範囲】",
+      subProjects.length > 0
+        ? `・サブプロジェクト ${subProjects.length}件 → ${parentLabel}に繰り上がり`
+        : null,
+      activeInProject > 0
+        ? `・直下のタスク ${activeInProject}件 → ${parentLabel}に移動`
+        : null,
+      totalDescendant > activeInProject && subProjects.length > 0
+        ? `・配下の全アクティブタスク 計${totalDescendant}件（サブ含む）`
+        : null,
+      subProjects.length === 0 && pTasks.length === 0
+        ? "・影響なし（空のプロジェクト）"
+        : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    if (!confirm(msg)) return;
+    try {
+      if (currentProjectId === p.id) {
+        setCurrentProjectId(p.parent_id ?? null);
+      }
+      await deleteProject(p.id);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  // --- Tree rendering ---
+
+  const renderTreeProject = (p: Project, depth: number): JSX.Element => {
+    const isOpen = expanded.has(p.id);
+    const subProjects = childProjectsMap.get(p.id) ?? [];
+    const subTasks = (tasksByProject.get(p.id) ?? []).filter(
+      (t) => t.status !== "done",
+    );
+    const hasChildren = subProjects.length > 0 || subTasks.length > 0;
+    const isCurrent = currentProjectId === p.id;
+    const count = recursiveTaskCount.get(p.id) ?? 0;
+    const isDrop = isDropTargetFor(p.id);
+    const pDepth = projectDepthMap.get(p.id) ?? 0;
+
+    return (
+      <li key={`p-${p.id}`}>
+        <div
+          className={`group flex items-center gap-1 rounded px-1 py-1 text-sm transition-colors ${
+            isCurrent
+              ? "bg-slate-200 font-bold text-slate-900"
+              : "hover:bg-slate-100"
+          } ${isDrop ? "ring-2 ring-blue-400 bg-blue-50" : ""} ${
+            dragItem?.type === "project" && dragItem.id === p.id
+              ? "opacity-40"
+              : ""
+          }`}
+          style={{ paddingLeft: `${depth * 16 + 4}px` }}
+          draggable
+          onDragStart={(e) => handleDragStart(e, "project", p.id)}
+          onDragEnd={handleDragEnd}
+          onDragOver={(e) => handleDragOver(e, p.id)}
+          onDrop={(e) => handleDrop(e, p.id)}
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (hasChildren) toggleExpand(p.id);
+            }}
+            className="w-4 shrink-0 text-slate-400"
+          >
+            {hasChildren ? (isOpen ? "▾" : "▸") : " "}
+          </button>
+          <button
+            onClick={() => navigateTo(p.id)}
+            className="flex-1 truncate text-left"
+          >
+            📁 {p.name}
+            {count > 0 && (
+              <span className="ml-1 text-xs text-slate-400">{count}</span>
+            )}
+          </button>
+          <div className="hidden gap-1 group-hover:flex">
+            {pDepth + 1 < MAX_DEPTH && (
+              <button
+                onClick={(e) => onCreateProjectIn(p.id, e)}
+                title="サブプロジェクト追加"
+                className="px-1 text-xs text-slate-500 hover:text-slate-900"
+              >
+                ＋
+              </button>
+            )}
+            <button
+              onClick={(e) => onRenameProject(p, e)}
+              title="リネーム"
+              className="px-1 text-xs text-slate-500 hover:text-slate-900"
+            >
+              ✎
+            </button>
+            <button
+              onClick={(e) => onDeleteProject(p, e)}
+              title="削除"
+              className="px-1 text-xs text-rose-500 hover:text-rose-700"
+            >
+              🗑
+            </button>
+          </div>
+        </div>
+        {isOpen && hasChildren && (
+          <ul className="space-y-0.5">
+            {subProjects.map((sp) => renderTreeProject(sp, depth + 1))}
+            {subTasks.map((t) => renderTreeTask(t, depth + 1))}
+          </ul>
+        )}
+      </li>
+    );
+  };
+
+  const renderTreeTask = (t: Task, depth: number): JSX.Element => (
+    <li key={`t-${t.id}`}>
+      <div
+        className={`flex items-center gap-1 rounded px-1 py-1 text-sm hover:bg-slate-50 ${
+          dragItem?.type === "task" && dragItem.id === t.id ? "opacity-40" : ""
+        }`}
+        style={{ paddingLeft: `${depth * 16 + 4}px` }}
+        draggable
+        onDragStart={(e) => handleDragStart(e, "task", t.id)}
+        onDragEnd={handleDragEnd}
+      >
+        <span className="w-4 shrink-0" />
+        <span className="flex-1 truncate text-slate-500">📋 {t.title}</span>
+      </div>
+    </li>
+  );
+
+  // --- Task card ---
+
   const renderTaskCard = (t: Task) => {
     const bodyText = stripBulletLines(t.description);
     const subs = t.subtasks ?? [];
-    const doneCount = subs.filter((s) => s.done).length;
+    const subDoneCount = subs.filter((s) => s.done).length;
+    const isDragging = dragItem?.type === "task" && dragItem.id === t.id;
+
     return (
       <li
         key={t.id}
-        className="flex items-start justify-between rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+        className={`flex items-start justify-between rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-opacity ${
+          isDragging ? "opacity-40" : ""
+        }`}
+        draggable
+        onDragStart={(e) => handleDragStart(e, "task", t.id)}
+        onDragEnd={handleDragEnd}
       >
         {editingId === t.id ? (
           <div className="flex-1">
@@ -210,24 +698,45 @@ export function TaskView() {
               rows={4}
               className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
             />
-            <label className="mb-2 flex items-center gap-2 text-sm text-slate-600">
-              期限（任意）
-              <input
-                type="date"
-                value={editDueDate}
-                onChange={(e) => setEditDueDate(e.target.value)}
-                className="rounded border border-slate-300 px-2 py-1 focus:border-slate-500 focus:outline-none"
-              />
-              {editDueDate && (
-                <button
-                  type="button"
-                  onClick={() => setEditDueDate("")}
-                  className="text-xs text-slate-500 hover:text-slate-800"
+            <div className="mb-2 flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                期限
+                <input
+                  type="date"
+                  value={editDueDate}
+                  onChange={(e) => setEditDueDate(e.target.value)}
+                  className="rounded border border-slate-300 px-2 py-1 focus:border-slate-500 focus:outline-none"
+                />
+                {editDueDate && (
+                  <button
+                    type="button"
+                    onClick={() => setEditDueDate("")}
+                    className="text-xs text-slate-500 hover:text-slate-800"
+                  >
+                    クリア
+                  </button>
+                )}
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                移動先
+                <select
+                  value={editProjectId ?? ""}
+                  onChange={(e) =>
+                    setEditProjectId(
+                      e.target.value === "" ? null : Number(e.target.value),
+                    )
+                  }
+                  className="rounded border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
                 >
-                  クリア
-                </button>
-              )}
-            </label>
+                  <option value="">（ルート）</option>
+                  {flatProjectOptions.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={() => saveEdit(t)}
@@ -254,7 +763,11 @@ export function TaskView() {
                 disabled={subs.length > 0}
                 className={`mt-1 h-4 w-4 accent-slate-900 ${subs.length > 0 ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
                 aria-label="完了マーク"
-                title={subs.length > 0 ? "サブタスクのチェック状態で自動反映" : undefined}
+                title={
+                  subs.length > 0
+                    ? "サブタスクのチェック状態で自動反映"
+                    : undefined
+                }
               />
               <div className="flex-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -284,7 +797,7 @@ export function TaskView() {
                   </span>
                   {subs.length > 0 && (
                     <span className="text-xs text-slate-500">
-                      {doneCount}/{subs.length}
+                      {subDoneCount}/{subs.length}
                     </span>
                   )}
                   {dueLabel(t.due_date, t.status)}
@@ -348,7 +861,7 @@ export function TaskView() {
                 編集
               </button>
               <button
-                onClick={() => onDelete(t.id)}
+                onClick={() => onDeleteTask(t)}
                 className="text-sm text-rose-600 hover:text-rose-800"
               >
                 削除
@@ -360,84 +873,261 @@ export function TaskView() {
     );
   };
 
+  // --- Main render ---
+
+  const rootProjects = childProjectsMap.get(null) ?? [];
+  const rootTasks = (tasksByProject.get(null) ?? []).filter(
+    (t) => t.status !== "done",
+  );
+  const totalActive = tasks.filter((t) => t.status !== "done").length;
+
+  const currentLabel =
+    currentProjectId === null
+      ? "ルート"
+      : (projects.find((p) => p.id === currentProjectId)?.name ?? "タスク");
+
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="mb-6 text-2xl font-bold">タスク</h1>
-
-      {error && (
-        <div className="mb-4 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-          {error}
-        </div>
-      )}
-
-      <form
-        onSubmit={onSubmit}
-        className="mb-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+    <div
+      className="flex h-full gap-4"
+      onDragOver={(e) => {
+        if (dragItemRef.current) e.preventDefault();
+      }}
+    >
+      {/* Sidebar */}
+      <aside
+        className={`w-60 shrink-0 overflow-y-auto rounded-lg border bg-white p-2 transition-colors ${
+          isDropTargetFor(null) && dragItem
+            ? "border-blue-400 ring-2 ring-blue-400"
+            : "border-slate-200"
+        }`}
+        onDragOver={(e) => handleDragOver(e, null)}
+        onDrop={(e) => handleDrop(e, null)}
       >
-        <h2 className="mb-3 text-lg font-semibold">新しいタスク</h2>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="タイトル"
-          className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
-        />
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="詳細（任意）。「・」や「- 」で始まる行はチェックリストになります。"
-          rows={3}
-          className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
-        />
-        <label className="mb-2 flex items-center gap-2 text-sm text-slate-600">
-          期限（任意）
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            className="rounded border border-slate-300 px-2 py-1 focus:border-slate-500 focus:outline-none"
-          />
-        </label>
-        <button
-          type="submit"
-          className="rounded bg-slate-900 px-4 py-2 text-white hover:bg-slate-700 disabled:bg-slate-400"
-          disabled={!title.trim()}
-        >
-          追加
-        </button>
-      </form>
+        <div className="mb-2 px-1">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            ナビゲーション
+          </h2>
+        </div>
+        <ul className="space-y-0.5">
+          <li>
+            <button
+              onClick={() => navigateTo(null)}
+              className={`w-full rounded px-2 py-1.5 text-left text-sm ${
+                currentProjectId === null
+                  ? "bg-slate-200 font-bold text-slate-900"
+                  : "hover:bg-slate-100"
+              }`}
+            >
+              🏠 ルート
+              {totalActive > 0 && (
+                <span className="ml-1 text-xs text-slate-400">
+                  {totalActive}
+                </span>
+              )}
+            </button>
+          </li>
+          {rootProjects.map((p) => renderTreeProject(p, 0))}
+          {currentProjectId === null &&
+            rootTasks.map((t) => renderTreeTask(t, 0))}
+        </ul>
+      </aside>
 
-      <section>
-        <h2 className="mb-3 text-lg font-semibold">タスク一覧</h2>
-        {tasks.length === 0 ? (
-          <p className="text-sm text-slate-500">タスクはまだありません。</p>
-        ) : (
-          <>
-            <ul className="space-y-2">
-              {tasks
-                .filter((t) => t.status !== "done")
-                .map((t) => renderTaskCard(t))}
-            </ul>
-            {tasks.some((t) => t.status === "done") && (
-              <div className="mt-4">
-                <button
-                  onClick={() => setShowDone((v) => !v)}
-                  className="mb-2 flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800"
-                >
-                  <span>{showDone ? "▾" : "▸"}</span>
-                  完了済み（{tasks.filter((t) => t.status === "done").length}）
-                </button>
-                {showDone && (
-                  <ul className="space-y-2">
-                    {tasks
-                      .filter((t) => t.status === "done")
-                      .map((t) => renderTaskCard(t))}
-                  </ul>
-                )}
-              </div>
+      {/* Main content */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Breadcrumb */}
+        <nav className="mb-4 flex items-center gap-1.5 text-sm">
+          <button
+            onClick={() => navigateTo(null)}
+            className={`rounded px-1.5 py-0.5 ${
+              currentProjectId === null
+                ? "font-bold text-slate-900"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            🏠 ルート
+          </button>
+          {breadcrumb.map((p) => (
+            <Fragment key={p.id}>
+              <span className="text-slate-300">/</span>
+              <button
+                onClick={() => navigateTo(p.id)}
+                className={`rounded px-1.5 py-0.5 ${
+                  p.id === currentProjectId
+                    ? "font-bold text-slate-900"
+                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                }`}
+              >
+                📁 {p.name}
+              </button>
+            </Fragment>
+          ))}
+        </nav>
+
+        <div className="mb-4 flex items-center justify-between">
+          <h1 className="text-2xl font-bold">{currentLabel}</h1>
+          <div className="flex gap-2">
+            {canCreateSubHere && (
+              <button
+                onClick={() => onCreateProjectIn(currentProjectId)}
+                className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+              >
+                ＋ プロジェクト
+              </button>
             )}
-          </>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mb-4 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {error}
+          </div>
         )}
-      </section>
+
+        {/* Sub-project cards */}
+        {directProjects.length > 0 && (
+          <div className="mb-6 grid grid-cols-2 gap-2">
+            {directProjects.map((p) => {
+              const count = recursiveTaskCount.get(p.id) ?? 0;
+              const subCount = (childProjectsMap.get(p.id) ?? []).length;
+              const isDrop = isDropTargetFor(p.id);
+              return (
+                <div
+                  key={p.id}
+                  className={`group flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-all ${
+                    isDrop
+                      ? "border-blue-400 bg-blue-50 ring-2 ring-blue-400"
+                      : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                  } ${dragItem?.type === "project" && dragItem.id === p.id ? "opacity-40" : ""}`}
+                  onClick={() => navigateTo(p.id)}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, "project", p.id)}
+                  onDragEnd={handleDragEnd}
+                  onDragOver={(e) => handleDragOver(e, p.id)}
+                  onDrop={(e) => handleDrop(e, p.id)}
+                >
+                  <span className="text-2xl">📁</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{p.name}</div>
+                    <div className="text-xs text-slate-500">
+                      {count > 0 && `${count}件`}
+                      {count > 0 && subCount > 0 && " · "}
+                      {subCount > 0 && `${subCount}サブ`}
+                      {count === 0 && subCount === 0 && "空"}
+                    </div>
+                  </div>
+                  <div className="hidden gap-1 group-hover:flex">
+                    <button
+                      onClick={(e) => onRenameProject(p, e)}
+                      title="リネーム"
+                      className="rounded p-1 text-xs text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      onClick={(e) => onDeleteProject(p, e)}
+                      title="削除"
+                      className="rounded p-1 text-xs text-rose-400 hover:bg-rose-100 hover:text-rose-700"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Drag hint */}
+        {dragItem && (
+          <div className="mb-4 rounded border border-dashed border-blue-300 bg-blue-50 px-3 py-2 text-center text-sm text-blue-600">
+            {dragItem.type === "task" ? "📋 タスク" : "📁 プロジェクト"}
+            をドラッグ中 — プロジェクトにドロップして移動できます
+          </div>
+        )}
+
+        {/* New task form */}
+        <form
+          onSubmit={onSubmit}
+          className="mb-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+        >
+          <div className="mb-2 flex items-center gap-2">
+            <h2 className="text-lg font-semibold">新しいタスク</h2>
+            <span className="text-xs text-slate-400">
+              → {currentLabel} に追加
+            </span>
+          </div>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="タイトル"
+            className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
+          />
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="詳細（任意）。「・」や「- 」で始まる行はチェックリストになります。"
+            rows={3}
+            className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
+          />
+          <div className="mb-2 flex items-center gap-3">
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              期限（任意）
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="rounded border border-slate-300 px-2 py-1 focus:border-slate-500 focus:outline-none"
+              />
+            </label>
+          </div>
+          <button
+            type="submit"
+            disabled={!title.trim()}
+            className="rounded bg-slate-900 px-4 py-2 text-white hover:bg-slate-700 disabled:bg-slate-400"
+          >
+            追加
+          </button>
+        </form>
+
+        {/* Task list */}
+        <section>
+          <h2 className="mb-3 text-lg font-semibold">
+            タスク一覧
+            {activeTasks.length > 0 && (
+              <span className="ml-2 text-sm font-normal text-slate-500">
+                {activeTasks.length}件
+              </span>
+            )}
+          </h2>
+          {activeTasks.length === 0 && directProjects.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              このプロジェクトにはまだ項目がありません。
+            </p>
+          ) : activeTasks.length === 0 ? (
+            <p className="text-sm text-slate-500">タスクはありません。</p>
+          ) : (
+            <ul className="space-y-2">
+              {activeTasks.map((t) => renderTaskCard(t))}
+            </ul>
+          )}
+          {doneTasks.length > 0 && (
+            <div className="mt-4">
+              <button
+                onClick={() => setShowDone((v) => !v)}
+                className="mb-2 flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800"
+              >
+                <span>{showDone ? "▾" : "▸"}</span>
+                完了済み（{doneTasks.length}）
+              </button>
+              {showDone && (
+                <ul className="space-y-2">
+                  {doneTasks.map((t) => renderTaskCard(t))}
+                </ul>
+              )}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

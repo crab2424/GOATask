@@ -9,45 +9,43 @@ import (
 	"gorm.io/gorm"
 )
 
-const maxNestingDepth = 10
-
-type FolderHandler struct {
+type ProjectHandler struct {
 	DB *gorm.DB
 }
 
-func NewFolderHandler(db *gorm.DB) *FolderHandler {
-	return &FolderHandler{DB: db}
+func NewProjectHandler(db *gorm.DB) *ProjectHandler {
+	return &ProjectHandler{DB: db}
 }
 
-func (h *FolderHandler) Register(g *echo.Group) {
-	g.GET("/folders", h.list)
-	g.POST("/folders", h.create)
-	g.PUT("/folders/:id", h.update)
-	g.DELETE("/folders/:id", h.delete)
+func (h *ProjectHandler) Register(g *echo.Group) {
+	g.GET("/projects", h.list)
+	g.POST("/projects", h.create)
+	g.PUT("/projects/:id", h.update)
+	g.DELETE("/projects/:id", h.delete)
 }
 
-func (h *FolderHandler) list(c echo.Context) error {
-	var folders []model.Folder
-	if err := h.DB.Order("name ASC").Find(&folders).Error; err != nil {
+func (h *ProjectHandler) list(c echo.Context) error {
+	var projects []model.Project
+	if err := h.DB.Order("name ASC").Find(&projects).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
-	return c.JSON(http.StatusOK, folders)
+	return c.JSON(http.StatusOK, projects)
 }
 
-func (h *FolderHandler) create(c echo.Context) error {
-	var f model.Folder
-	if err := c.Bind(&f); err != nil {
+func (h *ProjectHandler) create(c echo.Context) error {
+	var p model.Project
+	if err := c.Bind(&p); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
-	if f.Name == "" {
+	if p.Name == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "name is required")
 	}
-	if f.ParentID != nil {
-		var parent model.Folder
-		if err := h.DB.First(&parent, *f.ParentID).Error; err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, "parent folder not found")
+	if p.ParentID != nil {
+		var parent model.Project
+		if err := h.DB.First(&parent, *p.ParentID).Error; err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "parent project not found")
 		}
-		d, err := folderDepth(h.DB, *f.ParentID)
+		d, err := projectDepth(h.DB, *p.ParentID)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		}
@@ -55,41 +53,41 @@ func (h *FolderHandler) create(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "これ以上深い階層は作成できません")
 		}
 	}
-	if err := h.DB.Create(&f).Error; err != nil {
+	if err := h.DB.Create(&p).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
-	return c.JSON(http.StatusCreated, f)
+	return c.JSON(http.StatusCreated, p)
 }
 
-func (h *FolderHandler) update(c echo.Context) error {
+func (h *ProjectHandler) update(c echo.Context) error {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
-	var f model.Folder
-	if err := h.DB.First(&f, id).Error; err != nil {
-		return echo.NewHTTPError(http.StatusNotFound, "folder not found")
+	var p model.Project
+	if err := h.DB.First(&p, id).Error; err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "project not found")
 	}
-	if err := c.Bind(&f); err != nil {
+	if err := c.Bind(&p); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
-	if f.Name == "" {
+	if p.Name == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "name is required")
 	}
-	if f.ParentID != nil {
-		if *f.ParentID == uint(id) {
+	if p.ParentID != nil {
+		if *p.ParentID == uint(id) {
 			return echo.NewHTTPError(http.StatusBadRequest, "parent cannot be self")
 		}
-		if cycle, err := wouldCreateCycle(h.DB, uint(id), *f.ParentID); err != nil {
+		if cycle, err := wouldCreateProjectCycle(h.DB, uint(id), *p.ParentID); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		} else if cycle {
 			return echo.NewHTTPError(http.StatusBadRequest, "parent would create a cycle")
 		}
-		parentD, err := folderDepth(h.DB, *f.ParentID)
+		parentD, err := projectDepth(h.DB, *p.ParentID)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		}
-		subtreeD, err := folderSubtreeMaxDepth(h.DB, uint(id))
+		subtreeD, err := projectSubtreeMaxDepth(h.DB, uint(id))
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		}
@@ -97,39 +95,36 @@ func (h *FolderHandler) update(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "移動先では階層が深くなりすぎます")
 		}
 	}
-	if err := h.DB.Save(&f).Error; err != nil {
+	if err := h.DB.Save(&p).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
-	return c.JSON(http.StatusOK, f)
+	return c.JSON(http.StatusOK, p)
 }
 
-// delete removes a folder. Child folders are reparented to this folder's
-// parent (so they bubble up one level). Memos in this folder have their
-// folder_id cleared so they appear in the "未分類" group.
-func (h *FolderHandler) delete(c echo.Context) error {
+func (h *ProjectHandler) delete(c echo.Context) error {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
-	var f model.Folder
-	if err := h.DB.First(&f, id).Error; err != nil {
-		return echo.NewHTTPError(http.StatusNotFound, "folder not found")
+	var p model.Project
+	if err := h.DB.First(&p, id).Error; err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "project not found")
 	}
 	tx := h.DB.Begin()
 	if tx.Error != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, tx.Error.Error())
 	}
-	if err := tx.Model(&model.Folder{}).Where("parent_id = ?", f.ID).
-		Update("parent_id", f.ParentID).Error; err != nil {
+	if err := tx.Model(&model.Project{}).Where("parent_id = ?", p.ID).
+		Update("parent_id", p.ParentID).Error; err != nil {
 		tx.Rollback()
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
-	if err := tx.Model(&model.Memo{}).Where("folder_id = ?", f.ID).
-		Update("folder_id", nil).Error; err != nil {
+	if err := tx.Model(&model.Task{}).Where("project_id = ?", p.ID).
+		Update("project_id", nil).Error; err != nil {
 		tx.Rollback()
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
-	if err := tx.Delete(&f).Error; err != nil {
+	if err := tx.Delete(&p).Error; err != nil {
 		tx.Rollback()
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
@@ -139,15 +134,13 @@ func (h *FolderHandler) delete(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-// wouldCreateCycle returns true if making newParentID the parent of folderID
-// would form a cycle (i.e. newParentID is folderID or any of its descendants).
-func wouldCreateCycle(db *gorm.DB, folderID, newParentID uint) (bool, error) {
+func wouldCreateProjectCycle(db *gorm.DB, projectID, newParentID uint) (bool, error) {
 	current := &newParentID
 	for current != nil {
-		if *current == folderID {
+		if *current == projectID {
 			return true, nil
 		}
-		var parent model.Folder
+		var parent model.Project
 		if err := db.Select("id", "parent_id").First(&parent, *current).Error; err != nil {
 			return false, err
 		}
@@ -156,30 +149,30 @@ func wouldCreateCycle(db *gorm.DB, folderID, newParentID uint) (bool, error) {
 	return false, nil
 }
 
-func folderDepth(db *gorm.DB, id uint) (int, error) {
+func projectDepth(db *gorm.DB, id uint) (int, error) {
 	depth := 0
 	currentID := id
 	for {
-		var f model.Folder
-		if err := db.Select("id", "parent_id").First(&f, currentID).Error; err != nil {
+		var p model.Project
+		if err := db.Select("id", "parent_id").First(&p, currentID).Error; err != nil {
 			return 0, err
 		}
-		if f.ParentID == nil {
+		if p.ParentID == nil {
 			return depth, nil
 		}
 		depth++
-		currentID = *f.ParentID
+		currentID = *p.ParentID
 	}
 }
 
-func folderSubtreeMaxDepth(db *gorm.DB, id uint) (int, error) {
-	var children []model.Folder
+func projectSubtreeMaxDepth(db *gorm.DB, id uint) (int, error) {
+	var children []model.Project
 	if err := db.Where("parent_id = ?", id).Find(&children).Error; err != nil {
 		return 0, err
 	}
 	maxD := 0
 	for _, c := range children {
-		d, err := folderSubtreeMaxDepth(db, c.ID)
+		d, err := projectSubtreeMaxDepth(db, c.ID)
 		if err != nil {
 			return 0, err
 		}

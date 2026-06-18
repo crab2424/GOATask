@@ -16,6 +16,7 @@ export interface Task {
   description: string;
   status: TaskStatus;
   due_date?: string | null;
+  project_id?: number | null;
   created_at: string;
   updated_at: string;
   subtasks: Subtask[];
@@ -26,6 +27,7 @@ export interface NewTask {
   description?: string;
   status?: TaskStatus;
   due_date?: string | null;
+  project_id?: number | null;
 }
 
 export async function listTasks(): Promise<Task[]> {
