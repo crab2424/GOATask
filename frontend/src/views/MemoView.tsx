@@ -21,6 +21,13 @@ import {
 } from "../api/folders";
 import { EXPORT_FORMATS, exportMemo } from "../lib/exportMemo";
 import { PRESET_COLORS, isValidColor } from "../lib/memoColor";
+import {
+  FONT_SIZES,
+  DEFAULT_FONT_SIZE,
+  fontSizePx,
+  normalizeFontSize,
+  type FontSize,
+} from "../lib/memoFontSize";
 
 export function MemoView() {
   const [memos, setMemos] = useState<Memo[]>([]);
@@ -34,6 +41,7 @@ export function MemoView() {
     null,
   );
   const [color, setColor] = useState<string>("");
+  const [fontSize, setFontSize] = useState<FontSize>(DEFAULT_FONT_SIZE);
   const [exportOpen, setExportOpen] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement | null>(null);
@@ -130,6 +138,7 @@ export function MemoView() {
     setFolderId(presetFolder);
     setDraftFolderForNew(presetFolder);
     setColor("");
+    setFontSize(DEFAULT_FONT_SIZE);
   };
 
   const selectMemo = (m: Memo) => {
@@ -138,6 +147,7 @@ export function MemoView() {
     setContent(m.content);
     setFolderId(m.folder_id ?? null);
     setColor(m.color ?? "");
+    setFontSize(normalizeFontSize(m.font_size));
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -150,6 +160,7 @@ export function MemoView() {
           content,
           folder_id: folderId,
           color,
+          font_size: fontSize,
         });
         await reload();
         setSelectedId(updated.id);
@@ -159,11 +170,13 @@ export function MemoView() {
           content,
           folder_id: draftFolderForNew,
           color,
+          font_size: fontSize,
         });
         await reload();
         setSelectedId(created.id);
         setFolderId(created.folder_id ?? null);
         setColor(created.color ?? "");
+        setFontSize(normalizeFontSize(created.font_size));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -404,6 +417,19 @@ export function MemoView() {
               ))}
             </select>
 
+            <label className="ml-2 text-sm text-slate-600">サイズ:</label>
+            <select
+              value={fontSize}
+              onChange={(e) => setFontSize(e.target.value as FontSize)}
+              className="rounded border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
+            >
+              {FONT_SIZES.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+
             <div ref={colorRef} className="relative ml-2">
               <button
                 type="button"
@@ -492,7 +518,11 @@ export function MemoView() {
             onChange={(e) => setContent(e.target.value)}
             placeholder="内容（プレーンテキスト）"
             rows={14}
-            className="mb-2 w-full rounded border border-slate-300 px-3 py-2 font-mono text-sm focus:border-slate-500 focus:outline-none"
+            style={{
+              fontSize: `${fontSizePx(fontSize)}px`,
+              lineHeight: 1.6,
+            }}
+            className="mb-2 w-full rounded border border-slate-300 px-3 py-2 font-mono focus:border-slate-500 focus:outline-none"
           />
           <div className="flex items-center gap-2">
             <button
