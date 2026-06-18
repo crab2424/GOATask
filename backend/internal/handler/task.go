@@ -228,9 +228,6 @@ func syncSubtasks(db *gorm.DB, t *model.Task) error {
 	return reconcileParentStatus(db, t.ID)
 }
 
-// reconcileParentStatus sets parent done if all subtasks are done, or reverts
-// a done parent to todo if any subtask becomes unchecked. Tasks with no
-// subtasks are left alone.
 func reconcileParentStatus(db *gorm.DB, taskID uint) error {
 	var subs []model.Subtask
 	if err := db.Where("task_id = ?", taskID).Find(&subs).Error; err != nil {
@@ -239,23 +236,27 @@ func reconcileParentStatus(db *gorm.DB, taskID uint) error {
 	if len(subs) == 0 {
 		return nil
 	}
-	allDone := true
+	doneCount := 0
 	for _, s := range subs {
-		if !s.Done {
-			allDone = false
-			break
+		if s.Done {
+			doneCount++
 		}
+	}
+	var want model.TaskStatus
+	switch {
+	case doneCount == len(subs):
+		want = model.TaskStatusDone
+	case doneCount > 0:
+		want = model.TaskStatusDoing
+	default:
+		want = model.TaskStatusTodo
 	}
 	var t model.Task
 	if err := db.First(&t, taskID).Error; err != nil {
 		return err
 	}
-	switch {
-	case allDone && t.Status != model.TaskStatusDone:
-		t.Status = model.TaskStatusDone
-		return db.Save(&t).Error
-	case !allDone && t.Status == model.TaskStatusDone:
-		t.Status = model.TaskStatusTodo
+	if t.Status != want {
+		t.Status = want
 		return db.Save(&t).Error
 	}
 	return nil

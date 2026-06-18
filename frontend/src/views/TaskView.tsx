@@ -283,17 +283,28 @@ export function TaskView() {
                           type="checkbox"
                           checked={t.status === "done"}
                           onChange={() => toggleDone(t)}
-                          className="mt-1 h-4 w-4 cursor-pointer accent-slate-900"
+                          disabled={subs.length > 0}
+                          className={`mt-1 h-4 w-4 accent-slate-900 ${subs.length > 0 ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
                           aria-label="完了マーク"
+                          title={subs.length > 0 ? "サブタスクのチェック状態で自動反映" : undefined}
                         />
                         <div className="flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <button
-                              onClick={() => cycleStatus(t)}
-                              className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status]}`}
-                            >
-                              {STATUS_LABEL[t.status]}
-                            </button>
+                            {subs.length > 0 ? (
+                              <span
+                                className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status]}`}
+                                title="サブタスクのチェック状態で自動反映"
+                              >
+                                {STATUS_LABEL[t.status]}
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => cycleStatus(t)}
+                                className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status]}`}
+                              >
+                                {STATUS_LABEL[t.status]}
+                              </button>
+                            )}
                             <span
                               className={`font-medium ${
                                 t.status === "done"
