@@ -3,7 +3,9 @@ import {
   createTask,
   deleteTask,
   listTasks,
+  toggleSubtask,
   updateTask,
+  type Subtask,
   type Task,
   type TaskStatus,
 } from "../api/tasks";
@@ -49,6 +51,19 @@ function dueLabel(iso: string | null | undefined, status: TaskStatus) {
       : "text-slate-500";
   const suffix = overdue ? "（期限超過）" : isToday ? "（今日）" : "";
   return <span className={`text-xs ${cls}`}>期限 {date}{suffix}</span>;
+}
+
+// Hide the bullet lines from the free-text body — they're rendered as
+// subtasks below instead.
+function stripBulletLines(description: string): string {
+  return description
+    .split("\n")
+    .filter((line) => {
+      const t = line.trim();
+      return !t.startsWith("・") && !t.startsWith("- ");
+    })
+    .join("\n")
+    .trim();
 }
 
 export function TaskView() {
@@ -100,7 +115,23 @@ export function TaskView() {
     await reload();
   };
 
+  const toggleDone = async (t: Task) => {
+    const next: TaskStatus = t.status === "done" ? "todo" : "done";
+    await updateTask(t.id, { ...t, status: next });
+    await reload();
+  };
+
+  const onToggleSubtask = async (taskId: number, sub: Subtask) => {
+    try {
+      await toggleSubtask(taskId, sub.id, !sub.done);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const onDelete = async (id: number) => {
+    if (!window.confirm("このタスクを削除しますか？（取り消せません）")) return;
     await deleteTask(id);
     await reload();
   };
@@ -159,8 +190,8 @@ export function TaskView() {
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="詳細（任意）"
-          rows={2}
+          placeholder="詳細（任意）。「・」や「- 」で始まる行はチェックリストになります。"
+          rows={3}
           className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
         />
         <label className="mb-2 flex items-center gap-2 text-sm text-slate-600">
@@ -187,97 +218,150 @@ export function TaskView() {
           <p className="text-sm text-slate-500">タスクはまだありません。</p>
         ) : (
           <ul className="space-y-2">
-            {tasks.map((t) => (
-              <li
-                key={t.id}
-                className="flex items-start justify-between rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
-              >
-                {editingId === t.id ? (
-                  <div className="flex-1">
-                    <input
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      placeholder="タイトル"
-                      className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
-                    />
-                    <textarea
-                      value={editDescription}
-                      onChange={(e) => setEditDescription(e.target.value)}
-                      placeholder="詳細（任意）"
-                      rows={2}
-                      className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
-                    />
-                    <label className="mb-2 flex items-center gap-2 text-sm text-slate-600">
-                      期限（任意）
-                      <input
-                        type="date"
-                        value={editDueDate}
-                        onChange={(e) => setEditDueDate(e.target.value)}
-                        className="rounded border border-slate-300 px-2 py-1 focus:border-slate-500 focus:outline-none"
-                      />
-                      {editDueDate && (
-                        <button
-                          type="button"
-                          onClick={() => setEditDueDate("")}
-                          className="text-xs text-slate-500 hover:text-slate-800"
-                        >
-                          クリア
-                        </button>
-                      )}
-                    </label>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => saveEdit(t)}
-                        disabled={!editTitle.trim()}
-                        className="rounded bg-slate-900 px-3 py-1 text-sm text-white hover:bg-slate-700 disabled:bg-slate-400"
-                      >
-                        保存
-                      </button>
-                      <button
-                        onClick={cancelEdit}
-                        className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100"
-                      >
-                        キャンセル
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
+            {tasks.map((t) => {
+              const bodyText = stripBulletLines(t.description);
+              const subs = t.subtasks ?? [];
+              const doneCount = subs.filter((s) => s.done).length;
+              return (
+                <li
+                  key={t.id}
+                  className="flex items-start justify-between rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+                >
+                  {editingId === t.id ? (
                     <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                      <input
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        placeholder="タイトル"
+                        className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
+                      />
+                      <textarea
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        placeholder="詳細（任意）。「・」や「- 」で始まる行はチェックリストになります。"
+                        rows={4}
+                        className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
+                      />
+                      <label className="mb-2 flex items-center gap-2 text-sm text-slate-600">
+                        期限（任意）
+                        <input
+                          type="date"
+                          value={editDueDate}
+                          onChange={(e) => setEditDueDate(e.target.value)}
+                          className="rounded border border-slate-300 px-2 py-1 focus:border-slate-500 focus:outline-none"
+                        />
+                        {editDueDate && (
+                          <button
+                            type="button"
+                            onClick={() => setEditDueDate("")}
+                            className="text-xs text-slate-500 hover:text-slate-800"
+                          >
+                            クリア
+                          </button>
+                        )}
+                      </label>
+                      <div className="flex gap-2">
                         <button
-                          onClick={() => cycleStatus(t)}
-                          className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status]}`}
+                          onClick={() => saveEdit(t)}
+                          disabled={!editTitle.trim()}
+                          className="rounded bg-slate-900 px-3 py-1 text-sm text-white hover:bg-slate-700 disabled:bg-slate-400"
                         >
-                          {STATUS_LABEL[t.status]}
+                          保存
                         </button>
-                        <span className="font-medium">{t.title}</span>
-                        {dueLabel(t.due_date, t.status)}
+                        <button
+                          onClick={cancelEdit}
+                          className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100"
+                        >
+                          キャンセル
+                        </button>
                       </div>
-                      {t.description && (
-                        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
-                          {t.description}
-                        </p>
-                      )}
                     </div>
-                    <div className="ml-3 flex flex-col items-end gap-1">
-                      <button
-                        onClick={() => startEdit(t)}
-                        className="text-sm text-slate-600 hover:text-slate-900"
-                      >
-                        編集
-                      </button>
-                      <button
-                        onClick={() => onDelete(t.id)}
-                        className="text-sm text-rose-600 hover:text-rose-800"
-                      >
-                        削除
-                      </button>
-                    </div>
-                  </>
-                )}
-              </li>
-            ))}
+                  ) : (
+                    <>
+                      <div className="flex flex-1 items-start gap-2">
+                        <input
+                          type="checkbox"
+                          checked={t.status === "done"}
+                          onChange={() => toggleDone(t)}
+                          className="mt-1 h-4 w-4 cursor-pointer accent-slate-900"
+                          aria-label="完了マーク"
+                        />
+                        <div className="flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              onClick={() => cycleStatus(t)}
+                              className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status]}`}
+                            >
+                              {STATUS_LABEL[t.status]}
+                            </button>
+                            <span
+                              className={`font-medium ${
+                                t.status === "done"
+                                  ? "text-slate-400 line-through"
+                                  : ""
+                              }`}
+                            >
+                              {t.title}
+                            </span>
+                            {subs.length > 0 && (
+                              <span className="text-xs text-slate-500">
+                                {doneCount}/{subs.length}
+                              </span>
+                            )}
+                            {dueLabel(t.due_date, t.status)}
+                          </div>
+                          {bodyText && (
+                            <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
+                              {bodyText}
+                            </p>
+                          )}
+                          {subs.length > 0 && (
+                            <ul className="mt-2 space-y-1">
+                              {subs.map((s) => (
+                                <li
+                                  key={s.id}
+                                  className="flex items-start gap-2 text-sm"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={s.done}
+                                    onChange={() => onToggleSubtask(t.id, s)}
+                                    className="mt-0.5 h-4 w-4 cursor-pointer accent-slate-900"
+                                  />
+                                  <span
+                                    className={
+                                      s.done
+                                        ? "text-slate-400 line-through"
+                                        : "text-slate-700"
+                                    }
+                                  >
+                                    {s.text}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                      <div className="ml-3 flex flex-col items-end gap-1">
+                        <button
+                          onClick={() => startEdit(t)}
+                          className="text-sm text-slate-600 hover:text-slate-900"
+                        >
+                          編集
+                        </button>
+                        <button
+                          onClick={() => onDelete(t.id)}
+                          className="text-sm text-rose-600 hover:text-rose-800"
+                        >
+                          削除
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

@@ -2,6 +2,14 @@ const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8080";
 
 export type TaskStatus = "todo" | "doing" | "done";
 
+export interface Subtask {
+  id: number;
+  task_id: number;
+  text: string;
+  done: boolean;
+  position: number;
+}
+
 export interface Task {
   id: number;
   title: string;
@@ -10,6 +18,7 @@ export interface Task {
   due_date?: string | null;
   created_at: string;
   updated_at: string;
+  subtasks: Subtask[];
 }
 
 export interface NewTask {
@@ -42,6 +51,23 @@ export async function updateTask(id: number, input: Partial<Task>): Promise<Task
     body: JSON.stringify(input),
   });
   if (!res.ok) throw new Error(`updateTask failed: ${res.status}`);
+  return res.json();
+}
+
+export async function toggleSubtask(
+  taskId: number,
+  subtaskId: number,
+  done: boolean,
+): Promise<Task> {
+  const res = await fetch(
+    `${API_BASE}/api/tasks/${taskId}/subtasks/${subtaskId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ done }),
+    },
+  );
+  if (!res.ok) throw new Error(`toggleSubtask failed: ${res.status}`);
   return res.json();
 }
 
