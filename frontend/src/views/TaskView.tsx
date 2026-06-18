@@ -26,8 +26,6 @@ import {
   type Project,
 } from "../api/projects";
 
-const MAX_DEPTH = 3;
-
 const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: "未着手",
   doing: "進行中",
@@ -208,23 +206,6 @@ export function TaskView() {
     return path;
   }, [currentProjectId, projects]);
 
-  const projectDepthMap = useMemo(() => {
-    const map = new Map<number, number>();
-    const calc = (id: number): number => {
-      if (map.has(id)) return map.get(id)!;
-      const p = projects.find((proj) => proj.id === id);
-      if (!p || p.parent_id == null) {
-        map.set(id, 0);
-        return 0;
-      }
-      const d = calc(p.parent_id) + 1;
-      map.set(id, d);
-      return d;
-    };
-    projects.forEach((p) => calc(p.id));
-    return map;
-  }, [projects]);
-
   const flatProjectOptions = useMemo(() => {
     const out: { id: number; label: string }[] = [];
     const walk = (parent: number | null, depth: number) => {
@@ -261,24 +242,7 @@ export function TaskView() {
   const activeTasks = directTasks.filter((t) => t.status !== "done");
   const doneTasks = directTasks.filter((t) => t.status === "done");
 
-  const currentDepth =
-    currentProjectId !== null
-      ? (projectDepthMap.get(currentProjectId) ?? 0)
-      : -1;
-  const canCreateSubHere = currentDepth + 1 < MAX_DEPTH;
-
   // --- DnD helpers ---
-
-  const subtreeMaxDepthCalc = (projectId: number): number => {
-    const children = childProjectsMap.get(projectId) ?? [];
-    if (children.length === 0) return 0;
-    let max = 0;
-    for (const c of children) {
-      const d = subtreeMaxDepthCalc(c.id) + 1;
-      if (d > max) max = d;
-    }
-    return max;
-  };
 
   const isDescendantOf = (
     ancestorId: number,
@@ -307,12 +271,6 @@ export function TaskView() {
         return false;
       const p = projects.find((proj) => proj.id === item.id);
       if (p && (p.parent_id ?? null) === targetProjectId) return false;
-      const targetDepth =
-        targetProjectId !== null
-          ? (projectDepthMap.get(targetProjectId) ?? 0)
-          : -1;
-      const stDepth = subtreeMaxDepthCalc(item.id);
-      if (targetDepth + 1 + stDepth >= MAX_DEPTH) return false;
       return true;
     }
     return false;
@@ -391,9 +349,14 @@ export function TaskView() {
     e: ReactDragEvent,
     targetProjectId: number | null,
   ) => {
-    if (!canDrop(targetProjectId)) return;
-    e.preventDefault();
+    if (!dragItemRef.current) return;
     e.stopPropagation();
+    if (!canDrop(targetProjectId)) {
+      setDropTarget((prev) => (prev === null ? prev : null));
+      clearHoverExpand();
+      return;
+    }
+    e.preventDefault();
     setDropTarget({ kind: "folder", projectId: targetProjectId });
     if (targetProjectId !== null) scheduleHoverExpand(targetProjectId);
     else clearHoverExpand();
@@ -691,16 +654,21 @@ export function TaskView() {
     const isCurrent = currentProjectId === p.id;
     const count = recursiveTaskCount.get(p.id) ?? 0;
     const isDrop = isDropTargetFor(p.id);
-    const pDepth = projectDepthMap.get(p.id) ?? 0;
 
     return (
-      <li key={`p-${p.id}`}>
+      <li
+        key={`p-${p.id}`}
+        className={`rounded ${isDrop ? "bg-blue-50 ring-2 ring-blue-400" : ""}`}
+        onDragOver={(e) => handleFolderDragOver(e, p.id)}
+        onDragLeave={(e) => handleFolderDragLeave(e, p.id)}
+        onDrop={(e) => handleFolderDrop(e, p.id)}
+      >
         <div
           className={`group flex items-center gap-1 rounded px-1 py-1 text-sm transition-colors ${
             isCurrent
               ? "bg-slate-200 font-bold text-slate-900"
               : "hover:bg-slate-100"
-          } ${isDrop ? "ring-2 ring-blue-400 bg-blue-50" : ""} ${
+          } ${
             dragItem?.type === "project" && dragItem.id === p.id
               ? "opacity-40"
               : ""
@@ -709,9 +677,6 @@ export function TaskView() {
           draggable
           onDragStart={(e) => handleDragStart(e, "project", p.id)}
           onDragEnd={handleDragEnd}
-          onDragOver={(e) => handleFolderDragOver(e, p.id)}
-          onDragLeave={(e) => handleFolderDragLeave(e, p.id)}
-          onDrop={(e) => handleFolderDrop(e, p.id)}
         >
           <button
             onClick={(e) => {
@@ -732,15 +697,13 @@ export function TaskView() {
             )}
           </button>
           <div className="hidden gap-1 group-hover:flex">
-            {pDepth + 1 < MAX_DEPTH && (
-              <button
-                onClick={(e) => onCreateProjectIn(p.id, e)}
-                title="サブプロジェクト追加"
-                className="px-1 text-xs text-slate-500 hover:text-slate-900"
-              >
-                ＋
-              </button>
-            )}
+            <button
+              onClick={(e) => onCreateProjectIn(p.id, e)}
+              title="サブプロジェクト追加"
+              className="px-1 text-xs text-slate-500 hover:text-slate-900"
+            >
+              ＋
+            </button>
             <button
               onClick={(e) => onRenameProject(p, e)}
               title="リネーム"
@@ -1100,14 +1063,12 @@ export function TaskView() {
             >
               {showNewTaskForm ? "× 閉じる" : "＋ タスク"}
             </button>
-            {canCreateSubHere && (
-              <button
-                onClick={() => onCreateProjectIn(currentProjectId)}
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
-              >
-                ＋ プロジェクト
-              </button>
-            )}
+            <button
+              onClick={() => onCreateProjectIn(currentProjectId)}
+              className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+            >
+              ＋ プロジェクト
+            </button>
           </div>
         </div>
 
