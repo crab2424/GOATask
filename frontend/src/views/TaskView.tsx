@@ -20,14 +20,47 @@ const STATUS_STYLES: Record<TaskStatus, string> = {
   done: "bg-emerald-200 text-emerald-800",
 };
 
+function todayStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function isoToDateInput(iso: string | null | undefined): string {
+  return iso ? iso.slice(0, 10) : "";
+}
+
+function dateInputToIso(input: string): string | null {
+  return input ? `${input}T00:00:00Z` : null;
+}
+
+function dueLabel(iso: string | null | undefined, status: TaskStatus) {
+  if (!iso) return null;
+  const date = iso.slice(0, 10);
+  const today = todayStr();
+  const overdue = status !== "done" && date < today;
+  const isToday = date === today;
+  const cls = overdue
+    ? "text-rose-600"
+    : isToday
+      ? "text-amber-600"
+      : "text-slate-500";
+  const suffix = overdue ? "（期限超過）" : isToday ? "（今日）" : "";
+  return <span className={`text-xs ${cls}`}>期限 {date}{suffix}</span>;
+}
+
 export function TaskView() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [dueDate, setDueDate] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [editDueDate, setEditDueDate] = useState("");
 
   const reload = async () => {
     try {
@@ -46,9 +79,14 @@ export function TaskView() {
     e.preventDefault();
     if (!title.trim()) return;
     try {
-      await createTask({ title: title.trim(), description: description.trim() });
+      await createTask({
+        title: title.trim(),
+        description: description.trim(),
+        due_date: dateInputToIso(dueDate),
+      });
       setTitle("");
       setDescription("");
+      setDueDate("");
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -71,12 +109,14 @@ export function TaskView() {
     setEditingId(t.id);
     setEditTitle(t.title);
     setEditDescription(t.description);
+    setEditDueDate(isoToDateInput(t.due_date));
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditTitle("");
     setEditDescription("");
+    setEditDueDate("");
   };
 
   const saveEdit = async (t: Task) => {
@@ -86,6 +126,7 @@ export function TaskView() {
         ...t,
         title: editTitle.trim(),
         description: editDescription.trim(),
+        due_date: dateInputToIso(editDueDate),
       });
       cancelEdit();
       await reload();
@@ -122,6 +163,15 @@ export function TaskView() {
           rows={2}
           className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
         />
+        <label className="mb-2 flex items-center gap-2 text-sm text-slate-600">
+          期限（任意）
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            className="rounded border border-slate-300 px-2 py-1 focus:border-slate-500 focus:outline-none"
+          />
+        </label>
         <button
           type="submit"
           className="rounded bg-slate-900 px-4 py-2 text-white hover:bg-slate-700 disabled:bg-slate-400"
@@ -157,6 +207,24 @@ export function TaskView() {
                       rows={2}
                       className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
                     />
+                    <label className="mb-2 flex items-center gap-2 text-sm text-slate-600">
+                      期限（任意）
+                      <input
+                        type="date"
+                        value={editDueDate}
+                        onChange={(e) => setEditDueDate(e.target.value)}
+                        className="rounded border border-slate-300 px-2 py-1 focus:border-slate-500 focus:outline-none"
+                      />
+                      {editDueDate && (
+                        <button
+                          type="button"
+                          onClick={() => setEditDueDate("")}
+                          className="text-xs text-slate-500 hover:text-slate-800"
+                        >
+                          クリア
+                        </button>
+                      )}
+                    </label>
                     <div className="flex gap-2">
                       <button
                         onClick={() => saveEdit(t)}
@@ -184,6 +252,7 @@ export function TaskView() {
                           {STATUS_LABEL[t.status]}
                         </button>
                         <span className="font-medium">{t.title}</span>
+                        {dueLabel(t.due_date, t.status)}
                       </div>
                       {t.description && (
                         <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
