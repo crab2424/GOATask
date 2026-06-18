@@ -3,6 +3,7 @@ import {
   createTask,
   deleteTask,
   listTasks,
+  reorderTasks,
   toggleSubtask,
   updateTask,
   type Subtask,
@@ -135,6 +136,24 @@ export function TaskView() {
     if (!window.confirm("このタスクを削除しますか？（取り消せません）")) return;
     await deleteTask(id);
     await reload();
+  };
+
+  const moveTask = async (taskId: number, direction: "up" | "down") => {
+    const active = tasks.filter((t) => t.status !== "done");
+    const idx = active.findIndex((t) => t.id === taskId);
+    if (idx < 0) return;
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= active.length) return;
+    const reordered = [...active];
+    [reordered[idx], reordered[swapIdx]] = [reordered[swapIdx], reordered[idx]];
+    const doneTasks = tasks.filter((t) => t.status === "done");
+    const allIds = [...reordered, ...doneTasks].map((t) => t.id);
+    try {
+      await reorderTasks(allIds);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const startEdit = (t: Task) => {
@@ -304,6 +323,24 @@ export function TaskView() {
               </div>
             </div>
             <div className="ml-3 flex flex-col items-end gap-1">
+              {t.status !== "done" && (
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => moveTask(t.id, "up")}
+                    className="rounded px-1 text-sm text-slate-400 hover:text-slate-700"
+                    title="上に移動"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    onClick={() => moveTask(t.id, "down")}
+                    className="rounded px-1 text-sm text-slate-400 hover:text-slate-700"
+                    title="下に移動"
+                  >
+                    ▼
+                  </button>
+                </div>
+              )}
               <button
                 onClick={() => startEdit(t)}
                 className="text-sm text-slate-600 hover:text-slate-900"

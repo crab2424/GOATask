@@ -76,6 +76,15 @@ export async function deleteTask(id: number): Promise<void> {
   if (!res.ok) throw new Error(`deleteTask failed: ${res.status}`);
 }
 
+export async function reorderTasks(ids: number[]): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/tasks-reorder`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) throw new Error(`reorderTasks failed: ${res.status}`);
+}
+
 export async function checkHealth(): Promise<{ status: string }> {
   const res = await fetch(`${API_BASE}/health`);
   if (!res.ok) throw new Error(`health failed: ${res.status}`);

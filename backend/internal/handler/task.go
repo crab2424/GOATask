@@ -25,13 +25,14 @@ func (h *TaskHandler) Register(g *echo.Group) {
 	g.PUT("/tasks/:id", h.update)
 	g.DELETE("/tasks/:id", h.delete)
 	g.PATCH("/tasks/:id/subtasks/:sid", h.toggleSubtask)
+	g.PUT("/tasks-reorder", h.reorder)
 }
 
 func (h *TaskHandler) list(c echo.Context) error {
 	var tasks []model.Task
 	if err := h.DB.Preload("Subtasks", func(db *gorm.DB) *gorm.DB {
 		return db.Order("position ASC, id ASC")
-	}).Order("created_at DESC").Find(&tasks).Error; err != nil {
+	}).Order("position ASC, created_at DESC").Find(&tasks).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusOK, tasks)
@@ -150,6 +151,23 @@ func (h *TaskHandler) toggleSubtask(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusOK, t)
+}
+
+type reorderReq struct {
+	IDs []uint `json:"ids"`
+}
+
+func (h *TaskHandler) reorder(c echo.Context) error {
+	var req reorderReq
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	for i, id := range req.IDs {
+		if err := h.DB.Model(&model.Task{}).Where("id = ?", id).Update("position", i).Error; err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		}
+	}
+	return c.NoContent(http.StatusNoContent)
 }
 
 // extractSubtaskLines pulls lines that start with "・" or "- " (after trim).
