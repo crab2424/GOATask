@@ -3,13 +3,15 @@ import { checkHealth } from "./api/tasks";
 import { HomeView } from "./views/HomeView";
 import { TaskView } from "./views/TaskView";
 import { MemoView } from "./views/MemoView";
+import { FlashcardView } from "./views/FlashcardView";
 
-type Mode = "home" | "tasks" | "memos";
+type Mode = "home" | "tasks" | "memos" | "flashcards";
 
 const TABS: { id: Mode; label: string; icon: string }[] = [
   { id: "home", label: "ホーム", icon: "🏠" },
   { id: "tasks", label: "タスク", icon: "✓" },
   { id: "memos", label: "メモ", icon: "📝" },
+  { id: "flashcards", label: "単語帳", icon: "🃏" },
 ];
 
 function App() {
@@ -54,6 +56,7 @@ function App() {
         {mode === "home" && <HomeView />}
         {mode === "tasks" && <TaskView />}
         {mode === "memos" && <MemoView />}
+        {mode === "flashcards" && <FlashcardView />}
       </main>
     </div>
   );

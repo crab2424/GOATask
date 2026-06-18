@@ -34,6 +34,7 @@ func main() {
 	handler.NewTaskHandler(conn).Register(api)
 	handler.NewMemoHandler(conn).Register(api)
 	handler.NewFolderHandler(conn).Register(api)
+	handler.NewDeckHandler(conn).Register(api)
 
 	e.Logger.Fatal(e.Start(":" + cfg.AppPort))
 }
