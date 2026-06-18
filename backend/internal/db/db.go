@@ -12,7 +12,7 @@ func Connect(cfg *config.Config) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := conn.AutoMigrate(&model.Task{}); err != nil {
+	if err := conn.AutoMigrate(&model.Task{}, &model.Memo{}); err != nil {
 		return nil, err
 	}
 	return conn, nil

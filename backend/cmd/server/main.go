@@ -32,6 +32,7 @@ func main() {
 
 	api := e.Group("/api")
 	handler.NewTaskHandler(conn).Register(api)
+	handler.NewMemoHandler(conn).Register(api)
 
 	e.Logger.Fatal(e.Start(":" + cfg.AppPort))
 }
