@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   createMemo,
   deleteMemo,
@@ -13,6 +19,7 @@ import {
   updateFolder,
   type Folder,
 } from "../api/folders";
+import { EXPORT_FORMATS, exportMemo } from "../lib/exportMemo";
 
 export function MemoView() {
   const [memos, setMemos] = useState<Memo[]>([]);
@@ -25,7 +32,20 @@ export function MemoView() {
   const [draftFolderForNew, setDraftFolderForNew] = useState<number | null>(
     null,
   );
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (!exportRef.current?.contains(e.target as Node)) {
+        setExportOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [exportOpen]);
 
   const reload = async () => {
     try {
@@ -385,6 +405,35 @@ export function MemoView() {
               >
                 削除
               </button>
+            )}
+            {selected && (
+              <div ref={exportRef} className="relative ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setExportOpen((v) => !v)}
+                  className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100"
+                >
+                  エクスポート ▾
+                </button>
+                {exportOpen && (
+                  <ul className="absolute right-0 z-10 mt-1 w-56 rounded border border-slate-200 bg-white py-1 text-sm shadow-lg">
+                    {EXPORT_FORMATS.map((fmt) => (
+                      <li key={fmt.ext}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            exportMemo(selected, fmt);
+                            setExportOpen(false);
+                          }}
+                          className="w-full px-3 py-2 text-left hover:bg-slate-100"
+                        >
+                          {fmt.label}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
           </div>
         </form>
