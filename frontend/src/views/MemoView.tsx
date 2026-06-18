@@ -20,6 +20,7 @@ import {
   type Folder,
 } from "../api/folders";
 import { EXPORT_FORMATS, exportMemo } from "../lib/exportMemo";
+import { PRESET_COLORS, isValidColor } from "../lib/memoColor";
 
 export function MemoView() {
   const [memos, setMemos] = useState<Memo[]>([]);
@@ -32,8 +33,11 @@ export function MemoView() {
   const [draftFolderForNew, setDraftFolderForNew] = useState<number | null>(
     null,
   );
+  const [color, setColor] = useState<string>("");
   const [exportOpen, setExportOpen] = useState(false);
+  const [colorOpen, setColorOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement | null>(null);
+  const colorRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,6 +50,17 @@ export function MemoView() {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [exportOpen]);
+
+  useEffect(() => {
+    if (!colorOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (!colorRef.current?.contains(e.target as Node)) {
+        setColorOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [colorOpen]);
 
   const reload = async () => {
     try {
@@ -114,6 +129,7 @@ export function MemoView() {
     setContent("");
     setFolderId(presetFolder);
     setDraftFolderForNew(presetFolder);
+    setColor("");
   };
 
   const selectMemo = (m: Memo) => {
@@ -121,6 +137,7 @@ export function MemoView() {
     setTitle(m.title);
     setContent(m.content);
     setFolderId(m.folder_id ?? null);
+    setColor(m.color ?? "");
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -132,6 +149,7 @@ export function MemoView() {
           title: title.trim(),
           content,
           folder_id: folderId,
+          color,
         });
         await reload();
         setSelectedId(updated.id);
@@ -140,10 +158,12 @@ export function MemoView() {
           title: title.trim(),
           content,
           folder_id: draftFolderForNew,
+          color,
         });
         await reload();
         setSelectedId(created.id);
         setFolderId(created.folder_id ?? null);
+        setColor(created.color ?? "");
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -206,22 +226,30 @@ export function MemoView() {
     }
   };
 
-  const renderMemoItem = (m: Memo, depth: number) => (
-    <li key={m.id}>
-      <button
-        onClick={() => selectMemo(m)}
-        style={{ paddingLeft: `${depth * 12 + 8}px` }}
-        className={`w-full rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100 ${
-          m.id === selectedId ? "bg-slate-200 font-medium" : "bg-white"
-        }`}
-      >
-        <div className="truncate">{m.title}</div>
-        <div className="truncate text-xs text-slate-500">
-          {new Date(m.updated_at).toLocaleString()}
-        </div>
-      </button>
-    </li>
-  );
+  const renderMemoItem = (m: Memo, depth: number) => {
+    const memoColor = isValidColor(m.color) ? m.color : null;
+    return (
+      <li key={m.id}>
+        <button
+          onClick={() => selectMemo(m)}
+          style={{
+            paddingLeft: `${depth * 12 + 8}px`,
+            borderLeft: memoColor
+              ? `4px solid ${memoColor}`
+              : "4px solid transparent",
+          }}
+          className={`w-full rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100 ${
+            m.id === selectedId ? "bg-slate-200 font-medium" : "bg-white"
+          }`}
+        >
+          <div className="truncate">{m.title}</div>
+          <div className="truncate text-xs text-slate-500">
+            {new Date(m.updated_at).toLocaleString()}
+          </div>
+        </button>
+      </li>
+    );
+  };
 
   const renderFolder = (f: Folder, depth: number) => {
     const isOpen = expanded.has(f.id);
@@ -375,11 +403,88 @@ export function MemoView() {
                 </option>
               ))}
             </select>
+
+            <div ref={colorRef} className="relative ml-2">
+              <button
+                type="button"
+                onClick={() => setColorOpen((v) => !v)}
+                className="flex items-center gap-1 rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-100"
+                title="色を選ぶ"
+              >
+                <span
+                  className="inline-block h-4 w-4 rounded border border-slate-300"
+                  style={{
+                    backgroundColor: isValidColor(color)
+                      ? color
+                      : "transparent",
+                    backgroundImage: isValidColor(color)
+                      ? undefined
+                      : "linear-gradient(45deg, #e2e8f0 25%, transparent 25%, transparent 75%, #e2e8f0 75%), linear-gradient(45deg, #e2e8f0 25%, transparent 25%, transparent 75%, #e2e8f0 75%)",
+                    backgroundSize: "8px 8px",
+                    backgroundPosition: "0 0, 4px 4px",
+                  }}
+                />
+                色 ▾
+              </button>
+              {colorOpen && (
+                <div className="absolute left-0 z-10 mt-1 w-56 rounded border border-slate-200 bg-white p-2 shadow-lg">
+                  <div className="mb-2 flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setColor("");
+                        setColorOpen(false);
+                      }}
+                      title="色なし"
+                      className={`h-6 w-6 rounded border ${
+                        color === ""
+                          ? "border-slate-900 ring-1 ring-slate-900"
+                          : "border-slate-300"
+                      } flex items-center justify-center text-xs text-slate-500`}
+                    >
+                      ×
+                    </button>
+                    {PRESET_COLORS.map((c) => (
+                      <button
+                        key={c.value}
+                        type="button"
+                        onClick={() => {
+                          setColor(c.value);
+                          setColorOpen(false);
+                        }}
+                        title={c.label}
+                        style={{ backgroundColor: c.value }}
+                        className={`h-6 w-6 rounded border ${
+                          color === c.value
+                            ? "border-slate-900 ring-1 ring-slate-900"
+                            : "border-slate-300"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-slate-600">
+                    カスタム:
+                    <input
+                      type="color"
+                      value={isValidColor(color) ? color : "#cccccc"}
+                      onChange={(e) => setColor(e.target.value)}
+                      className="h-6 w-10 cursor-pointer rounded border border-slate-300 p-0"
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
           </div>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="タイトル"
+            style={{
+              borderLeft: isValidColor(color)
+                ? `4px solid ${color}`
+                : undefined,
+              backgroundColor: isValidColor(color) ? `${color}22` : undefined,
+            }}
             className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
           />
           <textarea
