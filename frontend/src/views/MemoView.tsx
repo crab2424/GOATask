@@ -774,7 +774,7 @@ export function MemoView() {
       </aside>
 
       {/* Main */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-w-0 flex-1 overflow-y-auto">
         {/* Breadcrumb */}
         <nav className="mb-3 flex items-center gap-1.5 text-sm">
           <button

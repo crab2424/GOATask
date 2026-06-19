@@ -144,6 +144,9 @@ export function TaskView() {
   const [dropTarget, setDropTarget] = useState<DropTarget>(null);
   const dragItemRef = useRef<DragItem>(null);
 
+  const [focusTaskId, setFocusTaskId] = useState<number | null>(null);
+  const taskRefs = useRef<Map<number, HTMLLIElement>>(new Map());
+
   const hoverExpand = useHoverExpand(
     (id) =>
       setExpanded((prev) => {
@@ -179,6 +182,15 @@ export function TaskView() {
       JSON.stringify([...expanded]),
     );
   }, [expanded]);
+
+  useEffect(() => {
+    if (focusTaskId === null) return;
+    const el = taskRefs.current.get(focusTaskId);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const timer = setTimeout(() => setFocusTaskId(null), 1600);
+    return () => clearTimeout(timer);
+  }, [focusTaskId, currentProjectId, tasks]);
 
   // --- Computed ---
 
@@ -694,12 +706,20 @@ export function TaskView() {
     );
   };
 
+  const openTaskFromTree = (t: Task) => {
+    const parentId = t.project_id ?? null;
+    if (parentId !== currentProjectId) navigateTo(parentId);
+    if (editingId !== null) cancelEdit();
+    if (t.status === "done") setShowDone(true);
+    setFocusTaskId(t.id);
+  };
+
   const renderTreeTask = (t: Task, depth: number): JSX.Element => (
     <li key={`t-${t.id}`}>
       <div
         className={`flex items-center gap-1 rounded px-1 py-1 text-sm hover:bg-slate-50 ${
           dragItem?.type === "task" && dragItem.id === t.id ? "opacity-40" : ""
-        }`}
+        } ${focusTaskId === t.id ? "bg-slate-100 font-medium" : ""}`}
         style={{ paddingLeft: `${depth * 16 + 4}px` }}
         draggable
         onDragStart={(e) => handleDragStart(e, "task", t.id)}
@@ -712,7 +732,12 @@ export function TaskView() {
             title={STATUS_LABEL[t.status]}
           />
         </span>
-        <span className="flex-1 truncate text-slate-500">{t.title}</span>
+        <button
+          onClick={() => openTaskFromTree(t)}
+          className="flex-1 truncate text-left text-slate-500 hover:text-slate-900"
+        >
+          {t.title}
+        </button>
       </div>
     </li>
   );
@@ -725,18 +750,46 @@ export function TaskView() {
     const subDoneCount = subs.filter((s) => s.done).length;
     const isDragging = dragItem?.type === "task" && dragItem.id === t.id;
     const indicator = reorderIndicatorFor(t.id);
+    const isEditing = editingId === t.id;
+
+    const isFocused = focusTaskId === t.id;
 
     return (
       <li
         key={t.id}
-        className={`relative flex items-start justify-between rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-opacity ${
-          isDragging ? "opacity-40" : ""
-        }`}
-        draggable
-        onDragStart={(e) => handleDragStart(e, "task", t.id)}
+        ref={(el) => {
+          if (el) taskRefs.current.set(t.id, el);
+          else taskRefs.current.delete(t.id);
+        }}
+        className={`relative flex items-start justify-between rounded-lg border bg-white p-3 shadow-sm transition-all ${
+          isFocused
+            ? "border-blue-400 ring-2 ring-blue-300"
+            : "border-slate-200"
+        } ${isDragging ? "opacity-40" : ""}`}
+        draggable={!isEditing}
+        onDragStart={(e) => {
+          if (isEditing) {
+            e.preventDefault();
+            return;
+          }
+          handleDragStart(e, "task", t.id);
+        }}
         onDragEnd={handleDragEnd}
-        onDragOver={(e) => handleTaskReorderDragOver(e, t.id)}
-        onDrop={(e) => handleTaskReorderDrop(e, t.id)}
+        onDragOver={(e) => {
+          if (isEditing) {
+            e.stopPropagation();
+            return;
+          }
+          handleTaskReorderDragOver(e, t.id);
+        }}
+        onDrop={(e) => {
+          if (isEditing) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          handleTaskReorderDrop(e, t.id);
+        }}
       >
         {indicator === "before" && (
           <span className="pointer-events-none absolute -top-1 left-0 right-0 h-0.5 rounded-full bg-blue-500" />
