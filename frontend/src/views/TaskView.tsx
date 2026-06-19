@@ -47,6 +47,20 @@ const STATUS_STYLES: Record<TaskStatus, string> = {
   done: "bg-emerald-200 text-emerald-800",
 };
 
+const STATUS_DOT_COLOR: Record<TaskStatus, string> = {
+  todo: "#94a3b8",
+  doing: "#f59e0b",
+  done: "#10b981",
+};
+const OVERDUE_DOT_COLOR = "#f43f5e";
+
+function taskDotColor(t: Task): string {
+  if (t.status === "done") return STATUS_DOT_COLOR.done;
+  if (t.due_date && t.due_date.slice(0, 10) < todayStr())
+    return OVERDUE_DOT_COLOR;
+  return STATUS_DOT_COLOR[t.status];
+}
+
 function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -626,17 +640,17 @@ export function TaskView() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              if (hasChildren) toggleExpand(p.id);
+              toggleExpand(p.id);
             }}
             className="w-4 shrink-0 text-slate-400"
           >
-            {hasChildren ? (isOpen ? "▾" : "▸") : " "}
+            {isOpen ? "▾" : "▸"}
           </button>
           <button
             onClick={() => navigateTo(p.id)}
             className="flex-1 truncate text-left"
           >
-            📁 {p.name}
+            {p.name}
             {count > 0 && (
               <span className="ml-1 text-xs text-slate-400">{count}</span>
             )}
@@ -691,8 +705,14 @@ export function TaskView() {
         onDragStart={(e) => handleDragStart(e, "task", t.id)}
         onDragEnd={handleDragEnd}
       >
-        <span className="w-4 shrink-0" />
-        <span className="flex-1 truncate text-slate-500">📋 {t.title}</span>
+        <span className="flex w-4 shrink-0 items-center justify-center">
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: taskDotColor(t) }}
+            title={STATUS_LABEL[t.status]}
+          />
+        </span>
+        <span className="flex-1 truncate text-slate-500">{t.title}</span>
       </div>
     </li>
   );

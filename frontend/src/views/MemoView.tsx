@@ -41,6 +41,12 @@ import {
 } from "../lib/directoryTree";
 import { useHoverExpand } from "../lib/useHoverExpand";
 
+const MEMO_DEFAULT_DOT_COLOR = "#cbd5e1"; // slate-300, 暫定色
+
+function memoDotColor(m: Memo): string {
+  return isValidColor(m.color) ? m.color : MEMO_DEFAULT_DOT_COLOR;
+}
+
 type DragItem = { type: "memo" | "folder"; id: number } | null;
 type DropTarget =
   | { kind: "folder"; folderId: number | null }
@@ -537,7 +543,6 @@ export function MemoView() {
   // --- Tree rendering ---
 
   const renderTreeMemo = (m: Memo, depth: number): JSX.Element => {
-    const memoColor = isValidColor(m.color) ? m.color : null;
     const isDragging = dragItem?.type === "memo" && dragItem.id === m.id;
     return (
       <li key={`m-${m.id}`}>
@@ -550,18 +555,17 @@ export function MemoView() {
           onDragStart={(e) => handleDragStart(e, "memo", m.id)}
           onDragEnd={handleDragEnd}
         >
-          <span className="w-4 shrink-0" />
+          <span className="flex w-4 shrink-0 items-center justify-center">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-sm"
+              style={{ backgroundColor: memoDotColor(m) }}
+            />
+          </span>
           <button
             onClick={() => openExistingMemo(m)}
-            style={{
-              borderLeft: memoColor
-                ? `3px solid ${memoColor}`
-                : "3px solid transparent",
-              paddingLeft: 6,
-            }}
             className="flex-1 truncate text-left text-slate-600"
           >
-            📄 {m.title}
+            {m.title}
           </button>
         </div>
       </li>
@@ -600,17 +604,17 @@ export function MemoView() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              if (hasChildren) toggleExpand(f.id);
+              toggleExpand(f.id);
             }}
             className="w-4 shrink-0 text-slate-400"
           >
-            {hasChildren ? (isOpen ? "▾" : "▸") : " "}
+            {isOpen ? "▾" : "▸"}
           </button>
           <button
             onClick={() => navigateTo(f.id)}
             className="flex-1 truncate text-left"
           >
-            📁 {f.name}
+            {f.name}
             {count > 0 && (
               <span className="ml-1 text-xs text-slate-400">{count}</span>
             )}
