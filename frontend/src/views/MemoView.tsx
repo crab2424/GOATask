@@ -618,8 +618,13 @@ export function MemoView() {
           type="button"
           draggable
           onClick={() => {
-            if (hasChildren) toggleExpand(f.id);
-            navigateTo(f.id);
+            setCurrentFolderId(f.id);
+            setSelectedId(null);
+            setExpanded((prev) => {
+              const next = expandAncestors(folders, prev, f.id);
+              if (hasChildren && prev.has(f.id)) next.delete(f.id);
+              return next;
+            });
           }}
           onContextMenu={(e) => {
             e.preventDefault();

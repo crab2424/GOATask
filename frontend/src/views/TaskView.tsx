@@ -661,8 +661,12 @@ export function TaskView() {
           type="button"
           draggable
           onClick={() => {
-            if (hasChildren) toggleExpand(p.id);
-            navigateTo(p.id);
+            setCurrentProjectId(p.id);
+            setExpanded((prev) => {
+              const next = expandAncestors(projects, prev, p.id);
+              if (hasChildren && prev.has(p.id)) next.delete(p.id);
+              return next;
+            });
           }}
           onContextMenu={(e) => {
             e.preventDefault();
