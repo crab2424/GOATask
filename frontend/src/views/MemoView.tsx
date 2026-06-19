@@ -74,6 +74,7 @@ export function MemoView() {
   const [color, setColor] = useState<string>("");
   const [fontSize, setFontSize] = useState<FontSize>(DEFAULT_FONT_SIZE);
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportFlipUp, setExportFlipUp] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement | null>(null);
   const colorRef = useRef<HTMLDivElement | null>(null);
@@ -839,6 +840,7 @@ export function MemoView() {
                 color,
                 fontSize,
                 exportOpen,
+                exportFlipUp,
                 colorOpen,
                 exportRef,
                 colorRef,
@@ -852,6 +854,7 @@ export function MemoView() {
                 setColor,
                 setFontSize,
                 setExportOpen,
+                setExportFlipUp,
                 setColorOpen,
                 onSubmit,
                 onDelete,
@@ -979,6 +982,7 @@ interface EditorState {
   color: string;
   fontSize: FontSize;
   exportOpen: boolean;
+  exportFlipUp: boolean;
   colorOpen: boolean;
   exportRef: React.RefObject<HTMLDivElement | null>;
   colorRef: React.RefObject<HTMLDivElement | null>;
@@ -993,6 +997,7 @@ interface EditorActions {
   setColor: (v: string) => void;
   setFontSize: (v: FontSize) => void;
   setExportOpen: (v: boolean) => void;
+  setExportFlipUp: (v: boolean) => void;
   setColorOpen: (v: boolean) => void;
   onSubmit: (e: FormEvent) => void;
   onDelete: () => void;
@@ -1146,13 +1151,30 @@ function renderEditor(s: EditorState, a: EditorActions) {
           <div ref={s.exportRef} className="relative ml-auto">
             <button
               type="button"
-              onClick={() => a.setExportOpen(!s.exportOpen)}
+              onClick={() => {
+                if (!s.exportOpen) {
+                  const btn = s.exportRef.current?.querySelector("button");
+                  if (btn) {
+                    const rect = btn.getBoundingClientRect();
+                    const estHeight = EXPORT_FORMATS.length * 40 + 16;
+                    a.setExportFlipUp(
+                      window.innerHeight - rect.bottom < estHeight &&
+                        rect.top > estHeight,
+                    );
+                  }
+                }
+                a.setExportOpen(!s.exportOpen);
+              }}
               className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100"
             >
               エクスポート ▾
             </button>
             {s.exportOpen && (
-              <ul className="absolute right-0 z-10 mt-1 w-56 rounded border border-slate-200 bg-white py-1 text-sm shadow-lg">
+              <ul
+                className={`absolute right-0 z-10 w-56 rounded border border-slate-200 bg-white py-1 text-sm shadow-lg ${
+                  s.exportFlipUp ? "bottom-full mb-1" : "top-full mt-1"
+                }`}
+              >
                 {EXPORT_FORMATS.map((fmt) => (
                   <li key={fmt.ext}>
                     <button
