@@ -147,6 +147,13 @@ export function TaskView() {
   const [focusTaskId, setFocusTaskId] = useState<number | null>(null);
   const taskRefs = useRef<Map<number, HTMLLIElement>>(new Map());
 
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number;
+    y: number;
+    projectId: number;
+  } | null>(null);
+  const ctxMenuRef = useRef<HTMLDivElement | null>(null);
+
   const hoverExpand = useHoverExpand(
     (id) =>
       setExpanded((prev) => {
@@ -182,6 +189,22 @@ export function TaskView() {
       JSON.stringify([...expanded]),
     );
   }, [expanded]);
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ctxMenuRef.current?.contains(e.target as Node)) setCtxMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCtxMenu(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [ctxMenu]);
 
   useEffect(() => {
     if (focusTaskId === null) return;
@@ -634,8 +657,20 @@ export function TaskView() {
         onDragLeave={(e) => handleFolderDragLeave(e, p.id)}
         onDrop={(e) => handleFolderDrop(e, p.id)}
       >
-        <div
-          className={`group flex items-center gap-1 rounded px-1 py-1 text-sm transition-colors ${
+        <button
+          type="button"
+          draggable
+          onClick={() => {
+            if (hasChildren) toggleExpand(p.id);
+            navigateTo(p.id);
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setCtxMenu({ x: e.clientX, y: e.clientY, projectId: p.id });
+          }}
+          onDragStart={(e) => handleDragStart(e, "project", p.id)}
+          onDragEnd={handleDragEnd}
+          className={`flex w-full items-center gap-1 rounded px-1 py-1 text-left text-sm transition-colors ${
             isCurrent
               ? "bg-slate-200 font-bold text-slate-900"
               : "hover:bg-slate-100"
@@ -645,52 +680,32 @@ export function TaskView() {
               : ""
           }`}
           style={{ paddingLeft: `${depth * 16 + 4}px` }}
-          draggable
-          onDragStart={(e) => handleDragStart(e, "project", p.id)}
-          onDragEnd={handleDragEnd}
         >
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleExpand(p.id);
-            }}
-            className="w-4 shrink-0 text-slate-400"
-          >
-            {isOpen ? "▾" : "▸"}
-          </button>
-          <button
-            onClick={() => navigateTo(p.id)}
-            className="flex-1 truncate text-left"
-          >
+          <span className="flex w-4 shrink-0 items-center justify-center text-slate-400">
+            {hasChildren && (
+              <svg
+                viewBox="0 0 16 16"
+                aria-hidden
+                className={`h-3 w-3 transition-transform ${isOpen ? "rotate-90" : ""}`}
+              >
+                <path
+                  d="M6 4l4 4-4 4"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+          </span>
+          <span className="flex-1 truncate">
             {p.name}
             {count > 0 && (
               <span className="ml-1 text-xs text-slate-400">{count}</span>
             )}
-          </button>
-          <div className="hidden gap-1 group-hover:flex">
-            <button
-              onClick={(e) => onCreateProjectIn(p.id, e)}
-              title="サブプロジェクト追加"
-              className="px-1 text-xs text-slate-500 hover:text-slate-900"
-            >
-              ＋
-            </button>
-            <button
-              onClick={(e) => onRenameProject(p, e)}
-              title="リネーム"
-              className="px-1 text-xs text-slate-500 hover:text-slate-900"
-            >
-              ✎
-            </button>
-            <button
-              onClick={(e) => onDeleteProject(p, e)}
-              title="削除"
-              className="px-1 text-xs text-rose-500 hover:text-rose-700"
-            >
-              🗑
-            </button>
-          </div>
-        </div>
+          </span>
+        </button>
         {isOpen && hasChildren && (
           <ul className="relative space-y-0.5">
             <span
@@ -1271,6 +1286,48 @@ export function TaskView() {
           )}
         </section>
       </div>
+
+      {ctxMenu && (
+        <div
+          ref={ctxMenuRef}
+          className="fixed z-50 min-w-[180px] rounded border border-slate-200 bg-white py-1 text-sm shadow-lg"
+          style={{ top: ctxMenu.y, left: ctxMenu.x }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              const id = ctxMenu.projectId;
+              setCtxMenu(null);
+              onCreateProjectIn(id);
+            }}
+            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
+          >
+            ＋ サブプロジェクト追加
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const p = projects.find((x) => x.id === ctxMenu.projectId);
+              setCtxMenu(null);
+              if (p) onRenameProject(p);
+            }}
+            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
+          >
+            ✎ リネーム
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const p = projects.find((x) => x.id === ctxMenu.projectId);
+              setCtxMenu(null);
+              if (p) onDeleteProject(p);
+            }}
+            className="block w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50"
+          >
+            🗑 削除
+          </button>
+        </div>
+      )}
     </div>
   );
 }

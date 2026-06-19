@@ -84,6 +84,13 @@ export function MemoView() {
   const [dropTarget, setDropTarget] = useState<DropTarget>(null);
   const dragItemRef = useRef<DragItem>(null);
 
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number;
+    y: number;
+    folderId: number;
+  } | null>(null);
+  const ctxMenuRef = useRef<HTMLDivElement | null>(null);
+
   const hoverExpand = useHoverExpand(
     (id) =>
       setExpanded((prev) => {
@@ -103,6 +110,22 @@ export function MemoView() {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [exportOpen]);
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ctxMenuRef.current?.contains(e.target as Node)) setCtxMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCtxMenu(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [ctxMenu]);
 
   useEffect(() => {
     if (!colorOpen) return;
@@ -591,59 +614,51 @@ export function MemoView() {
         onDragLeave={(e) => handleFolderDragLeave(e, f.id)}
         onDrop={(e) => handleFolderDrop(e, f.id)}
       >
-        <div
-          className={`group flex items-center gap-1 rounded px-1 py-1 text-sm transition-colors ${
+        <button
+          type="button"
+          draggable
+          onClick={() => {
+            if (hasChildren) toggleExpand(f.id);
+            navigateTo(f.id);
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setCtxMenu({ x: e.clientX, y: e.clientY, folderId: f.id });
+          }}
+          onDragStart={(e) => handleDragStart(e, "folder", f.id)}
+          onDragEnd={handleDragEnd}
+          className={`flex w-full items-center gap-1 rounded px-1 py-1 text-left text-sm transition-colors ${
             isCurrent
               ? "bg-slate-200 font-bold text-slate-900"
               : "hover:bg-slate-100"
           } ${isDragging ? "opacity-40" : ""}`}
           style={{ paddingLeft: `${depth * 16 + 4}px` }}
-          draggable
-          onDragStart={(e) => handleDragStart(e, "folder", f.id)}
-          onDragEnd={handleDragEnd}
         >
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleExpand(f.id);
-            }}
-            className="w-4 shrink-0 text-slate-400"
-          >
-            {isOpen ? "▾" : "▸"}
-          </button>
-          <button
-            onClick={() => navigateTo(f.id)}
-            className="flex-1 truncate text-left"
-          >
+          <span className="flex w-4 shrink-0 items-center justify-center text-slate-400">
+            {hasChildren && (
+              <svg
+                viewBox="0 0 16 16"
+                aria-hidden
+                className={`h-3 w-3 transition-transform ${isOpen ? "rotate-90" : ""}`}
+              >
+                <path
+                  d="M6 4l4 4-4 4"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+          </span>
+          <span className="flex-1 truncate">
             {f.name}
             {count > 0 && (
               <span className="ml-1 text-xs text-slate-400">{count}</span>
             )}
-          </button>
-          <div className="hidden gap-1 group-hover:flex">
-            <button
-              onClick={(e) => onCreateFolder(f.id, e)}
-              title="サブフォルダ追加"
-              className="px-1 text-xs text-slate-500 hover:text-slate-900"
-            >
-              ＋
-            </button>
-            <button
-              onClick={(e) => onRenameFolder(f, e)}
-              title="リネーム"
-              className="px-1 text-xs text-slate-500 hover:text-slate-900"
-            >
-              ✎
-            </button>
-            <button
-              onClick={(e) => onDeleteFolder(f, e)}
-              title="削除"
-              className="px-1 text-xs text-rose-500 hover:text-rose-700"
-            >
-              🗑
-            </button>
-          </div>
-        </div>
+          </span>
+        </button>
         {isOpen && hasChildren && (
           <ul className="relative space-y-0.5">
             <span
@@ -969,6 +984,48 @@ export function MemoView() {
           </>
         )}
       </div>
+
+      {ctxMenu && (
+        <div
+          ref={ctxMenuRef}
+          className="fixed z-50 min-w-[180px] rounded border border-slate-200 bg-white py-1 text-sm shadow-lg"
+          style={{ top: ctxMenu.y, left: ctxMenu.x }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              const id = ctxMenu.folderId;
+              setCtxMenu(null);
+              onCreateFolder(id);
+            }}
+            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
+          >
+            ＋ サブフォルダ追加
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const f = folders.find((x) => x.id === ctxMenu.folderId);
+              setCtxMenu(null);
+              if (f) onRenameFolder(f);
+            }}
+            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
+          >
+            ✎ リネーム
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const f = folders.find((x) => x.id === ctxMenu.folderId);
+              setCtxMenu(null);
+              if (f) onDeleteFolder(f);
+            }}
+            className="block w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50"
+          >
+            🗑 削除
+          </button>
+        </div>
+      )}
     </div>
   );
 }
