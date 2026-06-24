@@ -2,6 +2,8 @@ package main
 
 import (
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/crab2424/goatask/backend/internal/config"
 	"github.com/crab2424/goatask/backend/internal/db"
@@ -21,8 +23,12 @@ func main() {
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	origins := []string{"http://localhost:5173"}
+	if v := os.Getenv("CORS_ORIGINS"); v != "" {
+		origins = strings.Split(v, ",")
+	}
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"http://localhost:5173"},
+		AllowOrigins: origins,
 		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
 	}))
 

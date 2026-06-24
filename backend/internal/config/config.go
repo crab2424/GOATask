@@ -16,7 +16,7 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		AppPort:    getEnv("APP_PORT", "8080"),
+		AppPort:    getEnv("PORT", getEnv("APP_PORT", "8080")),
 		DBHost:     getEnv("DB_HOST", "localhost"),
 		DBPort:     getEnv("DB_PORT", "5432"),
 		DBUser:     getEnv("DB_USER", "goatask"),
@@ -26,6 +26,9 @@ func Load() *Config {
 }
 
 func (c *Config) DSN() string {
+	if url := os.Getenv("DATABASE_URL"); url != "" {
+		return url
+	}
 	return fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Tokyo",
 		c.DBHost, c.DBUser, c.DBPassword, c.DBName, c.DBPort,
