@@ -19,6 +19,7 @@ import {
 
 type Screen = "decks" | "cards" | "setup" | "study" | "result";
 type StudyOrder = "random" | "created";
+type StudyDirection = "front" | "back";
 type StudyResult = { card: Card; correct: boolean };
 
 function shuffle<T>(arr: T[]): T[] {
@@ -58,6 +59,8 @@ export function FlashcardView() {
   const [setupMarkedOnly, setSetupMarkedOnly] = useState(false);
   const [setupCount, setSetupCount] = useState<number | "all">("all");
   const [setupOrder, setSetupOrder] = useState<StudyOrder>("random");
+  const [setupDirection, setSetupDirection] = useState<StudyDirection>("front");
+  const [studyDirection, setStudyDirection] = useState<StudyDirection>("front");
 
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
@@ -266,10 +269,12 @@ export function FlashcardView() {
     setSetupMarkedOnly(markedOnly);
     setSetupCount("all");
     setSetupOrder("random");
+    setSetupDirection("front");
     setScreen("setup");
   };
 
-  const beginStudy = (cards: Card[]) => {
+  const beginStudy = (cards: Card[], direction: StudyDirection = studyDirection) => {
+    setStudyDirection(direction);
     setStudyCards(cards);
     setStudyIndex(0);
     setShowBack(false);
@@ -285,7 +290,7 @@ export function FlashcardView() {
     const limit =
       setupCount === "all" ? ordered.length : Math.min(setupCount, ordered.length);
     if (limit === 0) return;
-    beginStudy(ordered.slice(0, limit));
+    beginStudy(ordered.slice(0, limit), setupDirection);
   };
 
   const onRetryMistakes = () => {
@@ -347,14 +352,22 @@ export function FlashcardView() {
         </div>
 
         <div className="flex min-h-[300px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-          <p className="mb-2 text-xs text-slate-400">おもて</p>
-          <p className="mb-6 text-center text-2xl font-bold">{card.front}</p>
+          <p className="mb-2 text-xs text-slate-400">
+            {studyDirection === "front" ? "おもて" : "うら"}
+          </p>
+          <p className="mb-6 text-center text-2xl font-bold">
+            {studyDirection === "front" ? card.front : card.back}
+          </p>
 
           {showBack ? (
             <>
               <div className="mb-6 w-full border-t border-slate-200" />
-              <p className="mb-2 text-xs text-slate-400">うら</p>
-              <p className="mb-8 text-center text-xl">{card.back}</p>
+              <p className="mb-2 text-xs text-slate-400">
+                {studyDirection === "front" ? "うら" : "おもて"}
+              </p>
+              <p className="mb-8 text-center text-xl">
+                {studyDirection === "front" ? card.back : card.front}
+              </p>
               <div className="flex gap-4">
                 <button
                   onClick={() => onAnswer(false)}
@@ -538,7 +551,7 @@ export function FlashcardView() {
             <span className="ml-2 text-xs text-slate-500">最大 {max} 問</span>
           </div>
 
-          <div className="mb-6">
+          <div className="mb-4">
             <p className="mb-1 text-sm font-semibold">順番</p>
             <div className="flex gap-2">
               <button
@@ -552,6 +565,24 @@ export function FlashcardView() {
                 className={`rounded border px-3 py-1.5 text-sm ${setupOrder === "created" ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
               >
                 作成順
+              </button>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <p className="mb-1 text-sm font-semibold">出題方向</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSetupDirection("front")}
+                className={`rounded border px-3 py-1.5 text-sm ${setupDirection === "front" ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
+              >
+                おもて → うら
+              </button>
+              <button
+                onClick={() => setSetupDirection("back")}
+                className={`rounded border px-3 py-1.5 text-sm ${setupDirection === "back" ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
+              >
+                うら → おもて
               </button>
             </div>
           </div>
