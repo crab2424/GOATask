@@ -57,6 +57,10 @@ export function FlashcardView() {
   const [setupCount, setSetupCount] = useState<number | "all">("all");
   const [setupOrder, setSetupOrder] = useState<StudyOrder>("random");
 
+  const [cardFilter, setCardFilter] = useState<"all" | "marked" | "unmarked">("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | "all">(20);
+
   const reloadDecks = async () => {
     await queryClient.invalidateQueries({ queryKey: ["decks"] });
     setError(null);
@@ -66,7 +70,9 @@ export function FlashcardView() {
     const fresh = await queryClient.fetchQuery({
       queryKey: ["decks"],
       queryFn: listDecks,
+      staleTime: 0,
     });
+    queryClient.setQueryData(["decks"], fresh);
     const d = fresh.find((d) => d.id === deckId);
     if (d) setSelectedDeck(d);
   };
@@ -549,18 +555,18 @@ export function FlashcardView() {
           <h2 className="mb-3 text-sm font-semibold">
             {editingCard ? "カードを編集" : "カードを追加"}
           </h2>
-          <div className="mb-2 flex gap-2">
+          <div className="mb-2 flex flex-col gap-2 sm:flex-row">
             <input
               value={cardFront}
               onChange={(e) => setCardFront(e.target.value)}
               placeholder="おもて（問題）"
-              className="flex-1 rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+              className="w-full flex-1 rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
             />
             <input
               value={cardBack}
               onChange={(e) => setCardBack(e.target.value)}
               placeholder="うら（答え）"
-              className="flex-1 rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+              className="w-full flex-1 rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
             />
           </div>
           <div className="flex gap-2">
@@ -591,9 +597,60 @@ export function FlashcardView() {
           <p className="text-sm text-slate-500">
             カードがまだありません。上のフォームから追加してください。
           </p>
-        ) : (
-          <ul className="space-y-2">
-            {cards.map((c) => {
+        ) : (() => {
+          const filteredCards =
+            cardFilter === "marked"
+              ? cards.filter((c) => c.marked)
+              : cardFilter === "unmarked"
+                ? cards.filter((c) => !c.marked)
+                : cards;
+          const size = pageSize === "all" ? filteredCards.length || 1 : pageSize;
+          const totalPages = Math.max(1, Math.ceil(filteredCards.length / size));
+          const currentPage = Math.min(page, totalPages);
+          const start = (currentPage - 1) * size;
+          const pageCards = filteredCards.slice(start, start + size);
+          return (
+            <>
+              <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-slate-500">表示:</span>
+                {(
+                  [
+                    ["all", `全て(${cards.length})`],
+                    ["marked", `★のみ(${cards.filter((c) => c.marked).length})`],
+                    ["unmarked", `★なし(${cards.filter((c) => !c.marked).length})`],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    onClick={() => {
+                      setCardFilter(k);
+                      setPage(1);
+                    }}
+                    className={`rounded border px-2.5 py-1 text-xs ${cardFilter === k ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+                <span className="ml-2 text-slate-500">1ページ:</span>
+                {([10, 20, 50, "all"] as const).map((n) => (
+                  <button
+                    key={String(n)}
+                    onClick={() => {
+                      setPageSize(n);
+                      setPage(1);
+                    }}
+                    className={`rounded border px-2.5 py-1 text-xs ${pageSize === n ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
+                  >
+                    {n === "all" ? "全件" : `${n}件`}
+                  </button>
+                ))}
+              </div>
+
+              {filteredCards.length === 0 ? (
+                <p className="text-sm text-slate-500">該当するカードがありません。</p>
+              ) : (
+                <ul className="space-y-2">
+                  {pageCards.map((c) => {
               const total = c.correct_count + c.wrong_count;
               return (
                 <li
@@ -646,8 +703,42 @@ export function FlashcardView() {
                 </li>
               );
             })}
-          </ul>
-        )}
+                </ul>
+              )}
+
+              {filteredCards.length > 0 && totalPages > 1 && (
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
+                  <button
+                    onClick={() => setPage(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className="rounded border border-slate-300 px-3 py-1 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    前へ
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setPage(p)}
+                      className={`min-w-[2rem] rounded border px-2 py-1 ${p === currentPage ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages}
+                    className="rounded border border-slate-300 px-3 py-1 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    次へ
+                  </button>
+                  <span className="ml-2 text-xs text-slate-500">
+                    {start + 1}-{Math.min(start + size, filteredCards.length)} / {filteredCards.length}件
+                  </span>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
     );
   }
