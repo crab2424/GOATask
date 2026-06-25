@@ -26,6 +26,8 @@ import {
   updateProject,
   type Project,
 } from "../api/projects";
+import { useIsMobile } from "../lib/useIsMobile";
+import { MobileDrawer } from "../components/MobileDrawer";
 import {
   buildBreadcrumb,
   buildChildMap,
@@ -116,6 +118,8 @@ export function TaskView() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<number | null>(null);
+  const isMobile = useIsMobile();
+  const [treeOpen, setTreeOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     try {
       const saved = localStorage.getItem("goatask-project-expanded");
@@ -309,6 +313,7 @@ export function TaskView() {
     if (id !== null) {
       setExpanded((prev) => expandAncestors(projects, prev, id));
     }
+    setTreeOpen(false);
   };
 
   // --- DnD handlers ---
@@ -1011,54 +1016,81 @@ export function TaskView() {
       ? "ルート"
       : (projects.find((p) => p.id === currentProjectId)?.name ?? "タスク");
 
+  const treeContent = (
+    <ul className="space-y-0.5">
+      <li>
+        <button
+          onClick={() => navigateTo(null)}
+          className={`w-full rounded px-2 py-1.5 text-left text-sm ${
+            currentProjectId === null
+              ? "bg-slate-200 font-bold text-slate-900"
+              : "hover:bg-slate-100"
+          }`}
+        >
+          🏠 ルート
+          {totalActive > 0 && (
+            <span className="ml-1 text-xs text-slate-400">
+              {totalActive}
+            </span>
+          )}
+        </button>
+      </li>
+      {rootProjects.map((p) => renderTreeProject(p, 0))}
+      {currentProjectId === null &&
+        rootTasks.map((t) => renderTreeTask(t, 0))}
+    </ul>
+  );
+
   return (
     <div
-      className="flex h-full gap-4"
+      className={isMobile ? "h-full" : "flex h-full gap-4"}
       onDragOver={(e) => {
         if (dragItemRef.current) e.preventDefault();
       }}
     >
-      {/* Sidebar */}
-      <aside
-        className={`w-60 shrink-0 overflow-y-auto rounded-lg border bg-white p-2 transition-colors ${
-          isDropTargetFor(null) && dragItem
-            ? "border-blue-400 ring-2 ring-blue-400"
-            : "border-slate-200"
-        }`}
-        onDragOver={(e) => handleFolderDragOver(e, null)}
-        onDrop={(e) => handleFolderDrop(e, null)}
-      >
-        <div className="mb-2 px-1">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            ナビゲーション
-          </h2>
-        </div>
-        <ul className="space-y-0.5">
-          <li>
-            <button
-              onClick={() => navigateTo(null)}
-              className={`w-full rounded px-2 py-1.5 text-left text-sm ${
-                currentProjectId === null
-                  ? "bg-slate-200 font-bold text-slate-900"
-                  : "hover:bg-slate-100"
-              }`}
-            >
-              🏠 ルート
-              {totalActive > 0 && (
-                <span className="ml-1 text-xs text-slate-400">
-                  {totalActive}
-                </span>
-              )}
-            </button>
-          </li>
-          {rootProjects.map((p) => renderTreeProject(p, 0))}
-          {currentProjectId === null &&
-            rootTasks.map((t) => renderTreeTask(t, 0))}
-        </ul>
-      </aside>
+      {/* Sidebar (desktop) */}
+      {!isMobile && (
+        <aside
+          className={`w-60 shrink-0 overflow-y-auto rounded-lg border bg-white p-2 transition-colors ${
+            isDropTargetFor(null) && dragItem
+              ? "border-blue-400 ring-2 ring-blue-400"
+              : "border-slate-200"
+          }`}
+          onDragOver={(e) => handleFolderDragOver(e, null)}
+          onDrop={(e) => handleFolderDrop(e, null)}
+        >
+          <div className="mb-2 px-1">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              ナビゲーション
+            </h2>
+          </div>
+          {treeContent}
+        </aside>
+      )}
+
+      {/* Sidebar (mobile drawer) */}
+      {isMobile && (
+        <MobileDrawer
+          open={treeOpen}
+          onClose={() => setTreeOpen(false)}
+          title="ナビゲーション"
+        >
+          {treeContent}
+        </MobileDrawer>
+      )}
 
       {/* Main content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className={isMobile ? "h-full overflow-y-auto" : "flex-1 overflow-y-auto"}>
+        {isMobile && (
+          <button
+            onClick={() => setTreeOpen(true)}
+            className="mb-3 inline-flex items-center gap-2 rounded border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm hover:bg-slate-100"
+            aria-label="ナビゲーションを開く"
+          >
+            <span aria-hidden="true">☰</span>
+            <span>{currentLabel}</span>
+          </button>
+        )}
         {/* Breadcrumb */}
         <nav className="mb-4 flex items-center gap-1.5 text-sm">
           <button
