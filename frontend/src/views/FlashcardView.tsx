@@ -303,17 +303,26 @@ export function FlashcardView() {
     beginStudy(setupOrder === "random" ? shuffle(studyCards) : studyCards);
   };
 
-  const onAnswer = async (correct: boolean) => {
-    if (!selectedDeck) return;
+  const flushResults = (results: StudyResult[]) => {
+    if (!selectedDeck || results.length === 0) return;
+    const deckId = selectedDeck.id;
+    Promise.allSettled(
+      results.map((r) => answerCard(deckId, r.card.id, r.correct)),
+    ).then((outcomes) => {
+      const failed = outcomes.filter((o) => o.status === "rejected").length;
+      if (failed > 0) {
+        setError(`統計の保存に失敗しました（${failed}件）`);
+      }
+      reloadDeck(deckId).catch(() => {});
+    });
+  };
+
+  const onAnswer = (correct: boolean) => {
     const card = studyCards[studyIndex];
-    setStudyResults((prev) => [...prev, { card, correct }]);
-    try {
-      await answerCard(selectedDeck.id, card.id, correct);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    const next = [...studyResults, { card, correct }];
+    setStudyResults(next);
     if (studyIndex + 1 >= studyCards.length) {
-      await reloadDeck(selectedDeck.id);
+      flushResults(next);
       setScreen("result");
     } else {
       setStudyIndex(studyIndex + 1);
@@ -333,8 +342,8 @@ export function FlashcardView() {
           <button
             onClick={() => {
               if (!confirm("学習を中断しますか？ここまでの回答は記録されます。")) return;
+              flushResults(studyResults);
               setScreen("cards");
-              reloadDeck(selectedDeck!.id);
             }}
             className="text-sm text-slate-500 hover:text-slate-800"
           >
