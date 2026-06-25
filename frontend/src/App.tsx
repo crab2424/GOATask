@@ -4,15 +4,17 @@ import { HomeView } from "./views/HomeView";
 import { TaskView } from "./views/TaskView";
 import { MemoView } from "./views/MemoView";
 import { FlashcardView } from "./views/FlashcardView";
+import { BackupView } from "./views/BackupView";
 import { useIsMobile } from "./lib/useIsMobile";
 
-type Mode = "home" | "tasks" | "memos" | "flashcards";
+type Mode = "home" | "tasks" | "memos" | "flashcards" | "backup";
 
 const TABS: { id: Mode; label: string; icon: string }[] = [
   { id: "home", label: "ホーム", icon: "🏠" },
   { id: "tasks", label: "タスク", icon: "✓" },
   { id: "memos", label: "メモ", icon: "📝" },
   { id: "flashcards", label: "単語帳", icon: "🃏" },
+  { id: "backup", label: "バックアップ", icon: "💾" },
 ];
 
 const NAV_COLLAPSED_KEY = "goatask:navCollapsed";
@@ -42,6 +44,7 @@ function App() {
       {mode === "tasks" && <TaskView />}
       {mode === "memos" && <MemoView />}
       {mode === "flashcards" && <FlashcardView />}
+      {mode === "backup" && <BackupView />}
     </>
   );
 
@@ -58,7 +61,7 @@ function App() {
           {content}
         </main>
         <nav
-          className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-slate-200 bg-white"
+          className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-slate-200 bg-white"
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
           {TABS.map((tab) => (

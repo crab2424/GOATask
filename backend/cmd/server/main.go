@@ -42,6 +42,7 @@ func main() {
 	handler.NewFolderHandler(conn).Register(api)
 	handler.NewDeckHandler(conn).Register(api)
 	handler.NewProjectHandler(conn).Register(api)
+	handler.NewBackupHandler(conn).Register(api)
 
 	e.Logger.Fatal(e.Start(":" + cfg.AppPort))
 }
