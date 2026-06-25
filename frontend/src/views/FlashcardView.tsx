@@ -14,7 +14,9 @@ import {
   type Card,
 } from "../api/decks";
 
-type Screen = "decks" | "cards" | "study";
+type Screen = "decks" | "cards" | "setup" | "study" | "result";
+type StudyOrder = "random" | "created";
+type StudyResult = { card: Card; correct: boolean };
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -46,7 +48,11 @@ export function FlashcardView() {
   const [studyCards, setStudyCards] = useState<Card[]>([]);
   const [studyIndex, setStudyIndex] = useState(0);
   const [showBack, setShowBack] = useState(false);
-  const [studyDone, setStudyDone] = useState(false);
+  const [studyResults, setStudyResults] = useState<StudyResult[]>([]);
+
+  const [setupMarkedOnly, setSetupMarkedOnly] = useState(false);
+  const [setupCount, setSetupCount] = useState<number | "all">("all");
+  const [setupOrder, setSetupOrder] = useState<StudyOrder>("random");
 
   const reloadDecks = async () => {
     try {
@@ -174,29 +180,58 @@ export function FlashcardView() {
     }
   };
 
-  const startStudy = (markedOnly: boolean) => {
+  const openSetup = (markedOnly: boolean) => {
     if (!selectedDeck) return;
     const pool = selectedDeck.cards ?? [];
     const filtered = markedOnly ? pool.filter((c) => c.marked) : pool;
     if (filtered.length === 0) return;
-    setStudyCards(shuffle(filtered));
+    setSetupMarkedOnly(markedOnly);
+    setSetupCount("all");
+    setSetupOrder("random");
+    setScreen("setup");
+  };
+
+  const beginStudy = (cards: Card[]) => {
+    setStudyCards(cards);
     setStudyIndex(0);
     setShowBack(false);
-    setStudyDone(false);
+    setStudyResults([]);
     setScreen("study");
+  };
+
+  const onStartFromSetup = () => {
+    if (!selectedDeck) return;
+    const pool = selectedDeck.cards ?? [];
+    const filtered = setupMarkedOnly ? pool.filter((c) => c.marked) : pool;
+    const ordered = setupOrder === "random" ? shuffle(filtered) : filtered;
+    const limit =
+      setupCount === "all" ? ordered.length : Math.min(setupCount, ordered.length);
+    if (limit === 0) return;
+    beginStudy(ordered.slice(0, limit));
+  };
+
+  const onRetryMistakes = () => {
+    const mistakes = studyResults.filter((r) => !r.correct).map((r) => r.card);
+    if (mistakes.length === 0) return;
+    beginStudy(setupOrder === "random" ? shuffle(mistakes) : mistakes);
+  };
+
+  const onRetrySame = () => {
+    beginStudy(setupOrder === "random" ? shuffle(studyCards) : studyCards);
   };
 
   const onAnswer = async (correct: boolean) => {
     if (!selectedDeck) return;
     const card = studyCards[studyIndex];
+    setStudyResults((prev) => [...prev, { card, correct }]);
     try {
       await answerCard(selectedDeck.id, card.id, correct);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
     if (studyIndex + 1 >= studyCards.length) {
-      setStudyDone(true);
       await reloadDeck(selectedDeck.id);
+      setScreen("result");
     } else {
       setStudyIndex(studyIndex + 1);
       setShowBack(false);
@@ -206,23 +241,31 @@ export function FlashcardView() {
   const cards = selectedDeck?.cards ?? [];
   const markedCount = cards.filter((c) => c.marked).length;
 
-  if (screen === "study" && !studyDone) {
+  if (screen === "study") {
     const card = studyCards[studyIndex];
+    const progress = ((studyIndex + (showBack ? 0.5 : 0)) / studyCards.length) * 100;
     return (
       <div className="mx-auto max-w-xl">
         <div className="mb-4 flex items-center justify-between">
           <button
             onClick={() => {
+              if (!confirm("学習を中断しますか？ここまでの回答は記録されます。")) return;
               setScreen("cards");
               reloadDeck(selectedDeck!.id);
             }}
             className="text-sm text-slate-500 hover:text-slate-800"
           >
-            ← カード一覧に戻る
+            ← 中断
           </button>
           <span className="text-sm text-slate-500">
             {studyIndex + 1} / {studyCards.length}
           </span>
+        </div>
+        <div className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+          <div
+            className="h-full bg-slate-900 transition-all"
+            style={{ width: `${progress}%` }}
+          />
         </div>
 
         <div className="flex min-h-[300px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
@@ -262,20 +305,194 @@ export function FlashcardView() {
     );
   }
 
-  if (screen === "study" && studyDone) {
+  if (screen === "result") {
+    const total = studyResults.length;
+    const correctCount = studyResults.filter((r) => r.correct).length;
+    const wrongCount = total - correctCount;
+    const rate = total === 0 ? 0 : Math.round((correctCount / total) * 100);
+    const mistakes = studyResults.filter((r) => !r.correct);
     return (
       <div className="mx-auto max-w-xl">
-        <div className="flex min-h-[300px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-          <p className="mb-4 text-2xl font-bold">学習完了</p>
-          <p className="mb-6 text-slate-600">
-            {studyCards.length}枚のカードを学習しました。
-          </p>
+        <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+          <p className="mb-6 text-center text-2xl font-bold">学習完了</p>
+
+          <div className="mb-6 grid grid-cols-3 gap-3 text-center">
+            <div className="rounded-lg border border-slate-200 p-3">
+              <p className="text-xs text-slate-500">出題</p>
+              <p className="text-2xl font-bold">{total}</p>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-xs text-emerald-700">正解</p>
+              <p className="text-2xl font-bold text-emerald-700">{correctCount}</p>
+            </div>
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+              <p className="text-xs text-rose-700">不正解</p>
+              <p className="text-2xl font-bold text-rose-700">{wrongCount}</p>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <div className="mb-1 flex justify-between text-xs text-slate-500">
+              <span>正答率</span>
+              <span>{rate}%</span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+              <div
+                className="h-full bg-emerald-500"
+                style={{ width: `${rate}%` }}
+              />
+            </div>
+          </div>
+
+          {mistakes.length > 0 && (
+            <div className="mb-6">
+              <p className="mb-2 text-sm font-semibold">間違えたカード</p>
+              <ul className="space-y-1">
+                {mistakes.map((r) => (
+                  <li
+                    key={r.card.id}
+                    className="rounded border border-rose-100 bg-rose-50/50 px-3 py-2 text-sm"
+                  >
+                    <span className="font-medium">{r.card.front}</span>
+                    <span className="mx-2 text-slate-400">→</span>
+                    <span className="text-slate-700">{r.card.back}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              onClick={() => setScreen("cards")}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+            >
+              カード一覧に戻る
+            </button>
+            <button
+              onClick={onRetrySame}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+            >
+              もう一度
+            </button>
+            {mistakes.length > 0 && (
+              <button
+                onClick={onRetryMistakes}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700"
+              >
+                間違えたカードだけ再学習（{mistakes.length}枚）
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (screen === "setup" && selectedDeck) {
+    const pool = selectedDeck.cards ?? [];
+    const filtered = setupMarkedOnly ? pool.filter((c) => c.marked) : pool;
+    const max = filtered.length;
+    const presets = [5, 10, 20].filter((n) => n < max);
+    return (
+      <div className="mx-auto max-w-xl">
+        <div className="mb-4">
           <button
             onClick={() => setScreen("cards")}
-            className="rounded-lg bg-slate-900 px-6 py-3 text-white hover:bg-slate-700"
+            className="text-sm text-slate-500 hover:text-slate-800"
           >
-            カード一覧に戻る
+            ← カード一覧に戻る
           </button>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-xl font-bold">学習設定</h2>
+
+          <div className="mb-4">
+            <p className="mb-1 text-sm font-semibold">出題対象</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSetupMarkedOnly(false)}
+                className={`rounded border px-3 py-1.5 text-sm ${!setupMarkedOnly ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
+              >
+                全カード（{pool.length}枚）
+              </button>
+              <button
+                onClick={() => setSetupMarkedOnly(true)}
+                disabled={pool.filter((c) => c.marked).length === 0}
+                className={`rounded border px-3 py-1.5 text-sm ${setupMarkedOnly ? "border-amber-500 bg-amber-500 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"} disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                ★のみ（{pool.filter((c) => c.marked).length}枚）
+              </button>
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <p className="mb-1 text-sm font-semibold">問題数</p>
+            <div className="mb-2 flex flex-wrap gap-2">
+              {presets.map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setSetupCount(n)}
+                  className={`rounded border px-3 py-1.5 text-sm ${setupCount === n ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
+                >
+                  {n}問
+                </button>
+              ))}
+              <button
+                onClick={() => setSetupCount("all")}
+                className={`rounded border px-3 py-1.5 text-sm ${setupCount === "all" ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
+              >
+                全件（{max}問）
+              </button>
+            </div>
+            <input
+              type="number"
+              min={1}
+              max={max}
+              value={setupCount === "all" ? max : setupCount}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (!Number.isFinite(v)) return;
+                setSetupCount(Math.max(1, Math.min(max, v)));
+              }}
+              className="w-24 rounded border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
+            />
+            <span className="ml-2 text-xs text-slate-500">最大 {max} 問</span>
+          </div>
+
+          <div className="mb-6">
+            <p className="mb-1 text-sm font-semibold">順番</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSetupOrder("random")}
+                className={`rounded border px-3 py-1.5 text-sm ${setupOrder === "random" ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
+              >
+                ランダム
+              </button>
+              <button
+                onClick={() => setSetupOrder("created")}
+                className={`rounded border px-3 py-1.5 text-sm ${setupOrder === "created" ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
+              >
+                作成順
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setScreen("cards")}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={onStartFromSetup}
+              disabled={max === 0}
+              className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:bg-slate-400"
+            >
+              開始
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -294,14 +511,14 @@ export function FlashcardView() {
           <div className="flex gap-2">
             {markedCount > 0 && (
               <button
-                onClick={() => startStudy(true)}
+                onClick={() => openSetup(true)}
                 className="rounded border border-amber-300 px-3 py-1 text-sm text-amber-700 hover:bg-amber-50"
               >
                 ★のみ学習（{markedCount}枚）
               </button>
             )}
             <button
-              onClick={() => startStudy(false)}
+              onClick={() => openSetup(false)}
               disabled={cards.length === 0}
               className="rounded bg-slate-900 px-3 py-1 text-sm text-white hover:bg-slate-700 disabled:bg-slate-400"
             >
