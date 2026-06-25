@@ -317,6 +317,24 @@ export function FlashcardView() {
     });
   };
 
+  const onToggleStudyMark = () => {
+    if (!selectedDeck) return;
+    const card = studyCards[studyIndex];
+    if (!card) return;
+    const nextMarked = !card.marked;
+    setStudyCards((prev) =>
+      prev.map((c, i) => (i === studyIndex ? { ...c, marked: nextMarked } : c)),
+    );
+    toggleCardMark(selectedDeck.id, card.id, nextMarked).catch((e) => {
+      setError(e instanceof Error ? e.message : String(e));
+      setStudyCards((prev) =>
+        prev.map((c, i) =>
+          i === studyIndex ? { ...c, marked: !nextMarked } : c,
+        ),
+      );
+    });
+  };
+
   const onAnswer = (correct: boolean) => {
     const card = studyCards[studyIndex];
     const next = [...studyResults, { card, correct }];
@@ -360,7 +378,15 @@ export function FlashcardView() {
           />
         </div>
 
-        <div className="flex min-h-[300px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+        <div className="relative flex min-h-[300px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+          <button
+            onClick={onToggleStudyMark}
+            className={`absolute left-3 top-3 text-2xl ${card.marked ? "text-amber-500" : "text-slate-300"} hover:text-amber-500`}
+            title={card.marked ? "マーク解除" : "マーク"}
+            aria-label={card.marked ? "マーク解除" : "マーク"}
+          >
+            ★
+          </button>
           <p className="mb-2 text-xs text-slate-400">
             {studyDirection === "front" ? "おもて" : "うら"}
           </p>
