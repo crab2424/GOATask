@@ -26,6 +26,7 @@ func (h *DeckHandler) Register(g *echo.Group) {
 
 	g.GET("/decks/:id/cards", h.listCards)
 	g.POST("/decks/:id/cards", h.createCard)
+	g.POST("/decks/:id/cards/import", h.importCards)
 	g.PUT("/decks/:id/cards/:cid", h.updateCard)
 	g.DELETE("/decks/:id/cards/:cid", h.deleteCard)
 	g.PATCH("/decks/:id/cards/:cid/answer", h.answer)
@@ -108,7 +109,7 @@ func (h *DeckHandler) listCards(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
 	var cards []model.Card
-	if err := h.DB.Where("deck_id = ?", deckID).Order("created_at ASC").Find(&cards).Error; err != nil {
+	if err := h.DB.Where("deck_id = ?", deckID).Order("id ASC").Find(&cards).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusOK, cards)
@@ -131,6 +132,52 @@ func (h *DeckHandler) createCard(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusCreated, card)
+}
+
+type importCardsReq struct {
+	Cards []struct {
+		Front string `json:"front"`
+		Back  string `json:"back"`
+	} `json:"cards"`
+}
+
+func (h *DeckHandler) importCards(c echo.Context) error {
+	deckID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
+	}
+	var req importCardsReq
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if len(req.Cards) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "no cards to import")
+	}
+	var deck model.Deck
+	if err := h.DB.First(&deck, deckID).Error; err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "deck not found")
+	}
+	created := make([]model.Card, 0, len(req.Cards))
+	err = h.DB.Transaction(func(tx *gorm.DB) error {
+		for i, item := range req.Cards {
+			if item.Front == "" || item.Back == "" {
+				return echo.NewHTTPError(http.StatusBadRequest, "row "+strconv.Itoa(i+1)+": front and back are required")
+			}
+			card := model.Card{DeckID: uint(deckID), Front: item.Front, Back: item.Back}
+			if err := tx.Create(&card).Error; err != nil {
+				return err
+			}
+			created = append(created, card)
+		}
+		return nil
+	})
+	if err != nil {
+		if he, ok := err.(*echo.HTTPError); ok {
+			return he
+		}
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(http.StatusCreated, created)
 }
 
 func (h *DeckHandler) updateCard(c echo.Context) error {

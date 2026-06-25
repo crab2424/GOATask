@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { parseCardsCsv, CsvParseError } from "../lib/parseCardsCsv";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   listDecks,
@@ -6,6 +7,7 @@ import {
   updateDeck,
   deleteDeck,
   createCard,
+  importCards,
   updateCard,
   deleteCard,
   answerCard,
@@ -56,6 +58,12 @@ export function FlashcardView() {
   const [setupMarkedOnly, setSetupMarkedOnly] = useState(false);
   const [setupCount, setSetupCount] = useState<number | "all">("all");
   const [setupOrder, setSetupOrder] = useState<StudyOrder>("random");
+
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   const [cardFilter, setCardFilter] = useState<"all" | "marked" | "unmarked">("all");
   const [page, setPage] = useState(1);
@@ -162,6 +170,54 @@ export function FlashcardView() {
       await reloadDeck(selectedDeck.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const parsedImport = (() => {
+    if (!importText.trim()) return { cards: [], error: null as string | null };
+    try {
+      return { cards: parseCardsCsv(importText), error: null };
+    } catch (e) {
+      if (e instanceof CsvParseError) return { cards: [], error: e.message };
+      return { cards: [], error: e instanceof Error ? e.message : String(e) };
+    }
+  })();
+
+  const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      setImportText(text);
+      setImportError(null);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (importFileRef.current) importFileRef.current.value = "";
+    }
+  };
+
+  const onImportSubmit = async () => {
+    if (!selectedDeck) return;
+    if (parsedImport.error) {
+      setImportError(parsedImport.error);
+      return;
+    }
+    if (parsedImport.cards.length === 0) {
+      setImportError("インポートするカードがありません");
+      return;
+    }
+    setImporting(true);
+    setImportError(null);
+    try {
+      await importCards(selectedDeck.id, parsedImport.cards);
+      setImportText("");
+      setImportOpen(false);
+      await reloadDeck(selectedDeck.id);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -599,8 +655,100 @@ export function FlashcardView() {
                 キャンセル
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => {
+                setImportOpen((v) => !v);
+                setImportError(null);
+              }}
+              className="ml-auto rounded border border-slate-300 px-4 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
+            >
+              {importOpen ? "インポートを閉じる" : "CSVインポート"}
+            </button>
           </div>
         </form>
+
+        {importOpen && (
+          <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="mb-2 text-sm font-semibold">CSVインポート</h2>
+            <p className="mb-2 text-xs text-slate-600">
+              1行1カード，カンマ区切りで「表,裏」の2列．上の行から古い順に登録されます．タブ区切りは使用不可．カンマや改行を値に含める場合は <code>"..."</code> で囲み，値内の <code>"</code> は <code>""</code> と書いてください．
+            </p>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <input
+                ref={importFileRef}
+                type="file"
+                accept=".csv,.txt,text/csv,text/plain"
+                onChange={onImportFile}
+                className="text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setImportText("");
+                  setImportError(null);
+                }}
+                className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+              >
+                クリア
+              </button>
+            </div>
+            <textarea
+              value={importText}
+              onChange={(e) => {
+                setImportText(e.target.value);
+                setImportError(null);
+              }}
+              placeholder={'apple,りんご\nbook,本\n"hello, world","こんにちは"'}
+              rows={6}
+              className="mb-2 w-full rounded border border-slate-300 px-3 py-2 font-mono text-sm focus:border-slate-500 focus:outline-none"
+            />
+            {parsedImport.error ? (
+              <div className="mb-2 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {parsedImport.error}
+              </div>
+            ) : importText.trim() ? (
+              <div className="mb-2 text-xs text-slate-600">
+                {parsedImport.cards.length}件のカードを認識
+                {parsedImport.cards.length > 0 && (
+                  <span className="ml-2 text-slate-500">
+                    （先頭: {parsedImport.cards[0].front} / {parsedImport.cards[0].back}）
+                  </span>
+                )}
+              </div>
+            ) : null}
+            {importError && (
+              <div className="mb-2 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {importError}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onImportSubmit}
+                disabled={
+                  importing ||
+                  !!parsedImport.error ||
+                  parsedImport.cards.length === 0
+                }
+                className="rounded bg-slate-900 px-4 py-1.5 text-sm text-white hover:bg-slate-700 disabled:bg-slate-400"
+              >
+                {importing ? "インポート中…" : `${parsedImport.cards.length}件をインポート`}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setImportOpen(false);
+                  setImportText("");
+                  setImportError(null);
+                }}
+                className="rounded border border-slate-300 px-4 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        )}
 
         {cards.length === 0 ? (
           <p className="text-sm text-slate-500">

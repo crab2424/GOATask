@@ -71,6 +71,22 @@ export async function createCard(
   return res.json();
 }
 
+export async function importCards(
+  deckId: number,
+  cards: { front: string; back: string }[],
+): Promise<Card[]> {
+  const res = await fetch(`${API_BASE}/api/decks/${deckId}/cards/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cards }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`importCards failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
 export async function updateCard(
   deckId: number,
   cardId: number,
