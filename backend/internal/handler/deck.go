@@ -35,7 +35,9 @@ func (h *DeckHandler) Register(g *echo.Group) {
 
 func (h *DeckHandler) list(c echo.Context) error {
 	var decks []model.Deck
-	if err := h.DB.Preload("Cards").Order("updated_at DESC").Find(&decks).Error; err != nil {
+	if err := h.DB.Preload("Cards", func(db *gorm.DB) *gorm.DB {
+		return db.Order("id ASC")
+	}).Order("updated_at DESC").Find(&decks).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusOK, decks)
@@ -62,7 +64,9 @@ func (h *DeckHandler) get(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
 	var d model.Deck
-	if err := h.DB.Preload("Cards").First(&d, id).Error; err != nil {
+	if err := h.DB.Preload("Cards", func(db *gorm.DB) *gorm.DB {
+		return db.Order("id ASC")
+	}).First(&d, id).Error; err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "deck not found")
 	}
 	return c.JSON(http.StatusOK, d)

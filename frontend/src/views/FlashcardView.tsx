@@ -60,6 +60,15 @@ export function FlashcardView() {
   const [cardFilter, setCardFilter] = useState<"all" | "marked" | "unmarked">("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | "all">(20);
+  const [sortKey, setSortKey] = useState<
+    | "created_asc"
+    | "created_desc"
+    | "accuracy_desc"
+    | "accuracy_asc"
+    | "front_asc"
+    | "front_desc"
+  >("created_asc");
+  const [sortOpen, setSortOpen] = useState(false);
 
   const reloadDecks = async () => {
     await queryClient.invalidateQueries({ queryKey: ["decks"] });
@@ -604,11 +613,39 @@ export function FlashcardView() {
               : cardFilter === "unmarked"
                 ? cards.filter((c) => !c.marked)
                 : cards;
-          const size = pageSize === "all" ? filteredCards.length || 1 : pageSize;
-          const totalPages = Math.max(1, Math.ceil(filteredCards.length / size));
+          const accRate = (c: Card) => {
+            const total = c.correct_count + c.wrong_count;
+            return total === 0 ? -1 : c.correct_count / total;
+          };
+          const sorted = [...filteredCards].sort((a, b) => {
+            switch (sortKey) {
+              case "created_asc":
+                return a.id - b.id;
+              case "created_desc":
+                return b.id - a.id;
+              case "accuracy_desc":
+                return accRate(b) - accRate(a);
+              case "accuracy_asc":
+                return accRate(a) - accRate(b);
+              case "front_asc":
+                return a.front.localeCompare(b.front, "ja");
+              case "front_desc":
+                return b.front.localeCompare(a.front, "ja");
+            }
+          });
+          const sortLabels: Record<typeof sortKey, string> = {
+            created_asc: "作成順（古い→新しい）",
+            created_desc: "作成順（新しい→古い）",
+            accuracy_desc: "正答率（高い→低い）",
+            accuracy_asc: "正答率（低い→高い）",
+            front_asc: "おもて昇順（あ→ん）",
+            front_desc: "おもて降順（ん→あ）",
+          };
+          const size = pageSize === "all" ? sorted.length || 1 : pageSize;
+          const totalPages = Math.max(1, Math.ceil(sorted.length / size));
           const currentPage = Math.min(page, totalPages);
           const start = (currentPage - 1) * size;
-          const pageCards = filteredCards.slice(start, start + size);
+          const pageCards = sorted.slice(start, start + size);
           return (
             <>
               <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
@@ -646,7 +683,39 @@ export function FlashcardView() {
                 ))}
               </div>
 
-              {filteredCards.length === 0 ? (
+              <div className="mb-3 rounded border border-slate-200 bg-white">
+                <button
+                  type="button"
+                  onClick={() => setSortOpen((v) => !v)}
+                  className="flex w-full items-center justify-between px-3 py-2 text-left text-sm"
+                >
+                  <span className="text-slate-700">
+                    並び替え: <span className="font-medium">{sortLabels[sortKey]}</span>
+                  </span>
+                  <span className="text-slate-400">{sortOpen ? "▲" : "▼"}</span>
+                </button>
+                {sortOpen && (
+                  <div className="flex flex-wrap gap-2 border-t border-slate-200 px-3 py-2">
+                    {(Object.entries(sortLabels) as [typeof sortKey, string][]).map(
+                      ([k, label]) => (
+                        <button
+                          key={k}
+                          onClick={() => {
+                            setSortKey(k);
+                            setSortOpen(false);
+                            setPage(1);
+                          }}
+                          className={`rounded border px-2.5 py-1 text-xs ${sortKey === k ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
+                        >
+                          {label}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {sorted.length === 0 ? (
                 <p className="text-sm text-slate-500">該当するカードがありません。</p>
               ) : (
                 <ul className="space-y-2">
@@ -706,7 +775,7 @@ export function FlashcardView() {
                 </ul>
               )}
 
-              {filteredCards.length > 0 && totalPages > 1 && (
+              {sorted.length > 0 && totalPages > 1 && (
                 <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
                   <button
                     onClick={() => setPage(Math.max(1, currentPage - 1))}
@@ -732,7 +801,7 @@ export function FlashcardView() {
                     次へ
                   </button>
                   <span className="ml-2 text-xs text-slate-500">
-                    {start + 1}-{Math.min(start + size, filteredCards.length)} / {filteredCards.length}件
+                    {start + 1}-{Math.min(start + size, sorted.length)} / {sorted.length}件
                   </span>
                 </div>
               )}
