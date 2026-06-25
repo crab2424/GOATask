@@ -8,6 +8,7 @@ import {
   type FormEvent,
   type ReactElement,
 } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createMemo,
   deleteMemo,
@@ -57,8 +58,11 @@ type DropTarget =
   | null;
 
 export function MemoView() {
-  const [memos, setMemos] = useState<Memo[]>([]);
-  const [folders, setFolders] = useState<Folder[]>([]);
+  const queryClient = useQueryClient();
+  const memosQuery = useQuery({ queryKey: ["memos"], queryFn: listMemos });
+  const foldersQuery = useQuery({ queryKey: ["folders"], queryFn: listFolders });
+  const memos = memosQuery.data ?? [];
+  const folders = foldersQuery.data ?? [];
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
   const isMobile = useIsMobile();
   const [treeOpen, setTreeOpen] = useState(false);
@@ -142,22 +146,25 @@ export function MemoView() {
   }, [colorOpen]);
 
   const reload = async () => {
-    try {
-      const [m, f] = await Promise.all([listMemos(), listFolders()]);
-      setMemos(m);
-      setFolders(f);
-      setCurrentFolderId((cur) =>
-        cur !== null && !f.some((folder) => folder.id === cur) ? null : cur,
-      );
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["memos"] }),
+      queryClient.invalidateQueries({ queryKey: ["folders"] }),
+    ]);
+    setError(null);
   };
 
   useEffect(() => {
-    reload();
-  }, []);
+    setCurrentFolderId((cur) =>
+      cur !== null && !folders.some((folder) => folder.id === cur) ? null : cur,
+    );
+  }, [folders]);
+
+  const queryError = memosQuery.error ?? foldersQuery.error;
+  const queryErrorMsg = queryError
+    ? queryError instanceof Error
+      ? queryError.message
+      : String(queryError)
+    : null;
 
   useEffect(() => {
     localStorage.setItem(
@@ -848,9 +855,9 @@ export function MemoView() {
           ))}
         </nav>
 
-        {error && (
+        {(error || queryErrorMsg) && (
           <div className="mb-4 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {error}
+            {error ?? queryErrorMsg}
           </div>
         )}
 

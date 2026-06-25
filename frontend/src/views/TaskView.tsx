@@ -8,6 +8,7 @@ import {
   type FormEvent,
   type ReactElement,
 } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createTask,
   deleteTask,
@@ -115,8 +116,11 @@ type DropTarget =
   | null;
 
 export function TaskView() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const queryClient = useQueryClient();
+  const tasksQuery = useQuery({ queryKey: ["tasks"], queryFn: listTasks });
+  const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  const tasks = tasksQuery.data ?? [];
+  const projects = projectsQuery.data ?? [];
   const [currentProjectId, setCurrentProjectId] = useState<number | null>(null);
   const isMobile = useIsMobile();
   const [treeOpen, setTreeOpen] = useState(false);
@@ -171,22 +175,25 @@ export function TaskView() {
   );
 
   const reload = async () => {
-    try {
-      const [t, p] = await Promise.all([listTasks(), listProjects()]);
-      setTasks(t);
-      setProjects(p);
-      setCurrentProjectId((cur) =>
-        cur !== null && !p.some((proj) => proj.id === cur) ? null : cur,
-      );
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+      queryClient.invalidateQueries({ queryKey: ["projects"] }),
+    ]);
+    setError(null);
   };
 
   useEffect(() => {
-    reload();
-  }, []);
+    setCurrentProjectId((cur) =>
+      cur !== null && !projects.some((proj) => proj.id === cur) ? null : cur,
+    );
+  }, [projects]);
+
+  const queryError = tasksQuery.error ?? projectsQuery.error;
+  const queryErrorMsg = queryError
+    ? queryError instanceof Error
+      ? queryError.message
+      : String(queryError)
+    : null;
 
   useEffect(() => {
     localStorage.setItem(
@@ -1138,9 +1145,9 @@ export function TaskView() {
           </div>
         </div>
 
-        {error && (
+        {(error || queryErrorMsg) && (
           <div className="mb-4 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {error}
+            {error ?? queryErrorMsg}
           </div>
         )}
 

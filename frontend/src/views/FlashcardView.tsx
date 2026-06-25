@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   listDecks,
   createDeck,
@@ -34,7 +35,9 @@ function accuracy(card: Card): string {
 }
 
 export function FlashcardView() {
-  const [decks, setDecks] = useState<Deck[]>([]);
+  const queryClient = useQueryClient();
+  const decksQuery = useQuery({ queryKey: ["decks"], queryFn: listDecks });
+  const decks = decksQuery.data ?? [];
   const [screen, setScreen] = useState<Screen>("decks");
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,24 +58,28 @@ export function FlashcardView() {
   const [setupOrder, setSetupOrder] = useState<StudyOrder>("random");
 
   const reloadDecks = async () => {
-    try {
-      setDecks(await listDecks());
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    await queryClient.invalidateQueries({ queryKey: ["decks"] });
+    setError(null);
   };
 
   const reloadDeck = async (deckId: number) => {
-    const fresh = await listDecks();
-    setDecks(fresh);
+    const fresh = await queryClient.fetchQuery({
+      queryKey: ["decks"],
+      queryFn: listDecks,
+    });
     const d = fresh.find((d) => d.id === deckId);
     if (d) setSelectedDeck(d);
   };
 
   useEffect(() => {
-    reloadDecks();
-  }, []);
+    if (decksQuery.error) {
+      setError(
+        decksQuery.error instanceof Error
+          ? decksQuery.error.message
+          : String(decksQuery.error),
+      );
+    }
+  }, [decksQuery.error]);
 
   const onCreateDeck = async (e: FormEvent) => {
     e.preventDefault();

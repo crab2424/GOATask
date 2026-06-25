@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { listTasks, type Task, type TaskStatus } from "../api/tasks";
+import { useQuery } from "@tanstack/react-query";
+import { listTasks, type TaskStatus } from "../api/tasks";
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: "未着手",
@@ -113,14 +114,13 @@ function MiniCalendar() {
 }
 
 export function HomeView() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    listTasks()
-      .then(setTasks)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, []);
+  const tasksQuery = useQuery({ queryKey: ["tasks"], queryFn: listTasks });
+  const tasks = tasksQuery.data ?? [];
+  const error = tasksQuery.error
+    ? tasksQuery.error instanceof Error
+      ? tasksQuery.error.message
+      : String(tasksQuery.error)
+    : null;
 
   const todayStr = formatDate(new Date());
   const todayTasks = tasks.filter(
