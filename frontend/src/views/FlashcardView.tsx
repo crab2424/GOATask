@@ -37,6 +37,226 @@ function accuracy(card: Card): string {
   return `${Math.round((card.correct_count / total) * 100)}%`;
 }
 
+type CardFilters = {
+  mark: "all" | "marked" | "unmarked";
+  accMin: number;
+  accMax: number;
+  correctMin: number;
+  correctMax: number | null;
+  wrongMin: number;
+  wrongMax: number | null;
+};
+
+const DEFAULT_FILTERS: CardFilters = {
+  mark: "all",
+  accMin: 0,
+  accMax: 100,
+  correctMin: 0,
+  correctMax: null,
+  wrongMin: 0,
+  wrongMax: null,
+};
+
+function applyCardFilters(cards: Card[], f: CardFilters): Card[] {
+  return cards.filter((c) => {
+    if (f.mark === "marked" && !c.marked) return false;
+    if (f.mark === "unmarked" && c.marked) return false;
+    const total = c.correct_count + c.wrong_count;
+    const acc = total === 0 ? 0 : (c.correct_count / total) * 100;
+    if (acc < f.accMin || acc > f.accMax) return false;
+    if (c.correct_count < f.correctMin) return false;
+    if (f.correctMax !== null && c.correct_count > f.correctMax) return false;
+    if (c.wrong_count < f.wrongMin) return false;
+    if (f.wrongMax !== null && c.wrong_count > f.wrongMax) return false;
+    return true;
+  });
+}
+
+function summarizeFilters(f: CardFilters): string {
+  const parts: string[] = [];
+  if (f.mark === "marked") parts.push("★のみ");
+  else if (f.mark === "unmarked") parts.push("★なし");
+  if (f.accMin !== 0 || f.accMax !== 100)
+    parts.push(`正答率 ${f.accMin}-${f.accMax}%`);
+  if (f.correctMin !== 0 || f.correctMax !== null) {
+    if (f.correctMax === null) parts.push(`正解数 ≥${f.correctMin}`);
+    else if (f.correctMin === 0) parts.push(`正解数 ≤${f.correctMax}`);
+    else parts.push(`正解数 ${f.correctMin}-${f.correctMax}`);
+  }
+  if (f.wrongMin !== 0 || f.wrongMax !== null) {
+    if (f.wrongMax === null) parts.push(`不正解数 ≥${f.wrongMin}`);
+    else if (f.wrongMin === 0) parts.push(`不正解数 ≤${f.wrongMax}`);
+    else parts.push(`不正解数 ${f.wrongMin}-${f.wrongMax}`);
+  }
+  return parts.length === 0 ? "全件" : parts.join(" ・ ");
+}
+
+function clampInt(v: string, min: number, max?: number): number {
+  const n = parseInt(v, 10);
+  if (!Number.isFinite(n)) return min;
+  let r = Math.max(min, n);
+  if (max !== undefined) r = Math.min(max, r);
+  return r;
+}
+
+function CardFiltersPanel({
+  filters,
+  onChange,
+  open,
+  onToggleOpen,
+  filteredCount,
+  totalCount,
+}: {
+  filters: CardFilters;
+  onChange: (f: CardFilters) => void;
+  open: boolean;
+  onToggleOpen: () => void;
+  filteredCount: number;
+  totalCount: number;
+}) {
+  const f = filters;
+  const set = (patch: Partial<CardFilters>) => onChange({ ...f, ...patch });
+  return (
+    <div className="rounded border border-slate-200 bg-white">
+      <button
+        type="button"
+        onClick={onToggleOpen}
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm"
+      >
+        <span className="text-slate-700">
+          フィルタ:{" "}
+          <span className="font-medium">{summarizeFilters(f)}</span>
+          <span className="ml-2 text-xs text-slate-500">
+            {filteredCount} / {totalCount} 件
+          </span>
+        </span>
+        <span className="text-slate-400">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="space-y-3 border-t border-slate-200 px-3 py-3 text-sm">
+          <div>
+            <p className="mb-1 text-xs font-semibold text-slate-600">★マーク</p>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ["all", "全て"],
+                  ["marked", "★のみ"],
+                  ["unmarked", "★なし"],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => set({ mark: k })}
+                  className={`rounded border px-2.5 py-1 text-xs ${f.mark === k ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-1 text-xs font-semibold text-slate-600">
+              正答率(%)
+              <span className="ml-2 font-normal text-slate-400">
+                ※未回答は0%扱い
+              </span>
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={f.accMin}
+                onChange={(e) =>
+                  set({ accMin: clampInt(e.target.value, 0, 100) })
+                }
+                className="w-20 rounded border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
+              />
+              <span className="text-slate-400">〜</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={f.accMax}
+                onChange={(e) =>
+                  set({ accMax: clampInt(e.target.value, 0, 100) })
+                }
+                className="w-20 rounded border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-1 text-xs font-semibold text-slate-600">正解数</p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                value={f.correctMin}
+                onChange={(e) =>
+                  set({ correctMin: clampInt(e.target.value, 0) })
+                }
+                className="w-20 rounded border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
+              />
+              <span className="text-slate-400">〜</span>
+              <input
+                type="number"
+                min={0}
+                value={f.correctMax ?? ""}
+                placeholder="無制限"
+                onChange={(e) => {
+                  const v = e.target.value;
+                  set({
+                    correctMax: v === "" ? null : clampInt(v, 0),
+                  });
+                }}
+                className="w-24 rounded border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-1 text-xs font-semibold text-slate-600">不正解数</p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                value={f.wrongMin}
+                onChange={(e) => set({ wrongMin: clampInt(e.target.value, 0) })}
+                className="w-20 rounded border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
+              />
+              <span className="text-slate-400">〜</span>
+              <input
+                type="number"
+                min={0}
+                value={f.wrongMax ?? ""}
+                placeholder="無制限"
+                onChange={(e) => {
+                  const v = e.target.value;
+                  set({
+                    wrongMax: v === "" ? null : clampInt(v, 0),
+                  });
+                }}
+                className="w-24 rounded border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              onClick={() => onChange(DEFAULT_FILTERS)}
+              className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+            >
+              リセット
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FlashcardView() {
   const queryClient = useQueryClient();
   const decksQuery = useQuery({ queryKey: ["decks"], queryFn: listDecks });
@@ -56,7 +276,8 @@ export function FlashcardView() {
   const [showBack, setShowBack] = useState(false);
   const [studyResults, setStudyResults] = useState<StudyResult[]>([]);
 
-  const [setupMarkedOnly, setSetupMarkedOnly] = useState(false);
+  const [setupFilters, setSetupFilters] = useState<CardFilters>(DEFAULT_FILTERS);
+  const [setupFiltersOpen, setSetupFiltersOpen] = useState(false);
   const [setupCount, setSetupCount] = useState<number | "all">("all");
   const [setupOrder, setSetupOrder] = useState<StudyOrder>("random");
   const [setupDirection, setSetupDirection] = useState<StudyDirection>("front");
@@ -68,7 +289,8 @@ export function FlashcardView() {
   const [importing, setImporting] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
 
-  const [cardFilter, setCardFilter] = useState<"all" | "marked" | "unmarked">("all");
+  const [cardFilters, setCardFilters] = useState<CardFilters>(DEFAULT_FILTERS);
+  const [cardFiltersOpen, setCardFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | "all">(20);
   const [sortKey, setSortKey] = useState<
@@ -264,9 +486,12 @@ export function FlashcardView() {
   const openSetup = (markedOnly: boolean) => {
     if (!selectedDeck) return;
     const pool = selectedDeck.cards ?? [];
-    const filtered = markedOnly ? pool.filter((c) => c.marked) : pool;
-    if (filtered.length === 0) return;
-    setSetupMarkedOnly(markedOnly);
+    const initial: CardFilters = markedOnly
+      ? { ...DEFAULT_FILTERS, mark: "marked" }
+      : DEFAULT_FILTERS;
+    if (applyCardFilters(pool, initial).length === 0) return;
+    setSetupFilters(initial);
+    setSetupFiltersOpen(false);
     setSetupCount("all");
     setSetupOrder("random");
     setSetupDirection("front");
@@ -285,7 +510,7 @@ export function FlashcardView() {
   const onStartFromSetup = () => {
     if (!selectedDeck) return;
     const pool = selectedDeck.cards ?? [];
-    const filtered = setupMarkedOnly ? pool.filter((c) => c.marked) : pool;
+    const filtered = applyCardFilters(pool, setupFilters);
     const ordered = setupOrder === "random" ? shuffle(filtered) : filtered;
     const limit =
       setupCount === "all" ? ordered.length : Math.min(setupCount, ordered.length);
@@ -517,7 +742,7 @@ export function FlashcardView() {
 
   if (screen === "setup" && selectedDeck) {
     const pool = selectedDeck.cards ?? [];
-    const filtered = setupMarkedOnly ? pool.filter((c) => c.marked) : pool;
+    const filtered = applyCardFilters(pool, setupFilters);
     const max = filtered.length;
     const presets = [5, 10, 20].filter((n) => n < max);
     return (
@@ -535,21 +760,14 @@ export function FlashcardView() {
 
           <div className="mb-4">
             <p className="mb-1 text-sm font-semibold">出題対象</p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setSetupMarkedOnly(false)}
-                className={`rounded border px-3 py-1.5 text-sm ${!setupMarkedOnly ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
-              >
-                全カード（{pool.length}枚）
-              </button>
-              <button
-                onClick={() => setSetupMarkedOnly(true)}
-                disabled={pool.filter((c) => c.marked).length === 0}
-                className={`rounded border px-3 py-1.5 text-sm ${setupMarkedOnly ? "border-amber-500 bg-amber-500 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"} disabled:cursor-not-allowed disabled:opacity-50`}
-              >
-                ★のみ（{pool.filter((c) => c.marked).length}枚）
-              </button>
-            </div>
+            <CardFiltersPanel
+              filters={setupFilters}
+              onChange={setSetupFilters}
+              open={setupFiltersOpen}
+              onToggleOpen={() => setSetupFiltersOpen((v) => !v)}
+              filteredCount={max}
+              totalCount={pool.length}
+            />
           </div>
 
           <div className="mb-4">
@@ -821,12 +1039,7 @@ export function FlashcardView() {
             カードがまだありません。上のフォームから追加してください。
           </p>
         ) : (() => {
-          const filteredCards =
-            cardFilter === "marked"
-              ? cards.filter((c) => c.marked)
-              : cardFilter === "unmarked"
-                ? cards.filter((c) => !c.marked)
-                : cards;
+          const filteredCards = applyCardFilters(cards, cardFilters);
           const accRate = (c: Card) => {
             const total = c.correct_count + c.wrong_count;
             return total === 0 ? -1 : c.correct_count / total;
@@ -862,27 +1075,21 @@ export function FlashcardView() {
           const pageCards = sorted.slice(start, start + size);
           return (
             <>
+              <div className="mb-3">
+                <CardFiltersPanel
+                  filters={cardFilters}
+                  onChange={(f) => {
+                    setCardFilters(f);
+                    setPage(1);
+                  }}
+                  open={cardFiltersOpen}
+                  onToggleOpen={() => setCardFiltersOpen((v) => !v)}
+                  filteredCount={filteredCards.length}
+                  totalCount={cards.length}
+                />
+              </div>
               <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-slate-500">表示:</span>
-                {(
-                  [
-                    ["all", `全て(${cards.length})`],
-                    ["marked", `★のみ(${cards.filter((c) => c.marked).length})`],
-                    ["unmarked", `★なし(${cards.filter((c) => !c.marked).length})`],
-                  ] as const
-                ).map(([k, label]) => (
-                  <button
-                    key={k}
-                    onClick={() => {
-                      setCardFilter(k);
-                      setPage(1);
-                    }}
-                    className={`rounded border px-2.5 py-1 text-xs ${cardFilter === k ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
-                  >
-                    {label}
-                  </button>
-                ))}
-                <span className="ml-2 text-slate-500">1ページ:</span>
+                <span className="text-slate-500">1ページ:</span>
                 {([10, 20, 50, "all"] as const).map((n) => (
                   <button
                     key={String(n)}
