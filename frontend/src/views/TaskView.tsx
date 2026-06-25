@@ -6,6 +6,7 @@ import {
   useState,
   type DragEvent as ReactDragEvent,
   type FormEvent,
+  type ReactElement,
 } from "react";
 import {
   createTask,
@@ -308,15 +309,6 @@ export function TaskView() {
     if (id !== null) {
       setExpanded((prev) => expandAncestors(projects, prev, id));
     }
-  };
-
-  const toggleExpand = (id: number) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   };
 
   // --- DnD handlers ---
@@ -638,7 +630,7 @@ export function TaskView() {
 
   // --- Tree rendering ---
 
-  const renderTreeProject = (p: Project, depth: number): JSX.Element => {
+  const renderTreeProject = (p: Project, depth: number): ReactElement => {
     const isOpen = expanded.has(p.id);
     const subProjects = childProjectsMap.get(p.id) ?? [];
     const subTasks = (tasksByProject.get(p.id) ?? []).filter(
@@ -733,7 +725,7 @@ export function TaskView() {
     setFocusTaskId(t.id);
   };
 
-  const renderTreeTask = (t: Task, depth: number): JSX.Element => (
+  const renderTreeTask = (t: Task, depth: number): ReactElement => (
     <li key={`t-${t.id}`}>
       <div
         className={`flex items-center gap-1 rounded px-1 py-1 text-sm hover:bg-slate-50 ${

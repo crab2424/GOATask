@@ -6,6 +6,7 @@ import {
   useState,
   type DragEvent as ReactDragEvent,
   type FormEvent,
+  type ReactElement,
 } from "react";
 import {
   createMemo,
@@ -380,15 +381,6 @@ export function MemoView() {
     }
   };
 
-  const toggleExpand = (id: number) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   // --- Memo / Folder actions ---
 
   const startNew = (presetFolder: number | null) => {
@@ -566,7 +558,7 @@ export function MemoView() {
 
   // --- Tree rendering ---
 
-  const renderTreeMemo = (m: Memo, depth: number): JSX.Element => {
+  const renderTreeMemo = (m: Memo, depth: number): ReactElement => {
     const isDragging = dragItem?.type === "memo" && dragItem.id === m.id;
     return (
       <li key={`m-${m.id}`}>
@@ -596,7 +588,7 @@ export function MemoView() {
     );
   };
 
-  const renderTreeFolder = (f: Folder, depth: number): JSX.Element => {
+  const renderTreeFolder = (f: Folder, depth: number): ReactElement => {
     const isOpen = expanded.has(f.id);
     const subFolders = childFolders.get(f.id) ?? [];
     const subMemos = memosByFolder.get(f.id) ?? [];
