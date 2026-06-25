@@ -8,6 +8,9 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
+# Personal import data (not part of the app)
+import-data/
+
 # Editor / OS
 .DS_Store
 .idea/
