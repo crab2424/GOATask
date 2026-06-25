@@ -23,6 +23,33 @@ export function downloadJson(data: unknown, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+export type ImportMode = "replace" | "merge";
+
+export interface ImportResult {
+  mode: ImportMode;
+  scope: string;
+  inserted: Record<string, number>;
+}
+
+export async function importBackup(
+  data: unknown,
+  mode: ImportMode,
+  token?: string,
+): Promise<ImportResult> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["X-Backup-Token"] = token;
+  const res = await fetch(`${API_BASE}/api/backup/import`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ mode, data }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`import failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
 export function backupFilename(scope: BackupScope): string {
   const d = new Date();
   const yyyy = d.getFullYear();
