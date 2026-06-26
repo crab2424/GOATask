@@ -46,6 +46,8 @@ import {
 import { useHoverExpand } from "../lib/useHoverExpand";
 
 const MEMO_DEFAULT_DOT_COLOR = "#cbd5e1"; // slate-300, 暫定色
+const FOLDER_EXPANDED_KEY = "goatask-folder-expanded";
+const CURRENT_FOLDER_KEY = "goatask-current-folder";
 
 function memoDotColor(m: Memo): string {
   return isValidColor(m.color) ? m.color : MEMO_DEFAULT_DOT_COLOR;
@@ -63,12 +65,21 @@ export function MemoView() {
   const foldersQuery = useQuery({ queryKey: ["folders"], queryFn: listFolders });
   const memos = memosQuery.data ?? [];
   const folders = foldersQuery.data ?? [];
-  const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
+  const [currentFolderId, setCurrentFolderId] = useState<number | null>(() => {
+    try {
+      const saved = localStorage.getItem(CURRENT_FOLDER_KEY);
+      if (!saved || saved === "root") return null;
+      const id = Number(saved);
+      return Number.isFinite(id) ? id : null;
+    } catch {
+      return null;
+    }
+  });
   const isMobile = useIsMobile();
   const [treeOpen, setTreeOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     try {
-      const saved = localStorage.getItem("goatask-folder-expanded");
+      const saved = localStorage.getItem(FOLDER_EXPANDED_KEY);
       return saved
         ? new Set(JSON.parse(saved) as number[])
         : new Set<number>();
@@ -154,10 +165,11 @@ export function MemoView() {
   };
 
   useEffect(() => {
+    if (!foldersQuery.isSuccess) return;
     setCurrentFolderId((cur) =>
       cur !== null && !folders.some((folder) => folder.id === cur) ? null : cur,
     );
-  }, [folders]);
+  }, [folders, foldersQuery.isSuccess]);
 
   const queryError = memosQuery.error ?? foldersQuery.error;
   const queryErrorMsg = queryError
@@ -168,10 +180,17 @@ export function MemoView() {
 
   useEffect(() => {
     localStorage.setItem(
-      "goatask-folder-expanded",
+      FOLDER_EXPANDED_KEY,
       JSON.stringify([...expanded]),
     );
   }, [expanded]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      CURRENT_FOLDER_KEY,
+      currentFolderId === null ? "root" : String(currentFolderId),
+    );
+  }, [currentFolderId]);
 
   const selected = memos.find((m) => m.id === selectedId) ?? null;
 
@@ -626,7 +645,7 @@ export function MemoView() {
             setSelectedId(null);
             setExpanded((prev) => {
               const next = expandAncestors(folders, prev, f.id);
-              if (hasChildren && prev.has(f.id)) next.delete(f.id);
+              if (prev.has(f.id)) next.delete(f.id);
               return next;
             });
           }}
@@ -644,22 +663,20 @@ export function MemoView() {
           style={{ paddingLeft: `${depth * 16 + 4}px` }}
         >
           <span className="flex w-4 shrink-0 items-center justify-center text-slate-400">
-            {hasChildren && (
-              <svg
-                viewBox="0 0 16 16"
-                aria-hidden
-                className={`h-3 w-3 transition-transform ${isOpen ? "rotate-90" : ""}`}
-              >
-                <path
-                  d="M6 4l4 4-4 4"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            )}
+            <svg
+              viewBox="0 0 16 16"
+              aria-hidden
+              className={`h-3 w-3 transition-transform ${isOpen ? "rotate-90" : ""}`}
+            >
+              <path
+                d="M6 4l4 4-4 4"
+                stroke="currentColor"
+                strokeWidth="2"
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </span>
           <span className="flex-1 truncate">
             {f.name}
@@ -771,8 +788,7 @@ export function MemoView() {
         </button>
       </li>
       {rootFolders.map((f) => renderTreeFolder(f, 0))}
-      {currentFolderId === null &&
-        rootMemos.map((m) => renderTreeMemo(m, 0))}
+      {rootMemos.map((m) => renderTreeMemo(m, 0))}
     </ul>
   );
 

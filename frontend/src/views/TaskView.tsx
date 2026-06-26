@@ -57,6 +57,8 @@ const STATUS_DOT_COLOR: Record<TaskStatus, string> = {
   done: "#10b981",
 };
 const OVERDUE_DOT_COLOR = "#f43f5e";
+const PROJECT_EXPANDED_KEY = "goatask-project-expanded";
+const CURRENT_PROJECT_KEY = "goatask-current-project";
 
 function taskDotColor(t: Task): string {
   if (t.status === "done") return STATUS_DOT_COLOR.done;
@@ -121,12 +123,21 @@ export function TaskView() {
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const tasks = tasksQuery.data ?? [];
   const projects = projectsQuery.data ?? [];
-  const [currentProjectId, setCurrentProjectId] = useState<number | null>(null);
+  const [currentProjectId, setCurrentProjectId] = useState<number | null>(() => {
+    try {
+      const saved = localStorage.getItem(CURRENT_PROJECT_KEY);
+      if (!saved || saved === "root") return null;
+      const id = Number(saved);
+      return Number.isFinite(id) ? id : null;
+    } catch {
+      return null;
+    }
+  });
   const isMobile = useIsMobile();
   const [treeOpen, setTreeOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     try {
-      const saved = localStorage.getItem("goatask-project-expanded");
+      const saved = localStorage.getItem(PROJECT_EXPANDED_KEY);
       return saved
         ? new Set(JSON.parse(saved) as number[])
         : new Set<number>();
@@ -183,10 +194,11 @@ export function TaskView() {
   };
 
   useEffect(() => {
+    if (!projectsQuery.isSuccess) return;
     setCurrentProjectId((cur) =>
       cur !== null && !projects.some((proj) => proj.id === cur) ? null : cur,
     );
-  }, [projects]);
+  }, [projects, projectsQuery.isSuccess]);
 
   const queryError = tasksQuery.error ?? projectsQuery.error;
   const queryErrorMsg = queryError
@@ -197,10 +209,17 @@ export function TaskView() {
 
   useEffect(() => {
     localStorage.setItem(
-      "goatask-project-expanded",
+      PROJECT_EXPANDED_KEY,
       JSON.stringify([...expanded]),
     );
   }, [expanded]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      CURRENT_PROJECT_KEY,
+      currentProjectId === null ? "root" : String(currentProjectId),
+    );
+  }, [currentProjectId]);
 
   useEffect(() => {
     if (!ctxMenu) return;
@@ -668,7 +687,7 @@ export function TaskView() {
             setCurrentProjectId(p.id);
             setExpanded((prev) => {
               const next = expandAncestors(projects, prev, p.id);
-              if (hasChildren && prev.has(p.id)) next.delete(p.id);
+              if (prev.has(p.id)) next.delete(p.id);
               return next;
             });
           }}
@@ -690,22 +709,20 @@ export function TaskView() {
           style={{ paddingLeft: `${depth * 16 + 4}px` }}
         >
           <span className="flex w-4 shrink-0 items-center justify-center text-slate-400">
-            {hasChildren && (
-              <svg
-                viewBox="0 0 16 16"
-                aria-hidden
-                className={`h-3 w-3 transition-transform ${isOpen ? "rotate-90" : ""}`}
-              >
-                <path
-                  d="M6 4l4 4-4 4"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            )}
+            <svg
+              viewBox="0 0 16 16"
+              aria-hidden
+              className={`h-3 w-3 transition-transform ${isOpen ? "rotate-90" : ""}`}
+            >
+              <path
+                d="M6 4l4 4-4 4"
+                stroke="currentColor"
+                strokeWidth="2"
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </span>
           <span className="flex-1 truncate">
             {p.name}
@@ -1043,8 +1060,7 @@ export function TaskView() {
         </button>
       </li>
       {rootProjects.map((p) => renderTreeProject(p, 0))}
-      {currentProjectId === null &&
-        rootTasks.map((t) => renderTreeTask(t, 0))}
+      {rootTasks.map((t) => renderTreeTask(t, 0))}
     </ul>
   );
 
