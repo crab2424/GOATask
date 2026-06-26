@@ -8,13 +8,18 @@ import (
 )
 
 func Connect(cfg *config.Config) (*gorm.DB, error) {
-	conn, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{})
-	if err != nil {
-		return nil, err
+	return gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{})
+}
+
+func MigrateAuth(conn *gorm.DB) error {
+	return conn.AutoMigrate(&model.User{}, &model.Session{})
+}
+
+func MigrateAll(conn *gorm.DB) error {
+	if err := MigrateAuth(conn); err != nil {
+		return err
 	}
-	if err := conn.AutoMigrate(
-		&model.User{},
-		&model.Session{},
+	return conn.AutoMigrate(
 		&model.Task{},
 		&model.Memo{},
 		&model.Subtask{},
@@ -22,8 +27,5 @@ func Connect(cfg *config.Config) (*gorm.DB, error) {
 		&model.Deck{},
 		&model.Card{},
 		&model.Project{},
-	); err != nil {
-		return nil, err
-	}
-	return conn, nil
+	)
 }

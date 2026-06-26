@@ -19,6 +19,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	if err := db.MigrateAll(conn); err != nil {
+		panic(err)
+	}
 
 	e := echo.New()
 	e.Use(middleware.Logger())

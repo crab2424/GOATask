@@ -29,6 +29,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "db connect:", err)
 		os.Exit(1)
 	}
+	if err := db.MigrateAuth(conn); err != nil {
+		fmt.Fprintln(os.Stderr, "migrate auth:", err)
+		os.Exit(1)
+	}
 
 	var existing model.User
 	if err := conn.Where("username = ?", *username).First(&existing).Error; err == nil {

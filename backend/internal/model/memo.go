@@ -8,6 +8,7 @@ import (
 
 type Memo struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
+	UserID    uint           `gorm:"index;not null" json:"user_id"`
 	Title     string         `gorm:"not null" json:"title"`
 	Content   string         `gorm:"type:text" json:"content"`
 	FolderID  *uint          `gorm:"index" json:"folder_id,omitempty"`
