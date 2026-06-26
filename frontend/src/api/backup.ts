@@ -1,10 +1,10 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8080";
+import { apiFetch } from "./client";
 
 export type BackupScope = "all" | "tasks" | "memos" | "decks";
 
 export async function fetchBackup(scope: BackupScope): Promise<unknown> {
   const path = scope === "all" ? "/api/backup/export" : `/api/backup/export/${scope}`;
-  const res = await fetch(`${API_BASE}${path}`);
+  const res = await apiFetch(path);
   if (!res.ok) throw new Error(`export failed: ${res.status}`);
   return res.json();
 }
@@ -38,7 +38,7 @@ export async function importBackup(
 ): Promise<ImportResult> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["X-Backup-Token"] = token;
-  const res = await fetch(`${API_BASE}/api/backup/import`, {
+  const res = await apiFetch(`/api/backup/import`, {
     method: "POST",
     headers,
     body: JSON.stringify({ mode, data }),

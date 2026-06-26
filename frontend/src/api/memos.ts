@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8080";
+import { apiFetch } from "./client";
 
 export interface Memo {
   id: number;
@@ -20,13 +20,13 @@ export interface NewMemo {
 }
 
 export async function listMemos(): Promise<Memo[]> {
-  const res = await fetch(`${API_BASE}/api/memos`);
+  const res = await apiFetch(`/api/memos`);
   if (!res.ok) throw new Error(`listMemos failed: ${res.status}`);
   return res.json();
 }
 
 export async function createMemo(input: NewMemo): Promise<Memo> {
-  const res = await fetch(`${API_BASE}/api/memos`, {
+  const res = await apiFetch(`/api/memos`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -36,7 +36,7 @@ export async function createMemo(input: NewMemo): Promise<Memo> {
 }
 
 export async function updateMemo(id: number, input: Partial<Memo>): Promise<Memo> {
-  const res = await fetch(`${API_BASE}/api/memos/${id}`, {
+  const res = await apiFetch(`/api/memos/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -46,12 +46,12 @@ export async function updateMemo(id: number, input: Partial<Memo>): Promise<Memo
 }
 
 export async function deleteMemo(id: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/memos/${id}`, { method: "DELETE" });
+  const res = await apiFetch(`/api/memos/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`deleteMemo failed: ${res.status}`);
 }
 
 export async function reorderMemos(ids: number[]): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/memos-reorder`, {
+  const res = await apiFetch(`/api/memos-reorder`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ids }),

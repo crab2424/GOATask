@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8080";
+import { apiFetch } from "./client";
 
 export type TaskStatus = "todo" | "doing" | "done";
 
@@ -31,13 +31,13 @@ export interface NewTask {
 }
 
 export async function listTasks(): Promise<Task[]> {
-  const res = await fetch(`${API_BASE}/api/tasks`);
+  const res = await apiFetch(`/api/tasks`);
   if (!res.ok) throw new Error(`listTasks failed: ${res.status}`);
   return res.json();
 }
 
 export async function createTask(input: NewTask): Promise<Task> {
-  const res = await fetch(`${API_BASE}/api/tasks`, {
+  const res = await apiFetch(`/api/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -47,7 +47,7 @@ export async function createTask(input: NewTask): Promise<Task> {
 }
 
 export async function updateTask(id: number, input: Partial<Task>): Promise<Task> {
-  const res = await fetch(`${API_BASE}/api/tasks/${id}`, {
+  const res = await apiFetch(`/api/tasks/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -61,8 +61,8 @@ export async function toggleSubtask(
   subtaskId: number,
   done: boolean,
 ): Promise<Task> {
-  const res = await fetch(
-    `${API_BASE}/api/tasks/${taskId}/subtasks/${subtaskId}`,
+  const res = await apiFetch(
+    `/api/tasks/${taskId}/subtasks/${subtaskId}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -74,12 +74,12 @@ export async function toggleSubtask(
 }
 
 export async function deleteTask(id: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/tasks/${id}`, { method: "DELETE" });
+  const res = await apiFetch(`/api/tasks/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`deleteTask failed: ${res.status}`);
 }
 
 export async function reorderTasks(ids: number[]): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/tasks-reorder`, {
+  const res = await apiFetch(`/api/tasks-reorder`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ids }),
@@ -88,7 +88,7 @@ export async function reorderTasks(ids: number[]): Promise<void> {
 }
 
 export async function checkHealth(): Promise<{ status: string }> {
-  const res = await fetch(`${API_BASE}/health`);
+  const res = await apiFetch(`/health`);
   if (!res.ok) throw new Error(`health failed: ${res.status}`);
   return res.json();
 }

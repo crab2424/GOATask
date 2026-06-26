@@ -5,7 +5,9 @@ import { TaskView } from "./views/TaskView";
 import { MemoView } from "./views/MemoView";
 import { FlashcardView } from "./views/FlashcardView";
 import { BackupView } from "./views/BackupView";
+import { LoginView } from "./views/LoginView";
 import { useIsMobile } from "./lib/useIsMobile";
+import { useAuth } from "./lib/AuthContext";
 
 type Mode = "home" | "tasks" | "memos" | "flashcards" | "backup";
 
@@ -20,6 +22,7 @@ const TABS: { id: Mode; label: string; icon: string }[] = [
 const NAV_COLLAPSED_KEY = "goatask:navCollapsed";
 
 function App() {
+  const { state: authState } = useAuth();
   const [mode, setMode] = useState<Mode>("home");
   const [health, setHealth] = useState<string>("確認中...");
   const isMobile = useIsMobile();
@@ -29,10 +32,22 @@ function App() {
   });
 
   useEffect(() => {
+    if (authState.status !== "authenticated") return;
     checkHealth()
       .then((h) => setHealth(h.status))
       .catch(() => setHealth("接続失敗"));
-  }, []);
+  }, [authState.status]);
+
+  if (authState.status === "loading") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">
+        読み込み中...
+      </div>
+    );
+  }
+  if (authState.status === "anonymous") {
+    return <LoginView />;
+  }
 
   useEffect(() => {
     window.localStorage.setItem(NAV_COLLAPSED_KEY, navCollapsed ? "1" : "0");

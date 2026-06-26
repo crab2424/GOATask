@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8080";
+import { apiFetch } from "./client";
 
 export interface Project {
   id: number;
@@ -14,13 +14,13 @@ export interface NewProject {
 }
 
 export async function listProjects(): Promise<Project[]> {
-  const res = await fetch(`${API_BASE}/api/projects`);
+  const res = await apiFetch(`/api/projects`);
   if (!res.ok) throw new Error(`listProjects failed: ${res.status}`);
   return res.json();
 }
 
 export async function createProject(input: NewProject): Promise<Project> {
-  const res = await fetch(`${API_BASE}/api/projects`, {
+  const res = await apiFetch(`/api/projects`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -33,7 +33,7 @@ export async function updateProject(
   id: number,
   input: Partial<Project>,
 ): Promise<Project> {
-  const res = await fetch(`${API_BASE}/api/projects/${id}`, {
+  const res = await apiFetch(`/api/projects/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -43,7 +43,7 @@ export async function updateProject(
 }
 
 export async function deleteProject(id: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/projects/${id}`, {
+  const res = await apiFetch(`/api/projects/${id}`, {
     method: "DELETE",
   });
   if (!res.ok) throw new Error(`deleteProject failed: ${res.status}`);

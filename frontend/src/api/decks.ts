@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8080";
+import { apiFetch } from "./client";
 
 export interface Card {
   id: number;
@@ -21,13 +21,13 @@ export interface Deck {
 }
 
 export async function listDecks(): Promise<Deck[]> {
-  const res = await fetch(`${API_BASE}/api/decks`);
+  const res = await apiFetch(`/api/decks`);
   if (!res.ok) throw new Error(`listDecks failed: ${res.status}`);
   return res.json();
 }
 
 export async function createDeck(name: string): Promise<Deck> {
-  const res = await fetch(`${API_BASE}/api/decks`, {
+  const res = await apiFetch(`/api/decks`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
@@ -37,7 +37,7 @@ export async function createDeck(name: string): Promise<Deck> {
 }
 
 export async function updateDeck(id: number, name: string): Promise<Deck> {
-  const res = await fetch(`${API_BASE}/api/decks/${id}`, {
+  const res = await apiFetch(`/api/decks/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
@@ -47,12 +47,12 @@ export async function updateDeck(id: number, name: string): Promise<Deck> {
 }
 
 export async function deleteDeck(id: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/decks/${id}`, { method: "DELETE" });
+  const res = await apiFetch(`/api/decks/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`deleteDeck failed: ${res.status}`);
 }
 
 export async function listCards(deckId: number): Promise<Card[]> {
-  const res = await fetch(`${API_BASE}/api/decks/${deckId}/cards`);
+  const res = await apiFetch(`/api/decks/${deckId}/cards`);
   if (!res.ok) throw new Error(`listCards failed: ${res.status}`);
   return res.json();
 }
@@ -62,7 +62,7 @@ export async function createCard(
   front: string,
   back: string,
 ): Promise<Card> {
-  const res = await fetch(`${API_BASE}/api/decks/${deckId}/cards`, {
+  const res = await apiFetch(`/api/decks/${deckId}/cards`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ front, back }),
@@ -75,7 +75,7 @@ export async function importCards(
   deckId: number,
   cards: { front: string; back: string }[],
 ): Promise<Card[]> {
-  const res = await fetch(`${API_BASE}/api/decks/${deckId}/cards/import`, {
+  const res = await apiFetch(`/api/decks/${deckId}/cards/import`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ cards }),
@@ -93,7 +93,7 @@ export async function updateCard(
   front: string,
   back: string,
 ): Promise<Card> {
-  const res = await fetch(`${API_BASE}/api/decks/${deckId}/cards/${cardId}`, {
+  const res = await apiFetch(`/api/decks/${deckId}/cards/${cardId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ front, back }),
@@ -106,7 +106,7 @@ export async function deleteCard(
   deckId: number,
   cardId: number,
 ): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/decks/${deckId}/cards/${cardId}`, {
+  const res = await apiFetch(`/api/decks/${deckId}/cards/${cardId}`, {
     method: "DELETE",
   });
   if (!res.ok) throw new Error(`deleteCard failed: ${res.status}`);
@@ -117,8 +117,8 @@ export async function answerCard(
   cardId: number,
   correct: boolean,
 ): Promise<Card> {
-  const res = await fetch(
-    `${API_BASE}/api/decks/${deckId}/cards/${cardId}/answer`,
+  const res = await apiFetch(
+    `/api/decks/${deckId}/cards/${cardId}/answer`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -134,8 +134,8 @@ export async function toggleCardMark(
   cardId: number,
   marked: boolean,
 ): Promise<Card> {
-  const res = await fetch(
-    `${API_BASE}/api/decks/${deckId}/cards/${cardId}/mark`,
+  const res = await apiFetch(
+    `/api/decks/${deckId}/cards/${cardId}/mark`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -150,8 +150,8 @@ export async function resetCardStats(
   deckId: number,
   cardId: number,
 ): Promise<Card> {
-  const res = await fetch(
-    `${API_BASE}/api/decks/${deckId}/cards/${cardId}/reset`,
+  const res = await apiFetch(
+    `/api/decks/${deckId}/cards/${cardId}/reset`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
