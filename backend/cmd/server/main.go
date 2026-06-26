@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/crab2424/goatask/backend/internal/auth"
 	"github.com/crab2424/goatask/backend/internal/config"
 	"github.com/crab2424/goatask/backend/internal/db"
 	"github.com/crab2424/goatask/backend/internal/handler"
@@ -31,8 +32,9 @@ func main() {
 		origins = strings.Split(v, ",")
 	}
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: origins,
-		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		AllowOrigins:     origins,
+		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		AllowCredentials: true,
 	}))
 
 	e.GET("/health", func(c echo.Context) error {
@@ -40,12 +42,15 @@ func main() {
 	})
 
 	api := e.Group("/api")
-	handler.NewTaskHandler(conn).Register(api)
-	handler.NewMemoHandler(conn).Register(api)
-	handler.NewFolderHandler(conn).Register(api)
-	handler.NewDeckHandler(conn).Register(api)
-	handler.NewProjectHandler(conn).Register(api)
-	handler.NewBackupHandler(conn).Register(api)
+	handler.NewAuthHandler(conn).Register(api)
+
+	protected := api.Group("", auth.RequireAuth(conn))
+	handler.NewTaskHandler(conn).Register(protected)
+	handler.NewMemoHandler(conn).Register(protected)
+	handler.NewFolderHandler(conn).Register(protected)
+	handler.NewDeckHandler(conn).Register(protected)
+	handler.NewProjectHandler(conn).Register(protected)
+	handler.NewBackupHandler(conn).Register(protected)
 
 	e.Logger.Fatal(e.Start(":" + cfg.AppPort))
 }
