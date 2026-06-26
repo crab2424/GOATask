@@ -57,6 +57,47 @@ const DEFAULT_FILTERS: CardFilters = {
   wrongMax: null,
 };
 
+const SETUP_STORAGE_KEY = "goatask:flashcard:setup";
+
+type StudySetup = {
+  filters: CardFilters;
+  count: number | "all";
+  order: StudyOrder;
+  direction: StudyDirection;
+};
+
+const DEFAULT_SETUP: StudySetup = {
+  filters: DEFAULT_FILTERS,
+  count: "all",
+  order: "random",
+  direction: "front",
+};
+
+function loadSetup(): StudySetup {
+  try {
+    const raw = localStorage.getItem(SETUP_STORAGE_KEY);
+    if (!raw) return DEFAULT_SETUP;
+    const p = JSON.parse(raw);
+    return {
+      filters: { ...DEFAULT_FILTERS, ...(p.filters ?? {}) },
+      count:
+        p.count === "all" || typeof p.count === "number" ? p.count : "all",
+      order: p.order === "created" ? "created" : "random",
+      direction: p.direction === "back" ? "back" : "front",
+    };
+  } catch {
+    return DEFAULT_SETUP;
+  }
+}
+
+function saveSetup(s: StudySetup): void {
+  try {
+    localStorage.setItem(SETUP_STORAGE_KEY, JSON.stringify(s));
+  } catch {
+    // ignore quota / disabled storage
+  }
+}
+
 function applyCardFilters(cards: Card[], f: CardFilters): Card[] {
   return cards.filter((c) => {
     if (f.mark === "marked" && !c.marked) return false;
@@ -276,11 +317,19 @@ export function FlashcardView() {
   const [showBack, setShowBack] = useState(false);
   const [studyResults, setStudyResults] = useState<StudyResult[]>([]);
 
-  const [setupFilters, setSetupFilters] = useState<CardFilters>(DEFAULT_FILTERS);
+  const [setupFilters, setSetupFilters] = useState<CardFilters>(
+    () => loadSetup().filters,
+  );
   const [setupFiltersOpen, setSetupFiltersOpen] = useState(false);
-  const [setupCount, setSetupCount] = useState<number | "all">("all");
-  const [setupOrder, setSetupOrder] = useState<StudyOrder>("random");
-  const [setupDirection, setSetupDirection] = useState<StudyDirection>("front");
+  const [setupCount, setSetupCount] = useState<number | "all">(
+    () => loadSetup().count,
+  );
+  const [setupOrder, setSetupOrder] = useState<StudyOrder>(
+    () => loadSetup().order,
+  );
+  const [setupDirection, setSetupDirection] = useState<StudyDirection>(
+    () => loadSetup().direction,
+  );
   const [studyDirection, setStudyDirection] = useState<StudyDirection>("front");
 
   const [importOpen, setImportOpen] = useState(false);
@@ -486,16 +535,30 @@ export function FlashcardView() {
   const openSetup = (markedOnly: boolean) => {
     if (!selectedDeck) return;
     const pool = selectedDeck.cards ?? [];
-    const initial: CardFilters = markedOnly
-      ? { ...DEFAULT_FILTERS, mark: "marked" }
-      : DEFAULT_FILTERS;
-    if (applyCardFilters(pool, initial).length === 0) return;
-    setSetupFilters(initial);
+    const saved = loadSetup();
+    const filters: CardFilters = markedOnly
+      ? { ...saved.filters, mark: "marked" }
+      : saved.filters;
+    if (applyCardFilters(pool, filters).length === 0) return;
+    setSetupFilters(filters);
     setSetupFiltersOpen(false);
-    setSetupCount("all");
-    setSetupOrder("random");
-    setSetupDirection("front");
+    setSetupCount(saved.count);
+    setSetupOrder(saved.order);
+    setSetupDirection(saved.direction);
     setScreen("setup");
+  };
+
+  const resetSetup = () => {
+    try {
+      localStorage.removeItem(SETUP_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    setSetupFilters(DEFAULT_SETUP.filters);
+    setSetupFiltersOpen(false);
+    setSetupCount(DEFAULT_SETUP.count);
+    setSetupOrder(DEFAULT_SETUP.order);
+    setSetupDirection(DEFAULT_SETUP.direction);
   };
 
   const beginStudy = (cards: Card[], direction: StudyDirection = studyDirection) => {
@@ -515,6 +578,12 @@ export function FlashcardView() {
     const limit =
       setupCount === "all" ? ordered.length : Math.min(setupCount, ordered.length);
     if (limit === 0) return;
+    saveSetup({
+      filters: setupFilters,
+      count: setupCount,
+      order: setupOrder,
+      direction: setupDirection,
+    });
     beginStudy(ordered.slice(0, limit), setupDirection);
   };
 
@@ -840,20 +909,32 @@ export function FlashcardView() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2">
+          <div className="flex items-center justify-between gap-2">
             <button
-              onClick={() => setScreen("cards")}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                if (!confirm("学習設定を初期値に戻しますか？")) return;
+                resetSetup();
+              }}
+              className="text-xs text-slate-500 hover:text-slate-800"
+              title="保存された学習設定を初期値に戻す"
             >
-              キャンセル
+              設定をリセット
             </button>
-            <button
-              onClick={onStartFromSetup}
-              disabled={max === 0}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:bg-slate-400"
-            >
-              開始
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setScreen("cards")}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={onStartFromSetup}
+                disabled={max === 0}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:bg-slate-400"
+              >
+                開始
+              </button>
+            </div>
           </div>
         </div>
       </div>
