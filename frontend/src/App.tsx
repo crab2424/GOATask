@@ -22,7 +22,7 @@ const TABS: { id: Mode; label: string; icon: string }[] = [
 const NAV_COLLAPSED_KEY = "goatask:navCollapsed";
 
 function App() {
-  const { state: authState } = useAuth();
+  const { state: authState, logout } = useAuth();
   const [mode, setMode] = useState<Mode>("home");
   const [health, setHealth] = useState<string>("確認中...");
   const isMobile = useIsMobile();
@@ -38,6 +38,10 @@ function App() {
       .catch(() => setHealth("接続失敗"));
   }, [authState.status]);
 
+  useEffect(() => {
+    window.localStorage.setItem(NAV_COLLAPSED_KEY, navCollapsed ? "1" : "0");
+  }, [navCollapsed]);
+
   if (authState.status === "loading") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">
@@ -49,9 +53,16 @@ function App() {
     return <LoginView />;
   }
 
-  useEffect(() => {
-    window.localStorage.setItem(NAV_COLLAPSED_KEY, navCollapsed ? "1" : "0");
-  }, [navCollapsed]);
+  const user = authState.user;
+  const handleLogout = async () => {
+    if (!window.confirm("ログアウトしますか？")) return;
+    try {
+      await logout();
+    } catch {
+      // 失敗時はユーザーに通知。最低限の体験で十分。
+      alert("ログアウトに失敗しました");
+    }
+  };
 
   const content = (
     <>
@@ -66,11 +77,20 @@ function App() {
   if (isMobile) {
     return (
       <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
-        <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 py-2">
+        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2">
           <h1 className="text-base font-bold">GOATask</h1>
-          <p className="text-[10px] text-slate-500">
-            API: <span className="font-mono">{health}</span>
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] text-slate-500">
+              <span className="font-mono">{user.username}</span> / API:{" "}
+              <span className="font-mono">{health}</span>
+            </p>
+            <button
+              onClick={handleLogout}
+              className="rounded border border-slate-300 px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-100"
+            >
+              ログアウト
+            </button>
+          </div>
         </header>
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 pb-24">
           {content}
@@ -141,6 +161,23 @@ function App() {
             </li>
           ))}
         </ul>
+        <div className="border-t border-slate-200 p-2">
+          {!navCollapsed && (
+            <p className="mb-1 px-2 text-[11px] text-slate-500">
+              <span className="font-mono">{user.username}</span>
+            </p>
+          )}
+          <button
+            onClick={handleLogout}
+            title={navCollapsed ? "ログアウト" : undefined}
+            className={`flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 ${
+              navCollapsed ? "justify-center" : ""
+            }`}
+          >
+            <span className="w-5 shrink-0 text-center">⏻</span>
+            {!navCollapsed && <span>ログアウト</span>}
+          </button>
+        </div>
       </nav>
 
       <main className="min-w-0 flex-1 p-6">{content}</main>
