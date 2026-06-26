@@ -23,15 +23,6 @@ func cookieSecure() bool {
 	return os.Getenv("COOKIE_SECURE") != "false"
 }
 
-// 本番 (Secure=true) では Render の別サブドメイン構成でも Cookie が乗るよう
-// SameSite=None。開発 (Secure=false, HTTP) では None が使えないので Lax。
-func cookieSameSite() http.SameSite {
-	if cookieSecure() {
-		return http.SameSiteNoneMode
-	}
-	return http.SameSiteLaxMode
-}
-
 func NewSessionID() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -47,7 +38,7 @@ func SetSessionCookie(c echo.Context, id string, expires time.Time) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   cookieSecure(),
-		SameSite: cookieSameSite(),
+		SameSite: http.SameSiteLaxMode,
 		Expires:  expires,
 	})
 }
@@ -59,7 +50,7 @@ func ClearSessionCookie(c echo.Context) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   cookieSecure(),
-		SameSite: cookieSameSite(),
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
 }

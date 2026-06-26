@@ -12,6 +12,7 @@ type Config struct {
 	DBUser     string
 	DBPassword string
 	DBName     string
+	StaticDir  string
 }
 
 func Load() *Config {
@@ -22,6 +23,7 @@ func Load() *Config {
 		DBUser:     getEnv("DB_USER", "goatask"),
 		DBPassword: getEnv("DB_PASSWORD", "goatask_dev"),
 		DBName:     getEnv("DB_NAME", "goatask"),
+		StaticDir:  getEnv("STATIC_DIR", ""),
 	}
 }
 

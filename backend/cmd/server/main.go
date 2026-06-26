@@ -52,5 +52,17 @@ func main() {
 	handler.NewProjectHandler(conn).Register(protected)
 	handler.NewBackupHandler(conn).Register(protected)
 
+	if cfg.StaticDir != "" {
+		e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
+			Root:  cfg.StaticDir,
+			Index: "index.html",
+			HTML5: true,
+			Skipper: func(c echo.Context) bool {
+				p := c.Request().URL.Path
+				return strings.HasPrefix(p, "/api/") || p == "/health"
+			},
+		}))
+	}
+
 	e.Logger.Fatal(e.Start(":" + cfg.AppPort))
 }
