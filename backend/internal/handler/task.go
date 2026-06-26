@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/crab2424/goatask/backend/internal/auth"
 	"github.com/crab2424/goatask/backend/internal/model"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
@@ -29,8 +30,9 @@ func (h *TaskHandler) Register(g *echo.Group) {
 }
 
 func (h *TaskHandler) list(c echo.Context) error {
+	uid := auth.UserID(c)
 	var tasks []model.Task
-	if err := h.DB.Preload("Subtasks", func(db *gorm.DB) *gorm.DB {
+	if err := h.DB.Where("user_id = ?", uid).Preload("Subtasks", func(db *gorm.DB) *gorm.DB {
 		return db.Order("position ASC, id ASC")
 	}).Order("position ASC, created_at DESC").Find(&tasks).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -39,6 +41,7 @@ func (h *TaskHandler) list(c echo.Context) error {
 }
 
 func (h *TaskHandler) create(c echo.Context) error {
+	uid := auth.UserID(c)
 	var t model.Task
 	if err := c.Bind(&t); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -49,6 +52,7 @@ func (h *TaskHandler) create(c echo.Context) error {
 	if t.Status == "" {
 		t.Status = model.TaskStatusTodo
 	}
+	t.UserID = uid
 	t.Subtasks = nil
 	if err := h.DB.Create(&t).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -65,12 +69,13 @@ func (h *TaskHandler) create(c echo.Context) error {
 }
 
 func (h *TaskHandler) get(c echo.Context) error {
+	uid := auth.UserID(c)
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
 	var t model.Task
-	if err := h.DB.Preload("Subtasks", func(db *gorm.DB) *gorm.DB {
+	if err := h.DB.Where("user_id = ?", uid).Preload("Subtasks", func(db *gorm.DB) *gorm.DB {
 		return db.Order("position ASC, id ASC")
 	}).First(&t, id).Error; err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "task not found")
@@ -79,17 +84,19 @@ func (h *TaskHandler) get(c echo.Context) error {
 }
 
 func (h *TaskHandler) update(c echo.Context) error {
+	uid := auth.UserID(c)
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
 	var t model.Task
-	if err := h.DB.First(&t, id).Error; err != nil {
+	if err := h.DB.Where("user_id = ?", uid).First(&t, id).Error; err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "task not found")
 	}
 	if err := c.Bind(&t); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	t.UserID = uid
 	t.Subtasks = nil
 	if err := h.DB.Save(&t).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -106,11 +113,16 @@ func (h *TaskHandler) update(c echo.Context) error {
 }
 
 func (h *TaskHandler) delete(c echo.Context) error {
+	uid := auth.UserID(c)
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
-	if err := h.DB.Select("Subtasks").Delete(&model.Task{ID: uint(id)}).Error; err != nil {
+	var t model.Task
+	if err := h.DB.Where("user_id = ?", uid).First(&t, id).Error; err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "task not found")
+	}
+	if err := h.DB.Select("Subtasks").Delete(&t).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.NoContent(http.StatusNoContent)
@@ -121,6 +133,7 @@ type subtaskToggleReq struct {
 }
 
 func (h *TaskHandler) toggleSubtask(c echo.Context) error {
+	uid := auth.UserID(c)
 	taskID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
@@ -132,6 +145,10 @@ func (h *TaskHandler) toggleSubtask(c echo.Context) error {
 	var req subtaskToggleReq
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	var parent model.Task
+	if err := h.DB.Where("user_id = ?", uid).First(&parent, taskID).Error; err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "task not found")
 	}
 	var sub model.Subtask
 	if err := h.DB.Where("task_id = ?", taskID).First(&sub, subID).Error; err != nil {
@@ -158,12 +175,13 @@ type reorderReq struct {
 }
 
 func (h *TaskHandler) reorder(c echo.Context) error {
+	uid := auth.UserID(c)
 	var req reorderReq
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	for i, id := range req.IDs {
-		if err := h.DB.Model(&model.Task{}).Where("id = ?", id).Update("position", i).Error; err != nil {
+		if err := h.DB.Model(&model.Task{}).Where("id = ? AND user_id = ?", id, uid).Update("position", i).Error; err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		}
 	}

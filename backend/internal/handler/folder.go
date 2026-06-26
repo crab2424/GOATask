@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/crab2424/goatask/backend/internal/auth"
 	"github.com/crab2424/goatask/backend/internal/model"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
@@ -27,14 +28,16 @@ func (h *FolderHandler) Register(g *echo.Group) {
 }
 
 func (h *FolderHandler) list(c echo.Context) error {
+	uid := auth.UserID(c)
 	var folders []model.Folder
-	if err := h.DB.Order("name ASC").Find(&folders).Error; err != nil {
+	if err := h.DB.Where("user_id = ?", uid).Order("name ASC").Find(&folders).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusOK, folders)
 }
 
 func (h *FolderHandler) create(c echo.Context) error {
+	uid := auth.UserID(c)
 	var f model.Folder
 	if err := c.Bind(&f); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -44,7 +47,7 @@ func (h *FolderHandler) create(c echo.Context) error {
 	}
 	if f.ParentID != nil {
 		var parent model.Folder
-		if err := h.DB.First(&parent, *f.ParentID).Error; err != nil {
+		if err := h.DB.Where("user_id = ?", uid).First(&parent, *f.ParentID).Error; err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, "parent folder not found")
 		}
 		d, err := folderDepth(h.DB, *f.ParentID)
@@ -55,6 +58,7 @@ func (h *FolderHandler) create(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "これ以上深い階層は作成できません")
 		}
 	}
+	f.UserID = uid
 	if err := h.DB.Create(&f).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
@@ -62,12 +66,13 @@ func (h *FolderHandler) create(c echo.Context) error {
 }
 
 func (h *FolderHandler) update(c echo.Context) error {
+	uid := auth.UserID(c)
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
 	var f model.Folder
-	if err := h.DB.First(&f, id).Error; err != nil {
+	if err := h.DB.Where("user_id = ?", uid).First(&f, id).Error; err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "folder not found")
 	}
 	if err := c.Bind(&f); err != nil {
@@ -79,6 +84,10 @@ func (h *FolderHandler) update(c echo.Context) error {
 	if f.ParentID != nil {
 		if *f.ParentID == uint(id) {
 			return echo.NewHTTPError(http.StatusBadRequest, "parent cannot be self")
+		}
+		var parent model.Folder
+		if err := h.DB.Where("user_id = ?", uid).First(&parent, *f.ParentID).Error; err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "parent folder not found")
 		}
 		if cycle, err := wouldCreateCycle(h.DB, uint(id), *f.ParentID); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -97,6 +106,7 @@ func (h *FolderHandler) update(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "移動先では階層が深くなりすぎます")
 		}
 	}
+	f.UserID = uid
 	if err := h.DB.Save(&f).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
@@ -107,12 +117,13 @@ func (h *FolderHandler) update(c echo.Context) error {
 // parent (so they bubble up one level). Memos in this folder have their
 // folder_id cleared so they appear in the "未分類" group.
 func (h *FolderHandler) delete(c echo.Context) error {
+	uid := auth.UserID(c)
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
 	var f model.Folder
-	if err := h.DB.First(&f, id).Error; err != nil {
+	if err := h.DB.Where("user_id = ?", uid).First(&f, id).Error; err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "folder not found")
 	}
 	tx := h.DB.Begin()

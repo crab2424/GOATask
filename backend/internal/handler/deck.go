@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/crab2424/goatask/backend/internal/auth"
 	"github.com/crab2424/goatask/backend/internal/model"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
@@ -34,9 +35,18 @@ func (h *DeckHandler) Register(g *echo.Group) {
 	g.PATCH("/decks/:id/cards/:cid/reset", h.resetStats)
 }
 
+func (h *DeckHandler) ownsDeck(uid uint, deckID int) error {
+	var d model.Deck
+	if err := h.DB.Select("id").Where("user_id = ?", uid).First(&d, deckID).Error; err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "deck not found")
+	}
+	return nil
+}
+
 func (h *DeckHandler) list(c echo.Context) error {
+	uid := auth.UserID(c)
 	var decks []model.Deck
-	if err := h.DB.Preload("Cards", func(db *gorm.DB) *gorm.DB {
+	if err := h.DB.Where("user_id = ?", uid).Preload("Cards", func(db *gorm.DB) *gorm.DB {
 		return db.Order("id ASC")
 	}).Order("updated_at DESC").Find(&decks).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -45,6 +55,7 @@ func (h *DeckHandler) list(c echo.Context) error {
 }
 
 func (h *DeckHandler) create(c echo.Context) error {
+	uid := auth.UserID(c)
 	var d model.Deck
 	if err := c.Bind(&d); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -52,6 +63,7 @@ func (h *DeckHandler) create(c echo.Context) error {
 	if d.Name == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "name is required")
 	}
+	d.UserID = uid
 	d.Cards = nil
 	if err := h.DB.Create(&d).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -60,12 +72,13 @@ func (h *DeckHandler) create(c echo.Context) error {
 }
 
 func (h *DeckHandler) get(c echo.Context) error {
+	uid := auth.UserID(c)
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
 	var d model.Deck
-	if err := h.DB.Preload("Cards", func(db *gorm.DB) *gorm.DB {
+	if err := h.DB.Where("user_id = ?", uid).Preload("Cards", func(db *gorm.DB) *gorm.DB {
 		return db.Order("id ASC")
 	}).First(&d, id).Error; err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "deck not found")
@@ -74,17 +87,19 @@ func (h *DeckHandler) get(c echo.Context) error {
 }
 
 func (h *DeckHandler) update(c echo.Context) error {
+	uid := auth.UserID(c)
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
 	var d model.Deck
-	if err := h.DB.First(&d, id).Error; err != nil {
+	if err := h.DB.Where("user_id = ?", uid).First(&d, id).Error; err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "deck not found")
 	}
 	if err := c.Bind(&d); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	d.UserID = uid
 	d.Cards = nil
 	if err := h.DB.Save(&d).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -93,20 +108,29 @@ func (h *DeckHandler) update(c echo.Context) error {
 }
 
 func (h *DeckHandler) delete(c echo.Context) error {
+	uid := auth.UserID(c)
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
-	if err := h.DB.Select("Cards").Delete(&model.Deck{ID: uint(id)}).Error; err != nil {
+	var d model.Deck
+	if err := h.DB.Where("user_id = ?", uid).First(&d, id).Error; err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "deck not found")
+	}
+	if err := h.DB.Select("Cards").Delete(&d).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.NoContent(http.StatusNoContent)
 }
 
 func (h *DeckHandler) listCards(c echo.Context) error {
+	uid := auth.UserID(c)
 	deckID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
+	}
+	if err := h.ownsDeck(uid, deckID); err != nil {
+		return err
 	}
 	var cards []model.Card
 	if err := h.DB.Where("deck_id = ?", deckID).Order("id ASC").Find(&cards).Error; err != nil {
@@ -116,9 +140,13 @@ func (h *DeckHandler) listCards(c echo.Context) error {
 }
 
 func (h *DeckHandler) createCard(c echo.Context) error {
+	uid := auth.UserID(c)
 	deckID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
+	}
+	if err := h.ownsDeck(uid, deckID); err != nil {
+		return err
 	}
 	var card model.Card
 	if err := c.Bind(&card); err != nil {
@@ -142,6 +170,7 @@ type importCardsReq struct {
 }
 
 func (h *DeckHandler) importCards(c echo.Context) error {
+	uid := auth.UserID(c)
 	deckID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
@@ -154,7 +183,7 @@ func (h *DeckHandler) importCards(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "no cards to import")
 	}
 	var deck model.Deck
-	if err := h.DB.First(&deck, deckID).Error; err != nil {
+	if err := h.DB.Where("user_id = ?", uid).First(&deck, deckID).Error; err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "deck not found")
 	}
 	created := make([]model.Card, 0, len(req.Cards))
@@ -181,6 +210,7 @@ func (h *DeckHandler) importCards(c echo.Context) error {
 }
 
 func (h *DeckHandler) updateCard(c echo.Context) error {
+	uid := auth.UserID(c)
 	deckID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
@@ -188,6 +218,9 @@ func (h *DeckHandler) updateCard(c echo.Context) error {
 	cardID, err := strconv.Atoi(c.Param("cid"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid card id")
+	}
+	if err := h.ownsDeck(uid, deckID); err != nil {
+		return err
 	}
 	var card model.Card
 	if err := h.DB.Where("deck_id = ?", deckID).First(&card, cardID).Error; err != nil {
@@ -204,6 +237,7 @@ func (h *DeckHandler) updateCard(c echo.Context) error {
 }
 
 func (h *DeckHandler) deleteCard(c echo.Context) error {
+	uid := auth.UserID(c)
 	deckID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
@@ -211,6 +245,9 @@ func (h *DeckHandler) deleteCard(c echo.Context) error {
 	cardID, err := strconv.Atoi(c.Param("cid"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid card id")
+	}
+	if err := h.ownsDeck(uid, deckID); err != nil {
+		return err
 	}
 	if err := h.DB.Where("deck_id = ? AND id = ?", deckID, cardID).Delete(&model.Card{}).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -223,6 +260,7 @@ type answerReq struct {
 }
 
 func (h *DeckHandler) answer(c echo.Context) error {
+	uid := auth.UserID(c)
 	deckID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
@@ -234,6 +272,9 @@ func (h *DeckHandler) answer(c echo.Context) error {
 	var req answerReq
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if err := h.ownsDeck(uid, deckID); err != nil {
+		return err
 	}
 	var card model.Card
 	if err := h.DB.Where("deck_id = ?", deckID).First(&card, cardID).Error; err != nil {
@@ -255,6 +296,7 @@ type markReq struct {
 }
 
 func (h *DeckHandler) toggleMark(c echo.Context) error {
+	uid := auth.UserID(c)
 	deckID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
@@ -266,6 +308,9 @@ func (h *DeckHandler) toggleMark(c echo.Context) error {
 	var req markReq
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if err := h.ownsDeck(uid, deckID); err != nil {
+		return err
 	}
 	var card model.Card
 	if err := h.DB.Where("deck_id = ?", deckID).First(&card, cardID).Error; err != nil {
@@ -279,6 +324,7 @@ func (h *DeckHandler) toggleMark(c echo.Context) error {
 }
 
 func (h *DeckHandler) resetStats(c echo.Context) error {
+	uid := auth.UserID(c)
 	deckID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
@@ -286,6 +332,9 @@ func (h *DeckHandler) resetStats(c echo.Context) error {
 	cardID, err := strconv.Atoi(c.Param("cid"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid card id")
+	}
+	if err := h.ownsDeck(uid, deckID); err != nil {
+		return err
 	}
 	var card model.Card
 	if err := h.DB.Where("deck_id = ?", deckID).First(&card, cardID).Error; err != nil {

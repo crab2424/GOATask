@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/crab2424/goatask/backend/internal/auth"
 	"github.com/crab2424/goatask/backend/internal/model"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
@@ -25,14 +26,16 @@ func (h *ProjectHandler) Register(g *echo.Group) {
 }
 
 func (h *ProjectHandler) list(c echo.Context) error {
+	uid := auth.UserID(c)
 	var projects []model.Project
-	if err := h.DB.Order("name ASC").Find(&projects).Error; err != nil {
+	if err := h.DB.Where("user_id = ?", uid).Order("name ASC").Find(&projects).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusOK, projects)
 }
 
 func (h *ProjectHandler) create(c echo.Context) error {
+	uid := auth.UserID(c)
 	var p model.Project
 	if err := c.Bind(&p); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -42,7 +45,7 @@ func (h *ProjectHandler) create(c echo.Context) error {
 	}
 	if p.ParentID != nil {
 		var parent model.Project
-		if err := h.DB.First(&parent, *p.ParentID).Error; err != nil {
+		if err := h.DB.Where("user_id = ?", uid).First(&parent, *p.ParentID).Error; err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, "parent project not found")
 		}
 		d, err := projectDepth(h.DB, *p.ParentID)
@@ -53,6 +56,7 @@ func (h *ProjectHandler) create(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "これ以上深い階層は作成できません")
 		}
 	}
+	p.UserID = uid
 	if err := h.DB.Create(&p).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
@@ -60,12 +64,13 @@ func (h *ProjectHandler) create(c echo.Context) error {
 }
 
 func (h *ProjectHandler) update(c echo.Context) error {
+	uid := auth.UserID(c)
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
 	var p model.Project
-	if err := h.DB.First(&p, id).Error; err != nil {
+	if err := h.DB.Where("user_id = ?", uid).First(&p, id).Error; err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "project not found")
 	}
 	if err := c.Bind(&p); err != nil {
@@ -77,6 +82,10 @@ func (h *ProjectHandler) update(c echo.Context) error {
 	if p.ParentID != nil {
 		if *p.ParentID == uint(id) {
 			return echo.NewHTTPError(http.StatusBadRequest, "parent cannot be self")
+		}
+		var parent model.Project
+		if err := h.DB.Where("user_id = ?", uid).First(&parent, *p.ParentID).Error; err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "parent project not found")
 		}
 		if cycle, err := wouldCreateProjectCycle(h.DB, uint(id), *p.ParentID); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -95,6 +104,7 @@ func (h *ProjectHandler) update(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "移動先では階層が深くなりすぎます")
 		}
 	}
+	p.UserID = uid
 	if err := h.DB.Save(&p).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
@@ -102,12 +112,13 @@ func (h *ProjectHandler) update(c echo.Context) error {
 }
 
 func (h *ProjectHandler) delete(c echo.Context) error {
+	uid := auth.UserID(c)
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
 	var p model.Project
-	if err := h.DB.First(&p, id).Error; err != nil {
+	if err := h.DB.Where("user_id = ?", uid).First(&p, id).Error; err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "project not found")
 	}
 	tx := h.DB.Begin()
