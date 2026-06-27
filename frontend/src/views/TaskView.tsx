@@ -47,6 +47,7 @@ import {
   SidebarShortcuts,
   type ShortcutEntry,
 } from "../components/SidebarShortcuts";
+import { UndoToast } from "../components/UndoToast";
 import {
   buildBreadcrumb,
   buildChildMap,
@@ -183,6 +184,10 @@ export function TaskView() {
   }, [filter]);
   const favorites = useFavorites("goatask:project-favorites");
   const recent = useRecent("goatask:project-recent");
+  const [undoState, setUndoState] = useState<{
+    message: string;
+    snapshot: Task;
+  } | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     try {
       const saved = localStorage.getItem(PROJECT_EXPANDED_KEY);
@@ -627,19 +632,36 @@ export function TaskView() {
   };
 
   const onDeleteTask = async (t: Task) => {
-    const subs = t.subtasks ?? [];
-    const msg = [
-      `タスク「${t.title}」を削除しますか？`,
-      "",
-      "【影響範囲】",
-      subs.length > 0 ? `・サブタスク ${subs.length}件も削除されます` : null,
-      "・この操作は取り消せません",
-    ]
-      .filter(Boolean)
-      .join("\n");
-    if (!confirm(msg)) return;
-    await deleteTask(t.id);
-    await reload();
+    try {
+      await deleteTask(t.id);
+      await reload();
+      const subs = t.subtasks ?? [];
+      const note = subs.length > 0 ? "（サブタスクは復元不可）" : "";
+      setUndoState({
+        message: `「${t.title}」を削除しました${note}`,
+        snapshot: t,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const restoreTask = async () => {
+    if (!undoState) return;
+    const t = undoState.snapshot;
+    setUndoState(null);
+    try {
+      await createTask({
+        title: t.title,
+        description: t.description,
+        status: t.status,
+        due_date: t.due_date,
+        project_id: t.project_id ?? null,
+      });
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const moveTask = async (taskId: number, direction: "up" | "down") => {
@@ -1568,6 +1590,13 @@ export function TaskView() {
         </section>
       </div>
 
+      {undoState && (
+        <UndoToast
+          message={undoState.message}
+          onUndo={restoreTask}
+          onDismiss={() => setUndoState(null)}
+        />
+      )}
       {ctxMenu && (
         <div
           ref={ctxMenuRef}

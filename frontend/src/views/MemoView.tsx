@@ -44,6 +44,7 @@ import {
   SidebarShortcuts,
   type ShortcutEntry,
 } from "../components/SidebarShortcuts";
+import { UndoToast } from "../components/UndoToast";
 import { EXPORT_FORMATS, exportMemo } from "../lib/exportMemo";
 import { PRESET_COLORS, isValidColor } from "../lib/memoColor";
 import {
@@ -113,6 +114,10 @@ export function MemoView() {
   }, [colorFilter]);
   const favorites = useFavorites("goatask:memo-favorites");
   const recent = useRecent("goatask:memo-recent");
+  const [undoState, setUndoState] = useState<{
+    message: string;
+    snapshot: Memo;
+  } | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     try {
       const saved = localStorage.getItem(FOLDER_EXPANDED_KEY);
@@ -565,33 +570,38 @@ export function MemoView() {
     }
   };
 
-  const onDelete = async () => {
-    if (!selected) return;
-    const msg = [
-      `メモ「${selected.title}」を削除しますか？`,
-      "",
-      "・この操作は取り消せません",
-    ].join("\n");
-    if (!confirm(msg)) return;
+  const performMemoDelete = async (m: Memo) => {
     try {
-      await deleteMemo(selected.id);
-      backToList();
+      await deleteMemo(m.id);
+      if (selectedId === m.id) backToList();
       await reload();
+      setUndoState({ message: `「${m.title}」を削除しました`, snapshot: m });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
 
+  const onDelete = async () => {
+    if (!selected) return;
+    await performMemoDelete(selected);
+  };
+
   const onDeleteMemoFromList = async (m: Memo) => {
-    const msg = [
-      `メモ「${m.title}」を削除しますか？`,
-      "",
-      "・この操作は取り消せません",
-    ].join("\n");
-    if (!confirm(msg)) return;
+    await performMemoDelete(m);
+  };
+
+  const restoreMemo = async () => {
+    if (!undoState) return;
+    const m = undoState.snapshot;
+    setUndoState(null);
     try {
-      await deleteMemo(m.id);
-      if (selectedId === m.id) backToList();
+      await createMemo({
+        title: m.title,
+        content: m.content,
+        folder_id: m.folder_id ?? null,
+        color: m.color,
+        font_size: m.font_size,
+      });
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1234,6 +1244,13 @@ export function MemoView() {
         )}
       </div>
 
+      {undoState && (
+        <UndoToast
+          message={undoState.message}
+          onUndo={restoreMemo}
+          onDismiss={() => setUndoState(null)}
+        />
+      )}
       {ctxMenu && (
         <div
           ref={ctxMenuRef}
