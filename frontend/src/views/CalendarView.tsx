@@ -63,25 +63,29 @@ export function CalendarView({ initialDate }: { initialDate?: string | null }) {
   const editNote = (note: CalendarNote) => { setKind("note"); setEditingNote(note); setTitle(note.title); setColor((note.color in COLORS ? note.color : "violet") as keyof typeof COLORS); };
   const removeNote = async (note: CalendarNote) => { if (!window.confirm(`「${note.title}」を削除しますか？`)) return; await deleteCalendarNote(note.id); if (editingNote?.id === note.id) { setEditingNote(null); setTitle(""); } await refresh(); };
   const selectedTasks = tasksOn(selected); const selectedNotes = notesOn(selected);
+  const monthControls = <div className="flex items-center gap-2">
+    <button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="rounded border px-3 py-1.5">‹</button>
+    <button onClick={() => { const now = new Date(); setCursor(new Date(now.getFullYear(), now.getMonth(), 1)); selectDay(dateString(now)); }} className="rounded border px-3 py-1.5 text-sm">今日</button>
+    <strong className="min-w-28 text-center">{cursor.getFullYear()}年 {cursor.getMonth() + 1}月</strong>
+    <button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="rounded border px-3 py-1.5">›</button>
+  </div>;
 
   return <div className="mx-auto max-w-7xl">
     <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
       <h1 className="text-2xl font-bold">カレンダー</h1>
-      <div className="flex items-center gap-2">
-        <button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="rounded border px-3 py-1.5">‹</button>
-        <button onClick={() => { const now = new Date(); setCursor(new Date(now.getFullYear(), now.getMonth(), 1)); selectDay(dateString(now)); }} className="rounded border px-3 py-1.5 text-sm">今日</button>
-        <strong className="min-w-28 text-center">{cursor.getFullYear()}年 {cursor.getMonth() + 1}月</strong>
-        <button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="rounded border px-3 py-1.5">›</button>
-      </div>
+      <div className="lg:hidden">{monthControls}</div>
     </div>
     {(error || query.error) && <div className="mb-3 rounded border border-rose-300 bg-rose-50 p-2 text-sm text-rose-700">{error ?? String(query.error)}</div>}
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div>
+        <div className="mb-3 hidden justify-center lg:flex">{monthControls}</div>
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="grid grid-cols-7 border-b bg-slate-50 text-center text-xs font-medium text-slate-500">{WEEKDAYS.map((w, i) => <div key={w} className={`py-2 ${i === 0 ? "text-rose-500" : i === 6 ? "text-sky-500" : ""}`}>{w}</div>)}</div>
-        <div className="grid grid-cols-7">{cells.map((date) => { const day = dateString(date); const dayTasks = tasksOn(day); const dayNotes = notesOn(day); const outside = date.getMonth() !== cursor.getMonth(); const active = day === selected; const items = [...dayTasks.map((t) => ({ type: "task" as const, value: t })), ...dayNotes.map((n) => ({ type: "note" as const, value: n }))]; const limit = isMobile ? 2 : 3; return <button key={day} onClick={() => selectDay(day)} className={`min-h-20 border-b border-r p-1 text-left align-top sm:min-h-28 ${active ? "bg-blue-50 ring-2 ring-inset ring-blue-400" : "hover:bg-slate-50"}`}>
-          <span className={`mb-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${day === dateString(new Date()) ? "bg-slate-900 text-white" : outside ? "text-slate-300" : date.getDay() === 0 ? "text-rose-500" : date.getDay() === 6 ? "text-sky-500" : ""}`}>{date.getDate()}</span>
+        <div className="grid grid-cols-7">{cells.map((date) => { const day = dateString(date); const dayTasks = tasksOn(day); const dayNotes = notesOn(day); const outside = date.getMonth() !== cursor.getMonth(); const active = day === selected; const items = [...dayTasks.map((t) => ({ type: "task" as const, value: t })), ...dayNotes.map((n) => ({ type: "note" as const, value: n }))]; const limit = isMobile ? 2 : 3; return <button key={day} onClick={() => selectDay(day)} className={`relative min-h-20 border-b border-r p-1 pt-8 text-left align-top sm:min-h-28 ${active ? "bg-blue-50 ring-2 ring-inset ring-blue-400" : "hover:bg-slate-50"}`}>
+          <span className={`absolute left-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${day === dateString(new Date()) ? "bg-slate-900 text-white" : outside ? "text-slate-300" : date.getDay() === 0 ? "text-rose-500" : date.getDay() === 6 ? "text-sky-500" : ""}`}>{date.getDate()}</span>
           <div className="space-y-0.5">{items.slice(0, limit).map((item) => item.type === "task" ? <div key={`t${item.value.id}`} className={`truncate rounded px-1 py-0.5 text-[10px] sm:text-xs ${item.value.status === "done" ? "bg-slate-100 text-slate-400 line-through" : datePart(item.value.due_date) === day ? "bg-rose-100 text-rose-800" : "bg-sky-100 text-sky-800"}`}>{datePart(item.value.due_date) === day ? "⚑ " : ""}{item.value.title}</div> : <div key={`n${item.value.id}`} className={`truncate rounded px-1 py-0.5 text-[10px] sm:text-xs ${COLORS[item.value.color as keyof typeof COLORS] ?? COLORS.violet}`}>• {item.value.title}</div>)}{items.length > limit && <div className="px-1 text-[10px] text-slate-500">ほか{items.length - limit}件</div>}</div>
         </button>; })}</div>
+        </div>
       </div>
       <aside className="space-y-4">
         <section className="rounded-lg border bg-white p-4 shadow-sm"><h2 className="font-semibold">{selected.replaceAll("-", "/")} の予定</h2><div className="mt-3 space-y-2">
