@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { listTasks, type TaskStatus } from "../api/tasks";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  listTasks,
+  toggleSubtask,
+  type Subtask,
+  type TaskStatus,
+} from "../api/tasks";
+import { MdText } from "../lib/mdInline";
+import { stripBulletLines } from "../lib/taskText";
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: "未着手",
@@ -115,13 +122,27 @@ function MiniCalendar({ onOpenCalendar, markedDates }: { onOpenCalendar: (date: 
 }
 
 export function HomeView({ onOpenCalendar }: { onOpenCalendar: (date: string) => void }) {
+  const queryClient = useQueryClient();
   const tasksQuery = useQuery({ queryKey: ["tasks"], queryFn: listTasks });
   const tasks = useMemo(() => tasksQuery.data ?? [], [tasksQuery.data]);
-  const error = tasksQuery.error
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const error = mutationError
+    ? mutationError
+    : tasksQuery.error
     ? tasksQuery.error instanceof Error
       ? tasksQuery.error.message
       : String(tasksQuery.error)
     : null;
+
+  const onToggleSubtask = async (taskId: number, sub: Subtask) => {
+    try {
+      await toggleSubtask(taskId, sub.id, !sub.done);
+      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      setMutationError(null);
+    } catch (e) {
+      setMutationError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const todayStr = formatDate(new Date());
   const markedDates = useMemo(() => new Set(tasks.flatMap((t) => [t.start_date?.slice(0, 10), t.due_date?.slice(0, 10)].filter((d): d is string => Boolean(d)))), [tasks]);
@@ -158,26 +179,76 @@ export function HomeView({ onOpenCalendar }: { onOpenCalendar: (date: string) =>
           </p>
         ) : (
           <ul className="space-y-2">
-            {todayTasks.map((t) => (
-              <li
-                key={t.id}
-                className="flex items-start gap-2 rounded border border-slate-100 bg-slate-50 p-3"
-              >
-                <span
-                  className={`mt-0.5 rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status]}`}
+            {todayTasks.map((t) => {
+              const bodyText = stripBulletLines(t.description ?? "");
+              const subs = t.subtasks ?? [];
+              const subDoneCount = subs.filter((s) => s.done).length;
+              const subPct =
+                subs.length > 0
+                  ? Math.round((subDoneCount / subs.length) * 100)
+                  : 0;
+              return (
+                <li
+                  key={t.id}
+                  className="flex items-start gap-2 rounded border border-slate-100 bg-slate-50 p-3"
                 >
-                  {STATUS_LABEL[t.status]}
-                </span>
-                <div className="flex-1">
-                  <p className="font-medium">{t.title}</p>
-                  {t.description && (
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
-                      {t.description}
-                    </p>
-                  )}
-                </div>
-              </li>
-            ))}
+                  <span
+                    className={`mt-0.5 rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status]}`}
+                  >
+                    {STATUS_LABEL[t.status]}
+                  </span>
+                  <div className="flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium">{t.title}</p>
+                      {subs.length > 0 && (
+                        <span className="text-xs text-slate-500">
+                          {subDoneCount}/{subs.length}（{subPct}%）
+                        </span>
+                      )}
+                    </div>
+                    {bodyText && (
+                      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-600">
+                        <MdText text={bodyText} />
+                      </p>
+                    )}
+                    {subs.length > 0 && (
+                      <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-slate-200">
+                        <div
+                          className="h-full rounded-full bg-emerald-500 transition-all"
+                          style={{ width: `${subPct}%` }}
+                        />
+                      </div>
+                    )}
+                    {subs.length > 0 && (
+                      <ul className="mt-2 space-y-1">
+                        {subs.map((s) => (
+                          <li
+                            key={s.id}
+                            className="flex items-start gap-2 text-sm"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={s.done}
+                              onChange={() => onToggleSubtask(t.id, s)}
+                              className="mt-0.5 h-4 w-4 cursor-pointer accent-slate-900"
+                            />
+                            <span
+                              className={
+                                s.done
+                                  ? "break-words text-slate-400 line-through"
+                                  : "break-words text-slate-700"
+                              }
+                            >
+                              <MdText text={s.text} />
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
