@@ -71,9 +71,9 @@ export function CalendarView({ initialDate }: { initialDate?: string | null }) {
   </div>;
 
   return <div className="mx-auto max-w-7xl">
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+    <div className="mb-4">
       <h1 className="text-2xl font-bold">カレンダー</h1>
-      <div className="lg:hidden">{monthControls}</div>
+      <div className="mt-3 flex w-full justify-center lg:hidden">{monthControls}</div>
     </div>
     {(error || query.error) && <div className="mb-3 rounded border border-rose-300 bg-rose-50 p-2 text-sm text-rose-700">{error ?? String(query.error)}</div>}
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
