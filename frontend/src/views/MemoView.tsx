@@ -26,6 +26,13 @@ import {
 } from "../api/folders";
 import { useIsMobile } from "../lib/useIsMobile";
 import { MobileDrawer } from "../components/MobileDrawer";
+import {
+  TreeSearch,
+  matchesQuery,
+  normalizeQuery,
+  renderTreeSearchResults,
+  type TreeSearchResult,
+} from "../components/TreeSearch";
 import { EXPORT_FORMATS, exportMemo } from "../lib/exportMemo";
 import { PRESET_COLORS, isValidColor } from "../lib/memoColor";
 import {
@@ -77,6 +84,7 @@ export function MemoView() {
   });
   const isMobile = useIsMobile();
   const [treeOpen, setTreeOpen] = useState(false);
+  const [treeQuery, setTreeQuery] = useState("");
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     try {
       const saved = localStorage.getItem(FOLDER_EXPANDED_KEY);
@@ -768,28 +776,80 @@ export function MemoView() {
       ? "ルート"
       : (folders.find((f) => f.id === currentFolderId)?.name ?? "フォルダ");
 
+  const folderPath = (folderId: number | null): string => {
+    if (folderId === null) return "🏠 ルート";
+    const path = buildBreadcrumb(folders, folderId)
+      .map((f) => f.name)
+      .join(" / ");
+    return `🏠 ルート / ${path}`;
+  };
+
+  const searchResults = useMemo<TreeSearchResult[]>(() => {
+    const q = normalizeQuery(treeQuery);
+    if (!q) return [];
+    const out: TreeSearchResult[] = [];
+    for (const f of folders) {
+      if (matchesQuery(f.name, q)) {
+        out.push({
+          key: `f-${f.id}`,
+          icon: "📁",
+          label: f.name,
+          path: folderPath(f.parent_id ?? null),
+          onClick: () => navigateTo(f.id),
+        });
+      }
+    }
+    for (const m of memos) {
+      if (matchesQuery(m.title, q)) {
+        out.push({
+          key: `m-${m.id}`,
+          icon: "📄",
+          label: m.title,
+          path: folderPath(m.folder_id ?? null),
+          onClick: () => {
+            navigateTo(m.folder_id ?? null);
+            openExistingMemo(m);
+          },
+        });
+      }
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [treeQuery, folders, memos]);
+
   const treeContent = (
-    <ul className="space-y-0.5">
-      <li>
-        <button
-          onClick={() => navigateTo(null)}
-          className={`w-full rounded px-2 py-1.5 text-left text-sm ${
-            currentFolderId === null
-              ? "bg-slate-200 font-bold text-slate-900"
-              : "hover:bg-slate-100"
-          }`}
-        >
-          🏠 ルート
-          {totalMemos > 0 && (
-            <span className="ml-1 text-xs text-slate-400">
-              {totalMemos}
-            </span>
-          )}
-        </button>
-      </li>
-      {rootFolders.map((f) => renderTreeFolder(f, 0))}
-      {rootMemos.map((m) => renderTreeMemo(m, 0))}
-    </ul>
+    <>
+      <TreeSearch
+        query={treeQuery}
+        onQueryChange={setTreeQuery}
+        placeholder="フォルダ・メモを検索"
+      />
+      {treeQuery ? (
+        renderTreeSearchResults(searchResults)
+      ) : (
+        <ul className="space-y-0.5">
+          <li>
+            <button
+              onClick={() => navigateTo(null)}
+              className={`w-full rounded px-2 py-1.5 text-left text-sm ${
+                currentFolderId === null
+                  ? "bg-slate-200 font-bold text-slate-900"
+                  : "hover:bg-slate-100"
+              }`}
+            >
+              🏠 ルート
+              {totalMemos > 0 && (
+                <span className="ml-1 text-xs text-slate-400">
+                  {totalMemos}
+                </span>
+              )}
+            </button>
+          </li>
+          {rootFolders.map((f) => renderTreeFolder(f, 0))}
+          {rootMemos.map((m) => renderTreeMemo(m, 0))}
+        </ul>
+      )}
+    </>
   );
 
   return (

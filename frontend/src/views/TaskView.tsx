@@ -30,6 +30,13 @@ import {
 import { useIsMobile } from "../lib/useIsMobile";
 import { MobileDrawer } from "../components/MobileDrawer";
 import {
+  TreeSearch,
+  matchesQuery,
+  normalizeQuery,
+  renderTreeSearchResults,
+  type TreeSearchResult,
+} from "../components/TreeSearch";
+import {
   buildBreadcrumb,
   buildChildMap,
   buildItemsByParent,
@@ -135,6 +142,7 @@ export function TaskView() {
   });
   const isMobile = useIsMobile();
   const [treeOpen, setTreeOpen] = useState(false);
+  const [treeQuery, setTreeQuery] = useState("");
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     try {
       const saved = localStorage.getItem(PROJECT_EXPANDED_KEY);
@@ -1040,28 +1048,77 @@ export function TaskView() {
       ? "ルート"
       : (projects.find((p) => p.id === currentProjectId)?.name ?? "タスク");
 
+  const projectPath = (projectId: number | null): string => {
+    if (projectId === null) return "🏠 ルート";
+    const path = buildBreadcrumb(projects, projectId)
+      .map((p) => p.name)
+      .join(" / ");
+    return `🏠 ルート / ${path}`;
+  };
+
+  const searchResults = useMemo<TreeSearchResult[]>(() => {
+    const q = normalizeQuery(treeQuery);
+    if (!q) return [];
+    const out: TreeSearchResult[] = [];
+    for (const p of projects) {
+      if (matchesQuery(p.name, q)) {
+        out.push({
+          key: `p-${p.id}`,
+          icon: "📁",
+          label: p.name,
+          path: projectPath(p.parent_id ?? null),
+          onClick: () => navigateTo(p.id),
+        });
+      }
+    }
+    for (const t of tasks) {
+      if (matchesQuery(t.title, q)) {
+        out.push({
+          key: `t-${t.id}`,
+          icon: "📋",
+          label: t.title,
+          path: projectPath(t.project_id ?? null),
+          onClick: () => openTaskFromTree(t),
+        });
+      }
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [treeQuery, projects, tasks]);
+
   const treeContent = (
-    <ul className="space-y-0.5">
-      <li>
-        <button
-          onClick={() => navigateTo(null)}
-          className={`w-full rounded px-2 py-1.5 text-left text-sm ${
-            currentProjectId === null
-              ? "bg-slate-200 font-bold text-slate-900"
-              : "hover:bg-slate-100"
-          }`}
-        >
-          🏠 ルート
-          {totalActive > 0 && (
-            <span className="ml-1 text-xs text-slate-400">
-              {totalActive}
-            </span>
-          )}
-        </button>
-      </li>
-      {rootProjects.map((p) => renderTreeProject(p, 0))}
-      {rootTasks.map((t) => renderTreeTask(t, 0))}
-    </ul>
+    <>
+      <TreeSearch
+        query={treeQuery}
+        onQueryChange={setTreeQuery}
+        placeholder="プロジェクト・タスクを検索"
+      />
+      {treeQuery ? (
+        renderTreeSearchResults(searchResults)
+      ) : (
+        <ul className="space-y-0.5">
+          <li>
+            <button
+              onClick={() => navigateTo(null)}
+              className={`w-full rounded px-2 py-1.5 text-left text-sm ${
+                currentProjectId === null
+                  ? "bg-slate-200 font-bold text-slate-900"
+                  : "hover:bg-slate-100"
+              }`}
+            >
+              🏠 ルート
+              {totalActive > 0 && (
+                <span className="ml-1 text-xs text-slate-400">
+                  {totalActive}
+                </span>
+              )}
+            </button>
+          </li>
+          {rootProjects.map((p) => renderTreeProject(p, 0))}
+          {rootTasks.map((t) => renderTreeTask(t, 0))}
+        </ul>
+      )}
+    </>
   );
 
   return (
