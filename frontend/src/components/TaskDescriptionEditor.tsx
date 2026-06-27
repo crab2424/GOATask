@@ -69,7 +69,13 @@ export function TaskDescriptionEditor({
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+    if (
+      e.key !== "Enter" ||
+      e.shiftKey ||
+      e.nativeEvent.isComposing ||
+      e.keyCode === 229
+    )
+      return;
     const el = e.currentTarget;
     const pos = el.selectionStart;
     if (pos !== el.selectionEnd) return;
