@@ -112,6 +112,7 @@ const PROJECT_EXPANDED_KEY = "goatask-project-expanded";
 const CURRENT_PROJECT_KEY = "goatask-current-project";
 const TASK_SORT_KEY = "goatask:task-sort";
 const TASK_FILTER_KEY = "goatask:task-filter";
+const TASK_TIDIED_KEY = "goatask:task-tidied";
 type TaskDueFilter = "all" | "with" | "overdue" | "today";
 interface TaskFilter {
   todo: boolean;
@@ -233,6 +234,16 @@ export function TaskView() {
   const [editProjectId, setEditProjectId] = useState<number | null>(null);
 
   const [showDone, setShowDone] = useState(false);
+  const [tidied, setTidied] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(TASK_TIDIED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    localStorage.setItem(TASK_TIDIED_KEY, tidied ? "1" : "0");
+  }, [tidied]);
   const [showNewTaskForm, setShowNewTaskForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -476,8 +487,10 @@ export function TaskView() {
       ),
     [directTasksRaw, sortMode],
   );
-  const activeTasksAll = directTasks.filter((t) => t.status !== "done");
   const doneTasks = directTasks.filter((t) => t.status === "done");
+  const activeTasksAll = tidied
+    ? directTasks.filter((t) => t.status !== "done")
+    : directTasks;
   const activeTasks = useMemo(() => {
     const today = todayStr();
     return activeTasksAll.filter((t) => {
@@ -702,7 +715,9 @@ export function TaskView() {
     const dragged = activeTasks.find((t) => t.id === draggedId);
     if (!dragged) return;
     active.splice(insertAt, 0, dragged);
-    const allIds = [...active, ...doneTasks].map((t) => t.id);
+    const allIds = tidied
+      ? [...active, ...doneTasks].map((t) => t.id)
+      : active.map((t) => t.id);
     try {
       await reorderTasks(allIds);
       await reload();
@@ -800,7 +815,9 @@ export function TaskView() {
     if (swapIdx < 0 || swapIdx >= activeTasks.length) return;
     const reordered = [...activeTasks];
     [reordered[idx], reordered[swapIdx]] = [reordered[swapIdx], reordered[idx]];
-    const allIds = [...reordered, ...doneTasks].map((t) => t.id);
+    const allIds = tidied
+      ? [...reordered, ...doneTasks].map((t) => t.id)
+      : reordered.map((t) => t.id);
     try {
       await reorderTasks(allIds);
       await reload();
@@ -1755,6 +1772,17 @@ export function TaskView() {
                 <option value="overdue">期限切れ</option>
                 <option value="today">今日</option>
               </select>
+              {doneTasks.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setTidied((v) => !v)}
+                  className="ml-2 rounded border border-slate-300 px-1.5 py-0.5 text-slate-600 hover:bg-slate-50"
+                >
+                  {tidied
+                    ? `完了済みを戻す（${doneTasks.length}）`
+                    : `完了済みを片付ける（${doneTasks.length}）`}
+                </button>
+              )}
             </div>
           </div>
           {activeTasks.length === 0 && directProjects.length === 0 ? (
@@ -1768,7 +1796,7 @@ export function TaskView() {
               {activeTasks.map((t) => renderTaskCard(t))}
             </ul>
           )}
-          {doneTasks.length > 0 && (
+          {tidied && doneTasks.length > 0 && (
             <div className="mt-4">
               <button
                 onClick={() => setShowDone((v) => !v)}

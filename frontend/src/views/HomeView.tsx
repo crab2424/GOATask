@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   listTasks,
@@ -144,13 +144,24 @@ export function HomeView({ onOpenCalendar }: { onOpenCalendar: (date: string) =>
     }
   };
 
+  const [showDone, setShowDone] = useState(true);
   const todayStr = formatDate(new Date());
   const markedDates = useMemo(() => new Set(tasks.flatMap((t) => [t.start_date?.slice(0, 10), t.due_date?.slice(0, 10)].filter((d): d is string => Boolean(d)))), [tasks]);
-  const todayTasks = tasks.filter(
-    (t) =>
+
+  const stickyIds = useRef<Set<number>>(new Set());
+  for (const t of tasks) {
+    if (
       t.status === "doing" ||
-      (t.due_date != null && t.due_date.startsWith(todayStr)),
-  );
+      (t.due_date != null && t.due_date.startsWith(todayStr))
+    ) {
+      stickyIds.current.add(t.id);
+    }
+  }
+  const allTodayTasks = tasks.filter((t) => stickyIds.current.has(t.id));
+  const doneCount = allTodayTasks.filter((t) => t.status === "done").length;
+  const todayTasks = showDone
+    ? allTodayTasks
+    : allTodayTasks.filter((t) => t.status !== "done");
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -172,7 +183,18 @@ export function HomeView({ onOpenCalendar }: { onOpenCalendar: (date: string) =>
       </div>
 
       <section className="mt-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-lg font-semibold">今日やること</h2>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">今日やること</h2>
+          {doneCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowDone((v) => !v)}
+              className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            >
+              {showDone ? `完了済みを非表示（${doneCount}）` : `完了済みを表示（${doneCount}）`}
+            </button>
+          )}
+        </div>
         {todayTasks.length === 0 ? (
           <p className="text-sm text-slate-500">
             進行中のタスクも、今日が期日のタスクもありません。
