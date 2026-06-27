@@ -48,6 +48,7 @@ import {
   type ShortcutEntry,
 } from "../components/SidebarShortcuts";
 import { UndoToast } from "../components/UndoToast";
+import { handleTreeKeyDown } from "../lib/treeKeyboard";
 import {
   buildBreadcrumb,
   buildChildMap,
@@ -803,9 +804,19 @@ export function TaskView() {
     const count = recursiveTaskCount.get(p.id) ?? 0;
     const isDrop = isDropTargetFor(p.id);
 
+    const toggleProjectExpand = () => {
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        if (next.has(p.id)) next.delete(p.id);
+        else next.add(p.id);
+        return next;
+      });
+    };
     return (
       <li
         key={`p-${p.id}`}
+        role="treeitem"
+        aria-expanded={isOpen}
         className={`rounded ${isDrop ? "bg-blue-50 ring-2 ring-blue-400" : ""}`}
         onDragOver={(e) => handleFolderDragOver(e, p.id)}
         onDragLeave={(e) => handleFolderDragLeave(e, p.id)}
@@ -814,6 +825,7 @@ export function TaskView() {
         <button
           type="button"
           draggable
+          data-tree-node={`project:${p.id}`}
           onClick={() => {
             setCurrentProjectId(p.id);
             setExpanded((prev) => {
@@ -821,6 +833,17 @@ export function TaskView() {
               if (prev.has(p.id)) next.delete(p.id);
               return next;
             });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowRight") {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!isOpen) toggleProjectExpand();
+            } else if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              e.stopPropagation();
+              if (isOpen) toggleProjectExpand();
+            }
           }}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -886,7 +909,7 @@ export function TaskView() {
   };
 
   const renderTreeTask = (t: Task, depth: number): ReactElement => (
-    <li key={`t-${t.id}`}>
+    <li key={`t-${t.id}`} role="treeitem">
       <div
         className={`flex items-center gap-1 rounded px-1 py-1 text-sm hover:bg-slate-50 ${
           dragItem?.type === "task" && dragItem.id === t.id ? "opacity-40" : ""
@@ -905,6 +928,7 @@ export function TaskView() {
         </span>
         <button
           onClick={() => openTaskFromTree(t)}
+          data-tree-node={`task:${t.id}`}
           className="flex-1 truncate text-left text-slate-500 hover:text-slate-900"
         >
           {t.title}
@@ -1210,7 +1234,7 @@ export function TaskView() {
   }, [treeQuery, projects, tasks]);
 
   const treeContent = (
-    <>
+    <div onKeyDown={handleTreeKeyDown}>
       <TreeSearch
         query={treeQuery}
         onQueryChange={setTreeQuery}
@@ -1224,10 +1248,11 @@ export function TaskView() {
             favorites={favoriteEntries}
             recents={recentEntries}
           />
-          <ul className="space-y-0.5">
-            <li>
+          <ul role="tree" className="space-y-0.5">
+            <li role="treeitem">
               <button
                 onClick={() => navigateTo(null)}
+                data-tree-node="root"
                 className={`w-full rounded px-2 py-1.5 text-left text-sm ${
                   currentProjectId === null
                     ? "bg-slate-200 font-bold text-slate-900"
@@ -1247,7 +1272,7 @@ export function TaskView() {
           </ul>
         </>
       )}
-    </>
+    </div>
   );
 
   return (

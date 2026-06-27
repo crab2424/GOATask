@@ -45,6 +45,7 @@ import {
   type ShortcutEntry,
 } from "../components/SidebarShortcuts";
 import { UndoToast } from "../components/UndoToast";
+import { handleTreeKeyDown } from "../lib/treeKeyboard";
 import { EXPORT_FORMATS, exportMemo } from "../lib/exportMemo";
 import { PRESET_COLORS, isValidColor } from "../lib/memoColor";
 import {
@@ -678,7 +679,7 @@ export function MemoView() {
   const renderTreeMemo = (m: Memo, depth: number): ReactElement => {
     const isDragging = dragItem?.type === "memo" && dragItem.id === m.id;
     return (
-      <li key={`m-${m.id}`}>
+      <li key={`m-${m.id}`} role="treeitem">
         <div
           className={`flex items-center gap-1 rounded px-1 py-1 text-sm hover:bg-slate-50 ${
             isDragging ? "opacity-40" : ""
@@ -697,6 +698,7 @@ export function MemoView() {
           <button
             onClick={() => openExistingMemo(m)}
             className="flex-1 truncate text-left text-slate-600"
+            data-tree-node={`memo:${m.id}`}
           >
             {m.title}
           </button>
@@ -715,9 +717,19 @@ export function MemoView() {
     const isDrop = isDropTargetFor(f.id);
     const isDragging = dragItem?.type === "folder" && dragItem.id === f.id;
 
+    const toggleFolderExpand = () => {
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        if (next.has(f.id)) next.delete(f.id);
+        else next.add(f.id);
+        return next;
+      });
+    };
     return (
       <li
         key={`f-${f.id}`}
+        role="treeitem"
+        aria-expanded={isOpen}
         className={`rounded ${isDrop ? "bg-blue-50 ring-2 ring-blue-400" : ""}`}
         onDragOver={(e) => handleFolderDragOver(e, f.id)}
         onDragLeave={(e) => handleFolderDragLeave(e, f.id)}
@@ -726,6 +738,7 @@ export function MemoView() {
         <button
           type="button"
           draggable
+          data-tree-node={`folder:${f.id}`}
           onClick={() => {
             setCurrentFolderId(f.id);
             setSelectedId(null);
@@ -734,6 +747,17 @@ export function MemoView() {
               if (prev.has(f.id)) next.delete(f.id);
               return next;
             });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowRight") {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!isOpen) toggleFolderExpand();
+            } else if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              e.stopPropagation();
+              if (isOpen) toggleFolderExpand();
+            }
           }}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -896,7 +920,7 @@ export function MemoView() {
   }, [treeQuery, folders, memos]);
 
   const treeContent = (
-    <>
+    <div onKeyDown={handleTreeKeyDown}>
       <TreeSearch
         query={treeQuery}
         onQueryChange={setTreeQuery}
@@ -910,10 +934,11 @@ export function MemoView() {
             favorites={favoriteEntries}
             recents={recentEntries}
           />
-          <ul className="space-y-0.5">
-            <li>
+          <ul role="tree" className="space-y-0.5">
+            <li role="treeitem">
               <button
                 onClick={() => navigateTo(null)}
+                data-tree-node="root"
                 className={`w-full rounded px-2 py-1.5 text-left text-sm ${
                   currentFolderId === null
                     ? "bg-slate-200 font-bold text-slate-900"
@@ -933,7 +958,7 @@ export function MemoView() {
           </ul>
         </>
       )}
-    </>
+    </div>
   );
 
   return (
