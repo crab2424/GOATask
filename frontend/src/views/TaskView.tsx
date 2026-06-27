@@ -37,6 +37,12 @@ import {
   type TreeSearchResult,
 } from "../components/TreeSearch";
 import {
+  TASK_SORT_OPTIONS,
+  loadSortMode,
+  sortByMode,
+  type SortMode,
+} from "../lib/sortDirectory";
+import {
   buildBreadcrumb,
   buildChildMap,
   buildItemsByParent,
@@ -66,6 +72,7 @@ const STATUS_DOT_COLOR: Record<TaskStatus, string> = {
 const OVERDUE_DOT_COLOR = "#f43f5e";
 const PROJECT_EXPANDED_KEY = "goatask-project-expanded";
 const CURRENT_PROJECT_KEY = "goatask-current-project";
+const TASK_SORT_KEY = "goatask:task-sort";
 
 function taskDotColor(t: Task): string {
   if (t.status === "done") return STATUS_DOT_COLOR.done;
@@ -143,6 +150,12 @@ export function TaskView() {
   const isMobile = useIsMobile();
   const [treeOpen, setTreeOpen] = useState(false);
   const [treeQuery, setTreeQuery] = useState("");
+  const [sortMode, setSortMode] = useState<SortMode>(() =>
+    loadSortMode(TASK_SORT_KEY, "manual"),
+  );
+  useEffect(() => {
+    localStorage.setItem(TASK_SORT_KEY, sortMode);
+  }, [sortMode]);
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     try {
       const saved = localStorage.getItem(PROJECT_EXPANDED_KEY);
@@ -291,8 +304,22 @@ export function TaskView() {
     return map;
   }, [projects, tasks, childProjectsMap, tasksByProject]);
 
-  const directProjects = childProjectsMap.get(currentProjectId) ?? [];
-  const directTasks = tasksByProject.get(currentProjectId) ?? [];
+  const directProjectsRaw = childProjectsMap.get(currentProjectId) ?? [];
+  const directTasksRaw = tasksByProject.get(currentProjectId) ?? [];
+  const directProjects = useMemo(
+    () => sortByMode(directProjectsRaw, sortMode, (p) => p.name),
+    [directProjectsRaw, sortMode],
+  );
+  const directTasks = useMemo(
+    () =>
+      sortByMode(
+        directTasksRaw,
+        sortMode,
+        (t) => t.title,
+        (t) => t.due_date,
+      ),
+    [directTasksRaw, sortMode],
+  );
   const activeTasks = directTasks.filter((t) => t.status !== "done");
   const doneTasks = directTasks.filter((t) => t.status === "done");
 
@@ -1200,9 +1227,23 @@ export function TaskView() {
           ))}
         </nav>
 
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl font-bold">{currentLabel}</h1>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1 text-xs text-slate-500">
+              並び順
+              <select
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value as SortMode)}
+                className="rounded border border-slate-300 px-2 py-1 text-xs focus:border-slate-500 focus:outline-none"
+              >
+                {TASK_SORT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               onClick={() => setShowNewTaskForm((v) => !v)}
               className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-700"

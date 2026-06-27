@@ -33,6 +33,12 @@ import {
   renderTreeSearchResults,
   type TreeSearchResult,
 } from "../components/TreeSearch";
+import {
+  MEMO_SORT_OPTIONS,
+  loadSortMode,
+  sortByMode,
+  type SortMode,
+} from "../lib/sortDirectory";
 import { EXPORT_FORMATS, exportMemo } from "../lib/exportMemo";
 import { PRESET_COLORS, isValidColor } from "../lib/memoColor";
 import {
@@ -55,6 +61,7 @@ import { useHoverExpand } from "../lib/useHoverExpand";
 const MEMO_DEFAULT_DOT_COLOR = "#cbd5e1"; // slate-300, 暫定色
 const FOLDER_EXPANDED_KEY = "goatask-folder-expanded";
 const CURRENT_FOLDER_KEY = "goatask-current-folder";
+const MEMO_SORT_KEY = "goatask:memo-sort";
 
 function memoDotColor(m: Memo): string {
   return isValidColor(m.color) ? m.color : MEMO_DEFAULT_DOT_COLOR;
@@ -85,6 +92,12 @@ export function MemoView() {
   const isMobile = useIsMobile();
   const [treeOpen, setTreeOpen] = useState(false);
   const [treeQuery, setTreeQuery] = useState("");
+  const [sortMode, setSortMode] = useState<SortMode>(() =>
+    loadSortMode(MEMO_SORT_KEY, "manual"),
+  );
+  useEffect(() => {
+    localStorage.setItem(MEMO_SORT_KEY, sortMode);
+  }, [sortMode]);
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     try {
       const saved = localStorage.getItem(FOLDER_EXPANDED_KEY);
@@ -233,8 +246,16 @@ export function MemoView() {
     [currentFolderId, folders],
   );
 
-  const directFolders = childFolders.get(currentFolderId) ?? [];
-  const directMemos = memosByFolder.get(currentFolderId) ?? [];
+  const directFoldersRaw = childFolders.get(currentFolderId) ?? [];
+  const directMemosRaw = memosByFolder.get(currentFolderId) ?? [];
+  const directFolders = useMemo(
+    () => sortByMode(directFoldersRaw, sortMode, (f) => f.name),
+    [directFoldersRaw, sortMode],
+  );
+  const directMemos = useMemo(
+    () => sortByMode(directMemosRaw, sortMode, (m) => m.title),
+    [directMemosRaw, sortMode],
+  );
 
   // --- DnD ---
 
@@ -990,9 +1011,23 @@ export function MemoView() {
           </>
         ) : (
           <>
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <h1 className="text-2xl font-bold">{currentLabel}</h1>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-1 text-xs text-slate-500">
+                  並び順
+                  <select
+                    value={sortMode}
+                    onChange={(e) => setSortMode(e.target.value as SortMode)}
+                    className="rounded border border-slate-300 px-2 py-1 text-xs focus:border-slate-500 focus:outline-none"
+                  >
+                    {MEMO_SORT_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <button
                   onClick={openNewMemoForm}
                   className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-700"
