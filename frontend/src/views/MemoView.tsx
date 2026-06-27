@@ -520,6 +520,7 @@ export function MemoView() {
     setContent("");
     setColor("");
     setFontSize(DEFAULT_FONT_SIZE);
+    setShowEditor(false);
   };
 
   const [showEditor, setShowEditor] = useState(false);
