@@ -58,6 +58,8 @@ import {
   isDescendant,
 } from "../lib/directoryTree";
 import { useHoverExpand } from "../lib/useHoverExpand";
+import { MdText } from "../lib/mdInline";
+import { TaskDescriptionEditor } from "../components/TaskDescriptionEditor";
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: "未着手",
@@ -134,7 +136,11 @@ function stripBulletLines(description: string): string {
     .split("\n")
     .filter((line) => {
       const t = line.trim();
-      return !t.startsWith("・") && !t.startsWith("- ");
+      return (
+        !t.startsWith("・") &&
+        !t.startsWith("- ") &&
+        !/^- \[[ xX]\]/.test(t)
+      );
     })
     .join("\n")
     .trim();
@@ -1000,13 +1006,14 @@ export function TaskView() {
               placeholder="タイトル"
               className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
             />
-            <textarea
-              value={editDescription}
-              onChange={(e) => setEditDescription(e.target.value)}
-              placeholder="詳細（任意）。「・」や「- 」で始まる行はチェックリストになります。"
-              rows={4}
-              className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
-            />
+            <div className="mb-2">
+              <TaskDescriptionEditor
+                value={editDescription}
+                onChange={setEditDescription}
+                placeholder="詳細（任意）。「・」「- 」「- [ ]」で始まる行はチェックリストになります。"
+                rows={4}
+              />
+            </div>
             <div className="mb-2 flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-sm text-slate-600">
                 期限
@@ -1112,8 +1119,8 @@ export function TaskView() {
                   {dueLabel(t.due_date, t.status)}
                 </div>
                 {bodyText && (
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
-                    {bodyText}
+                  <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-600">
+                    <MdText text={bodyText} />
                   </p>
                 )}
                 {subs.length > 0 && (
@@ -1132,11 +1139,11 @@ export function TaskView() {
                         <span
                           className={
                             s.done
-                              ? "text-slate-400 line-through"
-                              : "text-slate-700"
+                              ? "break-words text-slate-400 line-through"
+                              : "break-words text-slate-700"
                           }
                         >
-                          {s.text}
+                          <MdText text={s.text} />
                         </span>
                       </li>
                     ))}
@@ -1473,13 +1480,14 @@ export function TaskView() {
             placeholder="タイトル"
             className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
           />
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="詳細（任意）。「・」や「- 」で始まる行はチェックリストになります。"
-            rows={3}
-            className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
-          />
+          <div className="mb-2">
+            <TaskDescriptionEditor
+              value={description}
+              onChange={setDescription}
+              placeholder="詳細（任意）。「・」「- 」「- [ ]」で始まる行はチェックリストになります。"
+              rows={3}
+            />
+          </div>
           <div className="mb-2 flex items-center gap-3">
             <label className="flex items-center gap-2 text-sm text-slate-600">
               期限（任意）

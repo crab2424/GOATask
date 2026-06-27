@@ -188,21 +188,42 @@ func (h *TaskHandler) reorder(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-// extractSubtaskLines pulls lines that start with "・" or "- " (after trim).
-func extractSubtaskLines(description string) []string {
-	var lines []string
+// subtaskLine holds an extracted subtask line and an optional done hint
+// inferred from markdown-style checklist syntax (`- [x] ...`).
+type subtaskLine struct {
+	Text     string
+	DoneHint *bool
+}
+
+// extractSubtaskLines pulls lines that start with "・", "- ", "- [ ]" or
+// "- [x]" (after trim). The markdown checklist form may also carry a done hint
+// which is used only when a brand-new subtask row is created.
+func extractSubtaskLines(description string) []subtaskLine {
+	var lines []subtaskLine
 	for _, raw := range strings.Split(description, "\n") {
 		trimmed := strings.TrimSpace(raw)
 		switch {
+		case strings.HasPrefix(trimmed, "- [ ]"):
+			text := strings.TrimSpace(strings.TrimPrefix(trimmed, "- [ ]"))
+			if text != "" {
+				done := false
+				lines = append(lines, subtaskLine{Text: text, DoneHint: &done})
+			}
+		case strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [X]"):
+			text := strings.TrimSpace(trimmed[5:])
+			if text != "" {
+				done := true
+				lines = append(lines, subtaskLine{Text: text, DoneHint: &done})
+			}
 		case strings.HasPrefix(trimmed, "・"):
 			text := strings.TrimSpace(strings.TrimPrefix(trimmed, "・"))
 			if text != "" {
-				lines = append(lines, text)
+				lines = append(lines, subtaskLine{Text: text})
 			}
 		case strings.HasPrefix(trimmed, "- "):
 			text := strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
 			if text != "" {
-				lines = append(lines, text)
+				lines = append(lines, subtaskLine{Text: text})
 			}
 		}
 	}
@@ -228,9 +249,9 @@ func syncSubtasks(db *gorm.DB, t *model.Task) error {
 		byText[s.Text] = append(byText[s.Text], s)
 	}
 
-	for i, text := range lines {
+	for i, line := range lines {
 		var match *model.Subtask
-		for _, s := range byText[text] {
+		for _, s := range byText[line.Text] {
 			if !used[s.ID] {
 				match = s
 				used[s.ID] = true
@@ -246,7 +267,10 @@ func syncSubtasks(db *gorm.DB, t *model.Task) error {
 			}
 			continue
 		}
-		newSub := model.Subtask{TaskID: t.ID, Text: text, Position: i}
+		newSub := model.Subtask{TaskID: t.ID, Text: line.Text, Position: i}
+		if line.DoneHint != nil {
+			newSub.Done = *line.DoneHint
+		}
 		if err := db.Create(&newSub).Error; err != nil {
 			return err
 		}
