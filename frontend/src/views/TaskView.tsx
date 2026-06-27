@@ -208,11 +208,13 @@ export function TaskView() {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [editStartDate, setEditStartDate] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
   const [editProjectId, setEditProjectId] = useState<number | null>(null);
 
@@ -599,15 +601,18 @@ export function TaskView() {
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
+    if (startDate && dueDate && startDate > dueDate) { setError("開始日は期限以前にしてください"); return; }
     try {
       await createTask({
         title: title.trim(),
         description: description.trim(),
+        start_date: dateInputToIso(startDate),
         due_date: dateInputToIso(dueDate),
         project_id: currentProjectId,
       });
       setTitle("");
       setDescription("");
+      setStartDate("");
       setDueDate("");
       setShowNewTaskForm(false);
       await reload();
@@ -662,6 +667,7 @@ export function TaskView() {
         title: t.title,
         description: t.description,
         status: t.status,
+        start_date: t.start_date,
         due_date: t.due_date,
         project_id: t.project_id ?? null,
       });
@@ -691,6 +697,7 @@ export function TaskView() {
     setEditingId(t.id);
     setEditTitle(t.title);
     setEditDescription(t.description);
+    setEditStartDate(isoToDateInput(t.start_date));
     setEditDueDate(isoToDateInput(t.due_date));
     setEditProjectId(t.project_id ?? null);
   };
@@ -699,17 +706,20 @@ export function TaskView() {
     setEditingId(null);
     setEditTitle("");
     setEditDescription("");
+    setEditStartDate("");
     setEditDueDate("");
     setEditProjectId(null);
   };
 
   const saveEdit = async (t: Task) => {
     if (!editTitle.trim()) return;
+    if (editStartDate && editDueDate && editStartDate > editDueDate) { setError("開始日は期限以前にしてください"); return; }
     try {
       await updateTask(t.id, {
         ...t,
         title: editTitle.trim(),
         description: editDescription.trim(),
+        start_date: dateInputToIso(editStartDate),
         due_date: dateInputToIso(editDueDate),
         project_id: editProjectId,
       });
@@ -1016,6 +1026,10 @@ export function TaskView() {
             </div>
             <div className="mb-2 flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-sm text-slate-600">
+                開始日
+                <input type="date" value={editStartDate} onChange={(e) => setEditStartDate(e.target.value)} className="rounded border border-slate-300 px-2 py-1 focus:border-slate-500 focus:outline-none" />
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-600">
                 期限
                 <input
                   type="date"
@@ -1117,6 +1131,7 @@ export function TaskView() {
                     </span>
                   )}
                   {dueLabel(t.due_date, t.status)}
+                  {t.start_date && <span className="text-xs text-sky-600">開始 {t.start_date.slice(0, 10)}</span>}
                 </div>
                 {bodyText && (
                   <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-600">
@@ -1488,7 +1503,11 @@ export function TaskView() {
               rows={3}
             />
           </div>
-          <div className="mb-2 flex items-center gap-3">
+          <div className="mb-2 flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              開始日（任意）
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded border border-slate-300 px-2 py-1 focus:border-slate-500 focus:outline-none" />
+            </label>
             <label className="flex items-center gap-2 text-sm text-slate-600">
               期限（任意）
               <input
@@ -1512,6 +1531,7 @@ export function TaskView() {
               onClick={() => {
                 setTitle("");
                 setDescription("");
+                setStartDate("");
                 setDueDate("");
                 setShowNewTaskForm(false);
               }}

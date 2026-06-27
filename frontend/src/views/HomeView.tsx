@@ -55,12 +55,12 @@ function Clock() {
   );
 }
 
-function MiniCalendar() {
+function MiniCalendar({ onOpenCalendar, markedDates }: { onOpenCalendar: (date: string) => void; markedDates: Set<string> }) {
   const today = new Date();
   const year = today.getFullYear();
   const month = today.getMonth();
 
-  const cells = useMemo(() => {
+  const cells = (() => {
     const first = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0).getDate();
     const startOffset = first.getDay();
@@ -69,7 +69,7 @@ function MiniCalendar() {
     for (let d = 1; d <= lastDay; d++) arr.push(new Date(year, month, d));
     while (arr.length % 7 !== 0) arr.push(null);
     return arr;
-  }, [year, month]);
+  })();
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -92,8 +92,9 @@ function MiniCalendar() {
           const isToday = isSameDate(d, today);
           const dow = d.getDay();
           return (
-            <div
+            <button
               key={i}
+              onClick={() => onOpenCalendar(formatDate(d))}
               className={`flex h-8 items-center justify-center rounded ${
                 isToday
                   ? "bg-slate-900 font-bold text-white"
@@ -104,8 +105,8 @@ function MiniCalendar() {
                       : "text-slate-700"
               }`}
             >
-              {d.getDate()}
-            </div>
+              <span className="relative">{d.getDate()}{markedDates.has(formatDate(d)) && <span className={`absolute -bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full ${isToday ? "bg-white" : "bg-violet-500"}`} />}</span>
+            </button>
           );
         })}
       </div>
@@ -113,9 +114,9 @@ function MiniCalendar() {
   );
 }
 
-export function HomeView() {
+export function HomeView({ onOpenCalendar }: { onOpenCalendar: (date: string) => void }) {
   const tasksQuery = useQuery({ queryKey: ["tasks"], queryFn: listTasks });
-  const tasks = tasksQuery.data ?? [];
+  const tasks = useMemo(() => tasksQuery.data ?? [], [tasksQuery.data]);
   const error = tasksQuery.error
     ? tasksQuery.error instanceof Error
       ? tasksQuery.error.message
@@ -123,6 +124,7 @@ export function HomeView() {
     : null;
 
   const todayStr = formatDate(new Date());
+  const markedDates = useMemo(() => new Set(tasks.flatMap((t) => [t.start_date?.slice(0, 10), t.due_date?.slice(0, 10)].filter((d): d is string => Boolean(d)))), [tasks]);
   const todayTasks = tasks.filter(
     (t) =>
       t.status === "doing" ||
@@ -144,7 +146,7 @@ export function HomeView() {
           <Clock />
         </div>
         <div>
-          <MiniCalendar />
+          <MiniCalendar onOpenCalendar={onOpenCalendar} markedDates={markedDates} />
         </div>
       </div>
 

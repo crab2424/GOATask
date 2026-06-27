@@ -5,18 +5,28 @@ import { TaskView } from "./views/TaskView";
 import { MemoView } from "./views/MemoView";
 import { FlashcardView } from "./views/FlashcardView";
 import { BackupView } from "./views/BackupView";
+import { CalendarView } from "./views/CalendarView";
 import { LoginView } from "./views/LoginView";
 import { useIsMobile } from "./lib/useIsMobile";
 import { useAuth } from "./lib/AuthContext";
 
-type Mode = "home" | "tasks" | "memos" | "flashcards" | "backup";
+type Mode = "home" | "tasks" | "calendar" | "memos" | "flashcards" | "backup";
 
 const TABS: { id: Mode; label: string; icon: string }[] = [
   { id: "home", label: "ホーム", icon: "🏠" },
   { id: "tasks", label: "タスク", icon: "✓" },
+  { id: "calendar", label: "カレンダー", icon: "▦" },
   { id: "memos", label: "メモ", icon: "📝" },
   { id: "flashcards", label: "単語帳", icon: "🃏" },
   { id: "backup", label: "バックアップ", icon: "💾" },
+];
+
+const MOBILE_TABS: { id: Mode | "more"; label: string; icon: string }[] = [
+  { id: "home", label: "ホーム", icon: "🏠" },
+  { id: "tasks", label: "タスク", icon: "✓" },
+  { id: "calendar", label: "カレンダー", icon: "▦" },
+  { id: "memos", label: "メモ", icon: "📝" },
+  { id: "more", label: "その他", icon: "•••" },
 ];
 
 const NAV_COLLAPSED_KEY = "goatask:navCollapsed";
@@ -25,6 +35,8 @@ function App() {
   const { state: authState, logout } = useAuth();
   const [mode, setMode] = useState<Mode>("home");
   const [health, setHealth] = useState<string>("確認中...");
+  const [calendarDate, setCalendarDate] = useState<string | null>(null);
+  const [showMore, setShowMore] = useState(false);
   const isMobile = useIsMobile();
   const [navCollapsed, setNavCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
@@ -66,8 +78,9 @@ function App() {
 
   const content = (
     <>
-      {mode === "home" && <HomeView />}
+      {mode === "home" && <HomeView onOpenCalendar={(date) => { setCalendarDate(date); setMode("calendar"); }} />}
       {mode === "tasks" && <TaskView />}
+      {mode === "calendar" && <CalendarView key={calendarDate ?? "calendar"} initialDate={calendarDate} />}
       {mode === "memos" && <MemoView />}
       {mode === "flashcards" && <FlashcardView />}
       {mode === "backup" && <BackupView />}
@@ -99,12 +112,12 @@ function App() {
           className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-slate-200 bg-white"
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
-          {TABS.map((tab) => (
+          {MOBILE_TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setMode(tab.id)}
+              onClick={() => { if (tab.id === "more") setShowMore(true); else { setMode(tab.id); setCalendarDate(null); } }}
               className={`flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] transition-colors ${
-                mode === tab.id
+                (tab.id === "more" ? mode === "flashcards" || mode === "backup" : mode === tab.id)
                   ? "font-bold text-slate-900"
                   : "text-slate-500"
               }`}
@@ -114,6 +127,13 @@ function App() {
             </button>
           ))}
         </nav>
+        {showMore && <div className="fixed inset-0 z-50 flex items-end bg-black/30" onClick={() => setShowMore(false)}>
+          <div className="w-full rounded-t-2xl bg-white p-4 pb-8 shadow-xl" style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto mb-4 h-1 w-10 rounded bg-slate-300" />
+            {[{ id: "flashcards" as Mode, label: "単語帳", icon: "🃏" }, { id: "backup" as Mode, label: "バックアップ", icon: "💾" }].map((item) => <button key={item.id} onClick={() => { setMode(item.id); setShowMore(false); }} className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left hover:bg-slate-100"><span>{item.icon}</span><span>{item.label}</span></button>)}
+            <button onClick={() => { setShowMore(false); handleLogout(); }} className="mt-2 flex w-full items-center gap-3 border-t px-4 py-3 text-left text-rose-600"><span>⏻</span><span>ログアウト</span></button>
+          </div>
+        </div>}
       </div>
     );
   }

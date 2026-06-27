@@ -39,20 +39,6 @@ export function TaskDescriptionEditor({
     el.style.height = `${Math.min(el.scrollHeight, window.innerHeight * 0.6)}px`;
   }, [value]);
 
-  function insertAtCursor(insert: string) {
-    const el = ref.current;
-    if (!el) return;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const next = value.slice(0, start) + insert + value.slice(end);
-    onChange(next);
-    requestAnimationFrame(() => {
-      el.focus();
-      const cursor = start + insert.length;
-      el.setSelectionRange(cursor, cursor);
-    });
-  }
-
   function wrapSelection(prefix: string, suffix = prefix, placeholder = "") {
     const el = ref.current;
     if (!el) return;

@@ -16,6 +16,7 @@ export interface Task {
   description: string;
   status: TaskStatus;
   due_date?: string | null;
+  start_date?: string | null;
   project_id?: number | null;
   created_at: string;
   updated_at: string;
@@ -27,6 +28,7 @@ export interface NewTask {
   description?: string;
   status?: TaskStatus;
   due_date?: string | null;
+  start_date?: string | null;
   project_id?: number | null;
 }
 
