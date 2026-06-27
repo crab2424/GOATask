@@ -42,6 +42,11 @@ import {
   sortByMode,
   type SortMode,
 } from "../lib/sortDirectory";
+import { useFavorites, useRecent } from "../lib/folderShortcuts";
+import {
+  SidebarShortcuts,
+  type ShortcutEntry,
+} from "../components/SidebarShortcuts";
 import {
   buildBreadcrumb,
   buildChildMap,
@@ -176,6 +181,8 @@ export function TaskView() {
   useEffect(() => {
     localStorage.setItem(TASK_FILTER_KEY, JSON.stringify(filter));
   }, [filter]);
+  const favorites = useFavorites("goatask:project-favorites");
+  const recent = useRecent("goatask:project-recent");
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     try {
       const saved = localStorage.getItem(PROJECT_EXPANDED_KEY);
@@ -413,9 +420,36 @@ export function TaskView() {
     setCurrentProjectId(id);
     if (id !== null) {
       setExpanded((prev) => expandAncestors(projects, prev, id));
+      recent.push(id);
     }
     setTreeOpen(false);
   };
+
+  useEffect(() => {
+    if (!projectsQuery.isSuccess) return;
+    recent.prune(new Set(projects.map((p) => p.id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectsQuery.isSuccess, projects]);
+
+  const buildShortcutEntry = (id: number): ShortcutEntry | null => {
+    const p = projects.find((x) => x.id === id);
+    if (!p) return null;
+    return {
+      id,
+      name: p.name,
+      isCurrent: currentProjectId === id,
+      onClick: () => navigateTo(id),
+      onToggleFavorite: () => favorites.toggle(id),
+      starred: favorites.has(id),
+    };
+  };
+
+  const favoriteEntries = [...favorites.ids]
+    .map(buildShortcutEntry)
+    .filter((x): x is ShortcutEntry => x !== null);
+  const recentEntries = recent.ids
+    .map(buildShortcutEntry)
+    .filter((x): x is ShortcutEntry => x !== null);
 
   // --- DnD handlers ---
 
@@ -1163,27 +1197,33 @@ export function TaskView() {
       {treeQuery ? (
         renderTreeSearchResults(searchResults)
       ) : (
-        <ul className="space-y-0.5">
-          <li>
-            <button
-              onClick={() => navigateTo(null)}
-              className={`w-full rounded px-2 py-1.5 text-left text-sm ${
-                currentProjectId === null
-                  ? "bg-slate-200 font-bold text-slate-900"
-                  : "hover:bg-slate-100"
-              }`}
-            >
-              🏠 ルート
-              {totalActive > 0 && (
-                <span className="ml-1 text-xs text-slate-400">
-                  {totalActive}
-                </span>
-              )}
-            </button>
-          </li>
-          {rootProjects.map((p) => renderTreeProject(p, 0))}
-          {rootTasks.map((t) => renderTreeTask(t, 0))}
-        </ul>
+        <>
+          <SidebarShortcuts
+            favorites={favoriteEntries}
+            recents={recentEntries}
+          />
+          <ul className="space-y-0.5">
+            <li>
+              <button
+                onClick={() => navigateTo(null)}
+                className={`w-full rounded px-2 py-1.5 text-left text-sm ${
+                  currentProjectId === null
+                    ? "bg-slate-200 font-bold text-slate-900"
+                    : "hover:bg-slate-100"
+                }`}
+              >
+                🏠 ルート
+                {totalActive > 0 && (
+                  <span className="ml-1 text-xs text-slate-400">
+                    {totalActive}
+                  </span>
+                )}
+              </button>
+            </li>
+            {rootProjects.map((p) => renderTreeProject(p, 0))}
+            {rootTasks.map((t) => renderTreeTask(t, 0))}
+          </ul>
+        </>
       )}
     </>
   );
@@ -1544,6 +1584,18 @@ export function TaskView() {
             className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
           >
             ＋ サブプロジェクト追加
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              favorites.toggle(ctxMenu.projectId);
+              setCtxMenu(null);
+            }}
+            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
+          >
+            {favorites.has(ctxMenu.projectId)
+              ? "★ お気に入り解除"
+              : "☆ お気に入り追加"}
           </button>
           <button
             type="button"

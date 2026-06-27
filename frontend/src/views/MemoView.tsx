@@ -39,6 +39,11 @@ import {
   sortByMode,
   type SortMode,
 } from "../lib/sortDirectory";
+import { useFavorites, useRecent } from "../lib/folderShortcuts";
+import {
+  SidebarShortcuts,
+  type ShortcutEntry,
+} from "../components/SidebarShortcuts";
 import { EXPORT_FORMATS, exportMemo } from "../lib/exportMemo";
 import { PRESET_COLORS, isValidColor } from "../lib/memoColor";
 import {
@@ -106,6 +111,8 @@ export function MemoView() {
   useEffect(() => {
     localStorage.setItem(MEMO_COLOR_FILTER_KEY, colorFilter);
   }, [colorFilter]);
+  const favorites = useFavorites("goatask:memo-favorites");
+  const recent = useRecent("goatask:memo-recent");
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     try {
       const saved = localStorage.getItem(FOLDER_EXPANDED_KEY);
@@ -450,9 +457,36 @@ export function MemoView() {
     setSelectedId(null);
     if (id !== null) {
       setExpanded((prev) => expandAncestors(folders, prev, id));
+      recent.push(id);
     }
     setTreeOpen(false);
   };
+
+  useEffect(() => {
+    if (!foldersQuery.isSuccess) return;
+    recent.prune(new Set(folders.map((f) => f.id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [foldersQuery.isSuccess, folders]);
+
+  const buildShortcutEntry = (id: number): ShortcutEntry | null => {
+    const f = folders.find((x) => x.id === id);
+    if (!f) return null;
+    return {
+      id,
+      name: f.name,
+      isCurrent: currentFolderId === id,
+      onClick: () => navigateTo(id),
+      onToggleFavorite: () => favorites.toggle(id),
+      starred: favorites.has(id),
+    };
+  };
+
+  const favoriteEntries = [...favorites.ids]
+    .map(buildShortcutEntry)
+    .filter((x): x is ShortcutEntry => x !== null);
+  const recentEntries = recent.ids
+    .map(buildShortcutEntry)
+    .filter((x): x is ShortcutEntry => x !== null);
 
   // --- Memo / Folder actions ---
 
@@ -861,27 +895,33 @@ export function MemoView() {
       {treeQuery ? (
         renderTreeSearchResults(searchResults)
       ) : (
-        <ul className="space-y-0.5">
-          <li>
-            <button
-              onClick={() => navigateTo(null)}
-              className={`w-full rounded px-2 py-1.5 text-left text-sm ${
-                currentFolderId === null
-                  ? "bg-slate-200 font-bold text-slate-900"
-                  : "hover:bg-slate-100"
-              }`}
-            >
-              🏠 ルート
-              {totalMemos > 0 && (
-                <span className="ml-1 text-xs text-slate-400">
-                  {totalMemos}
-                </span>
-              )}
-            </button>
-          </li>
-          {rootFolders.map((f) => renderTreeFolder(f, 0))}
-          {rootMemos.map((m) => renderTreeMemo(m, 0))}
-        </ul>
+        <>
+          <SidebarShortcuts
+            favorites={favoriteEntries}
+            recents={recentEntries}
+          />
+          <ul className="space-y-0.5">
+            <li>
+              <button
+                onClick={() => navigateTo(null)}
+                className={`w-full rounded px-2 py-1.5 text-left text-sm ${
+                  currentFolderId === null
+                    ? "bg-slate-200 font-bold text-slate-900"
+                    : "hover:bg-slate-100"
+                }`}
+              >
+                🏠 ルート
+                {totalMemos > 0 && (
+                  <span className="ml-1 text-xs text-slate-400">
+                    {totalMemos}
+                  </span>
+                )}
+              </button>
+            </li>
+            {rootFolders.map((f) => renderTreeFolder(f, 0))}
+            {rootMemos.map((m) => renderTreeMemo(m, 0))}
+          </ul>
+        </>
       )}
     </>
   );
@@ -1210,6 +1250,18 @@ export function MemoView() {
             className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
           >
             ＋ サブフォルダ追加
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              favorites.toggle(ctxMenu.folderId);
+              setCtxMenu(null);
+            }}
+            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
+          >
+            {favorites.has(ctxMenu.folderId)
+              ? "★ お気に入り解除"
+              : "☆ お気に入り追加"}
           </button>
           <button
             type="button"
