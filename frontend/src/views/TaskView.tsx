@@ -60,6 +60,34 @@ import {
 import { useHoverExpand } from "../lib/useHoverExpand";
 import { MdText } from "../lib/mdInline";
 import { TaskDescriptionEditor } from "../components/TaskDescriptionEditor";
+import {
+  clearDraft,
+  editDraftKey,
+  hasDraft,
+  loadDraft,
+  newDraftKey,
+  saveDraft,
+} from "../lib/taskDraft";
+
+function ProgressBar({
+  value,
+  max,
+  className,
+}: {
+  value: number;
+  max: number;
+  className?: string;
+}) {
+  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
+  return (
+    <div className={`h-1 w-full overflow-hidden rounded-full bg-slate-200 ${className ?? ""}`}>
+      <div
+        className="h-full rounded-full bg-emerald-500 transition-all"
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: "未着手",
@@ -299,6 +327,55 @@ export function TaskView() {
     };
   }, [ctxMenu]);
 
+  const [hasNewDraftFlag, setHasNewDraftFlag] = useState(false);
+  useEffect(() => {
+    setHasNewDraftFlag(hasDraft(newDraftKey(currentProjectId)));
+  }, [currentProjectId, showNewTaskForm, title, description, startDate, dueDate]);
+
+  useEffect(() => {
+    if (!showNewTaskForm) return;
+    const d = loadDraft(newDraftKey(currentProjectId));
+    if (d) {
+      setTitle(d.title);
+      setDescription(d.description);
+      setStartDate(d.start_date);
+      setDueDate(d.due_date);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showNewTaskForm]);
+
+  useEffect(() => {
+    if (!showNewTaskForm) return;
+    saveDraft(newDraftKey(currentProjectId), {
+      title,
+      description,
+      start_date: startDate,
+      due_date: dueDate,
+    });
+  }, [showNewTaskForm, currentProjectId, title, description, startDate, dueDate]);
+
+  useEffect(() => {
+    if (editingId === null) return;
+    const d = loadDraft(editDraftKey(editingId));
+    if (d) {
+      setEditTitle(d.title);
+      setEditDescription(d.description);
+      setEditStartDate(d.start_date);
+      setEditDueDate(d.due_date);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId]);
+
+  useEffect(() => {
+    if (editingId === null) return;
+    saveDraft(editDraftKey(editingId), {
+      title: editTitle,
+      description: editDescription,
+      start_date: editStartDate,
+      due_date: editDueDate,
+    });
+  }, [editingId, editTitle, editDescription, editStartDate, editDueDate]);
+
   useEffect(() => {
     if (focusTaskId === null) return;
     const el = taskRefs.current.get(focusTaskId);
@@ -345,12 +422,64 @@ export function TaskView() {
     return map;
   }, [projects, tasks, childProjectsMap, tasksByProject]);
 
+  const recursiveDoneCount = useMemo(() => {
+    const map = new Map<number | null, number>();
+    const calc = (projectId: number | null): number => {
+      if (map.has(projectId)) return map.get(projectId)!;
+      const direct = (tasksByProject.get(projectId) ?? []).filter(
+        (t) => t.status === "done",
+      ).length;
+      const children = childProjectsMap.get(projectId) ?? [];
+      let total = direct;
+      for (const c of children) total += calc(c.id);
+      map.set(projectId, total);
+      return total;
+    };
+    projects.forEach((p) => calc(p.id));
+    calc(null);
+    return map;
+  }, [projects, tasks, childProjectsMap, tasksByProject]);
+
+  const earliestDueByProject = useMemo<Map<number, string>>(() => {
+    const cache = new Map<number, string | null>();
+    const calc = (projectId: number): string | null => {
+      if (cache.has(projectId)) return cache.get(projectId)!;
+      let earliest: string | null = null;
+      for (const t of tasksByProject.get(projectId) ?? []) {
+        if (t.status === "done" || !t.due_date) continue;
+        const d = t.due_date.slice(0, 10);
+        if (earliest === null || d < earliest) earliest = d;
+      }
+      for (const c of childProjectsMap.get(projectId) ?? []) {
+        const ce = calc(c.id);
+        if (ce && (earliest === null || ce < earliest)) earliest = ce;
+      }
+      cache.set(projectId, earliest);
+      return earliest;
+    };
+    projects.forEach((p) => calc(p.id));
+    const out = new Map<number, string>();
+    cache.forEach((v, k) => {
+      if (v) out.set(k, v);
+    });
+    return out;
+  }, [projects, tasks, childProjectsMap, tasksByProject]);
+
   const directProjectsRaw = childProjectsMap.get(currentProjectId) ?? [];
   const directTasksRaw = tasksByProject.get(currentProjectId) ?? [];
-  const directProjects = useMemo(
-    () => sortByMode(directProjectsRaw, sortMode, (p) => p.name),
-    [directProjectsRaw, sortMode],
-  );
+  const directProjects = useMemo(() => {
+    if (sortMode === "due") {
+      return [...directProjectsRaw].sort((a, b) => {
+        const ad = earliestDueByProject.get(a.id);
+        const bd = earliestDueByProject.get(b.id);
+        if (!ad && !bd) return a.name.localeCompare(b.name);
+        if (!ad) return 1;
+        if (!bd) return -1;
+        return ad.localeCompare(bd);
+      });
+    }
+    return sortByMode(directProjectsRaw, sortMode, (p) => p.name);
+  }, [directProjectsRaw, sortMode, earliestDueByProject]);
   const directTasks = useMemo(
     () =>
       sortByMode(
@@ -610,6 +739,7 @@ export function TaskView() {
         due_date: dateInputToIso(dueDate),
         project_id: currentProjectId,
       });
+      clearDraft(newDraftKey(currentProjectId));
       setTitle("");
       setDescription("");
       setStartDate("");
@@ -703,6 +833,7 @@ export function TaskView() {
   };
 
   const cancelEdit = () => {
+    if (editingId !== null) clearDraft(editDraftKey(editingId));
     setEditingId(null);
     setEditTitle("");
     setEditDescription("");
@@ -723,6 +854,7 @@ export function TaskView() {
         due_date: dateInputToIso(editDueDate),
         project_id: editProjectId,
       });
+      clearDraft(editDraftKey(t.id));
       cancelEdit();
       await reload();
     } catch (e) {
@@ -1127,7 +1259,8 @@ export function TaskView() {
                   </span>
                   {subs.length > 0 && (
                     <span className="text-xs text-slate-500">
-                      {subDoneCount}/{subs.length}
+                      {subDoneCount}/{subs.length}（
+                      {Math.round((subDoneCount / subs.length) * 100)}%）
                     </span>
                   )}
                   {dueLabel(t.due_date, t.status)}
@@ -1137,6 +1270,13 @@ export function TaskView() {
                   <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-600">
                     <MdText text={bodyText} />
                   </p>
+                )}
+                {subs.length > 0 && (
+                  <ProgressBar
+                    value={subDoneCount}
+                    max={subs.length}
+                    className="mt-2"
+                  />
                 )}
                 {subs.length > 0 && (
                   <ul className="mt-2 space-y-1">
@@ -1395,9 +1535,17 @@ export function TaskView() {
             </label>
             <button
               onClick={() => setShowNewTaskForm((v) => !v)}
-              className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-700"
+              className="relative rounded bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-700"
             >
               {showNewTaskForm ? "× 閉じる" : "＋ タスク"}
+              {!showNewTaskForm && hasNewDraftFlag && (
+                <span
+                  title="下書きあり"
+                  className="absolute -right-1 -top-1 rounded-full bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold text-amber-900"
+                >
+                  下書
+                </span>
+              )}
             </button>
             <button
               onClick={() => onCreateProjectIn(currentProjectId)}
@@ -1419,6 +1567,8 @@ export function TaskView() {
           <div className="mb-6 grid grid-cols-2 gap-2">
             {directProjects.map((p) => {
               const count = recursiveTaskCount.get(p.id) ?? 0;
+              const doneCount = recursiveDoneCount.get(p.id) ?? 0;
+              const totalCount = count + doneCount;
               const subCount = (childProjectsMap.get(p.id) ?? []).length;
               const isDrop = isDropTargetFor(p.id);
               return (
@@ -1440,11 +1590,18 @@ export function TaskView() {
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{p.name}</div>
                     <div className="text-xs text-slate-500">
-                      {count > 0 && `${count}件`}
-                      {count > 0 && subCount > 0 && " · "}
+                      {totalCount > 0 && `${doneCount}/${totalCount}件完了`}
+                      {totalCount > 0 && subCount > 0 && " · "}
                       {subCount > 0 && `${subCount}サブ`}
-                      {count === 0 && subCount === 0 && "空"}
+                      {totalCount === 0 && subCount === 0 && "空"}
                     </div>
+                    {totalCount > 0 && (
+                      <ProgressBar
+                        value={doneCount}
+                        max={totalCount}
+                        className="mt-1.5"
+                      />
+                    )}
                   </div>
                   <div className="hidden gap-1 group-hover:flex">
                     <button
@@ -1529,6 +1686,7 @@ export function TaskView() {
             <button
               type="button"
               onClick={() => {
+                clearDraft(newDraftKey(currentProjectId));
                 setTitle("");
                 setDescription("");
                 setStartDate("");
