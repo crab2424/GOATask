@@ -73,6 +73,14 @@ const OVERDUE_DOT_COLOR = "#f43f5e";
 const PROJECT_EXPANDED_KEY = "goatask-project-expanded";
 const CURRENT_PROJECT_KEY = "goatask-current-project";
 const TASK_SORT_KEY = "goatask:task-sort";
+const TASK_FILTER_KEY = "goatask:task-filter";
+type TaskDueFilter = "all" | "with" | "overdue" | "today";
+interface TaskFilter {
+  todo: boolean;
+  doing: boolean;
+  due: TaskDueFilter;
+}
+const DEFAULT_FILTER: TaskFilter = { todo: true, doing: true, due: "all" };
 
 function taskDotColor(t: Task): string {
   if (t.status === "done") return STATUS_DOT_COLOR.done;
@@ -156,6 +164,18 @@ export function TaskView() {
   useEffect(() => {
     localStorage.setItem(TASK_SORT_KEY, sortMode);
   }, [sortMode]);
+  const [filter, setFilter] = useState<TaskFilter>(() => {
+    try {
+      const saved = localStorage.getItem(TASK_FILTER_KEY);
+      if (!saved) return DEFAULT_FILTER;
+      return { ...DEFAULT_FILTER, ...JSON.parse(saved) };
+    } catch {
+      return DEFAULT_FILTER;
+    }
+  });
+  useEffect(() => {
+    localStorage.setItem(TASK_FILTER_KEY, JSON.stringify(filter));
+  }, [filter]);
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     try {
       const saved = localStorage.getItem(PROJECT_EXPANDED_KEY);
@@ -320,8 +340,28 @@ export function TaskView() {
       ),
     [directTasksRaw, sortMode],
   );
-  const activeTasks = directTasks.filter((t) => t.status !== "done");
+  const activeTasksAll = directTasks.filter((t) => t.status !== "done");
   const doneTasks = directTasks.filter((t) => t.status === "done");
+  const activeTasks = useMemo(() => {
+    const today = todayStr();
+    return activeTasksAll.filter((t) => {
+      if (t.status === "todo" && !filter.todo) return false;
+      if (t.status === "doing" && !filter.doing) return false;
+      const date = t.due_date ? t.due_date.slice(0, 10) : null;
+      switch (filter.due) {
+        case "with":
+          if (!date) return false;
+          break;
+        case "overdue":
+          if (!date || date >= today) return false;
+          break;
+        case "today":
+          if (date !== today) return false;
+          break;
+      }
+      return true;
+    });
+  }, [activeTasksAll, filter]);
 
   // --- DnD helpers ---
 
@@ -1398,14 +1438,66 @@ export function TaskView() {
           onDragOver={(e) => handleFolderDragOver(e, currentProjectId)}
           onDrop={(e) => handleFolderDrop(e, currentProjectId)}
         >
-          <h2 className="mb-3 text-lg font-semibold">
-            タスク一覧
-            {activeTasks.length > 0 && (
-              <span className="ml-2 text-sm font-normal text-slate-500">
-                {activeTasks.length}件
-              </span>
-            )}
-          </h2>
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <h2 className="text-lg font-semibold">
+              タスク一覧
+              {activeTasks.length > 0 && (
+                <span className="ml-2 text-sm font-normal text-slate-500">
+                  {activeTasks.length}件
+                  {activeTasks.length !== activeTasksAll.length && (
+                    <span className="ml-1 text-slate-400">
+                      / 全{activeTasksAll.length}件
+                    </span>
+                  )}
+                </span>
+              )}
+            </h2>
+            <div className="flex flex-wrap items-center gap-1 text-xs">
+              <span className="text-slate-500">状態:</span>
+              <button
+                type="button"
+                onClick={() =>
+                  setFilter((f) => ({ ...f, todo: !f.todo }))
+                }
+                className={`rounded px-1.5 py-0.5 ${
+                  filter.todo
+                    ? "bg-slate-200 text-slate-700"
+                    : "border border-slate-300 text-slate-400"
+                }`}
+              >
+                未着手
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setFilter((f) => ({ ...f, doing: !f.doing }))
+                }
+                className={`rounded px-1.5 py-0.5 ${
+                  filter.doing
+                    ? "bg-amber-200 text-amber-800"
+                    : "border border-slate-300 text-slate-400"
+                }`}
+              >
+                進行中
+              </button>
+              <span className="ml-2 text-slate-500">期限:</span>
+              <select
+                value={filter.due}
+                onChange={(e) =>
+                  setFilter((f) => ({
+                    ...f,
+                    due: e.target.value as TaskDueFilter,
+                  }))
+                }
+                className="rounded border border-slate-300 px-1.5 py-0.5 focus:border-slate-500 focus:outline-none"
+              >
+                <option value="all">全部</option>
+                <option value="with">期限あり</option>
+                <option value="overdue">期限切れ</option>
+                <option value="today">今日</option>
+              </select>
+            </div>
+          </div>
           {activeTasks.length === 0 && directProjects.length === 0 ? (
             <p className="text-sm text-slate-500">
               このプロジェクトにはまだ項目がありません。

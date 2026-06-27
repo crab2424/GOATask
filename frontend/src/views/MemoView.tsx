@@ -62,6 +62,8 @@ const MEMO_DEFAULT_DOT_COLOR = "#cbd5e1"; // slate-300, 暫定色
 const FOLDER_EXPANDED_KEY = "goatask-folder-expanded";
 const CURRENT_FOLDER_KEY = "goatask-current-folder";
 const MEMO_SORT_KEY = "goatask:memo-sort";
+const MEMO_COLOR_FILTER_KEY = "goatask:memo-color-filter";
+type MemoColorFilter = string; // "" = all, "none" = no color, otherwise hex
 
 function memoDotColor(m: Memo): string {
   return isValidColor(m.color) ? m.color : MEMO_DEFAULT_DOT_COLOR;
@@ -98,6 +100,12 @@ export function MemoView() {
   useEffect(() => {
     localStorage.setItem(MEMO_SORT_KEY, sortMode);
   }, [sortMode]);
+  const [colorFilter, setColorFilter] = useState<MemoColorFilter>(
+    () => localStorage.getItem(MEMO_COLOR_FILTER_KEY) ?? "",
+  );
+  useEffect(() => {
+    localStorage.setItem(MEMO_COLOR_FILTER_KEY, colorFilter);
+  }, [colorFilter]);
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     try {
       const saved = localStorage.getItem(FOLDER_EXPANDED_KEY);
@@ -252,10 +260,15 @@ export function MemoView() {
     () => sortByMode(directFoldersRaw, sortMode, (f) => f.name),
     [directFoldersRaw, sortMode],
   );
-  const directMemos = useMemo(
-    () => sortByMode(directMemosRaw, sortMode, (m) => m.title),
-    [directMemosRaw, sortMode],
-  );
+  const directMemos = useMemo(() => {
+    let arr = directMemosRaw;
+    if (colorFilter === "none") {
+      arr = arr.filter((m) => !isValidColor(m.color));
+    } else if (colorFilter) {
+      arr = arr.filter((m) => m.color === colorFilter);
+    }
+    return sortByMode(arr, sortMode, (m) => m.title);
+  }, [directMemosRaw, sortMode, colorFilter]);
 
   // --- DnD ---
 
@@ -1108,14 +1121,63 @@ export function MemoView() {
               onDragOver={(e) => handleFolderDragOver(e, currentFolderId)}
               onDrop={(e) => handleFolderDrop(e, currentFolderId)}
             >
-              <h2 className="mb-3 text-lg font-semibold">
-                メモ一覧
-                {directMemos.length > 0 && (
-                  <span className="ml-2 text-sm font-normal text-slate-500">
-                    {directMemos.length}件
-                  </span>
-                )}
-              </h2>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold">
+                  メモ一覧
+                  {directMemos.length > 0 && (
+                    <span className="ml-2 text-sm font-normal text-slate-500">
+                      {directMemos.length}件
+                    </span>
+                  )}
+                </h2>
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-xs text-slate-500">色:</span>
+                  <button
+                    type="button"
+                    onClick={() => setColorFilter("")}
+                    title="すべて表示"
+                    className={`rounded border px-1.5 py-0.5 text-xs ${
+                      colorFilter === ""
+                        ? "border-slate-900 bg-slate-100 font-medium"
+                        : "border-slate-300 text-slate-500 hover:bg-slate-100"
+                    }`}
+                  >
+                    全
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setColorFilter(colorFilter === "none" ? "" : "none")
+                    }
+                    title="色なし"
+                    className={`flex h-5 w-5 items-center justify-center rounded border text-xs ${
+                      colorFilter === "none"
+                        ? "border-slate-900 ring-1 ring-slate-900"
+                        : "border-slate-300 text-slate-400 hover:bg-slate-100"
+                    }`}
+                  >
+                    ×
+                  </button>
+                  {PRESET_COLORS.map((c) => (
+                    <button
+                      key={c.value}
+                      type="button"
+                      title={c.label}
+                      onClick={() =>
+                        setColorFilter(
+                          colorFilter === c.value ? "" : c.value,
+                        )
+                      }
+                      style={{ backgroundColor: c.value }}
+                      className={`h-5 w-5 rounded border ${
+                        colorFilter === c.value
+                          ? "border-slate-900 ring-1 ring-slate-900"
+                          : "border-slate-300"
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
               {directMemos.length === 0 && directFolders.length === 0 ? (
                 <p className="text-sm text-slate-500">
                   このフォルダにはまだ項目がありません。
