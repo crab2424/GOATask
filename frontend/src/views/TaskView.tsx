@@ -59,6 +59,7 @@ import {
 } from "../lib/directoryTree";
 import { useHoverExpand } from "../lib/useHoverExpand";
 import { MdText } from "../lib/mdInline";
+import { stripBulletLines } from "../lib/taskText";
 import { TaskDescriptionEditor } from "../components/TaskDescriptionEditor";
 import {
   clearDraft,
@@ -157,21 +158,6 @@ function dueLabel(iso: string | null | undefined, status: TaskStatus) {
       {suffix}
     </span>
   );
-}
-
-function stripBulletLines(description: string): string {
-  return description
-    .split("\n")
-    .filter((line) => {
-      const t = line.trim();
-      return (
-        !t.startsWith("・") &&
-        !t.startsWith("- ") &&
-        !/^- \[[ xX]\]/.test(t)
-      );
-    })
-    .join("\n")
-    .trim();
 }
 
 type DragItem = { type: "task" | "project"; id: number } | null;
