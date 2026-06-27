@@ -52,6 +52,9 @@ func (h *TaskHandler) create(c echo.Context) error {
 	if t.Status == "" {
 		t.Status = model.TaskStatusTodo
 	}
+	if t.StartDate != nil && t.DueDate != nil && t.StartDate.After(*t.DueDate) {
+		return echo.NewHTTPError(http.StatusBadRequest, "start_date must be on or before due_date")
+	}
 	t.UserID = uid
 	t.Subtasks = nil
 	if err := h.DB.Create(&t).Error; err != nil {
@@ -95,6 +98,9 @@ func (h *TaskHandler) update(c echo.Context) error {
 	}
 	if err := c.Bind(&t); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if t.StartDate != nil && t.DueDate != nil && t.StartDate.After(*t.DueDate) {
+		return echo.NewHTTPError(http.StatusBadRequest, "start_date must be on or before due_date")
 	}
 	t.UserID = uid
 	t.Subtasks = nil

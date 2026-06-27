@@ -9,9 +9,9 @@ import (
 type TaskStatus string
 
 const (
-	TaskStatusTodo TaskStatus = "todo"
+	TaskStatusTodo  TaskStatus = "todo"
 	TaskStatusDoing TaskStatus = "doing"
-	TaskStatusDone TaskStatus = "done"
+	TaskStatusDone  TaskStatus = "done"
 )
 
 type Task struct {
@@ -21,6 +21,7 @@ type Task struct {
 	Description string         `json:"description"`
 	Status      TaskStatus     `gorm:"type:varchar(16);default:'todo'" json:"status"`
 	Position    int            `gorm:"not null;default:0" json:"position"`
+	StartDate   *time.Time     `gorm:"type:date" json:"start_date,omitempty"`
 	DueDate     *time.Time     `json:"due_date,omitempty"`
 	ProjectID   *uint          `gorm:"index" json:"project_id,omitempty"`
 	CreatedAt   time.Time      `json:"created_at"`

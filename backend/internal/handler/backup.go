@@ -29,16 +29,17 @@ func (h *BackupHandler) Register(g *echo.Group) {
 const backupVersion = 1
 
 type backupPayload struct {
-	Version    int             `json:"version"`
-	ExportedAt time.Time       `json:"exported_at"`
-	Scope      string          `json:"scope"`
-	Tasks      []model.Task    `json:"tasks,omitempty"`
-	Subtasks   []model.Subtask `json:"subtasks,omitempty"`
-	Projects   []model.Project `json:"projects,omitempty"`
-	Memos      []model.Memo    `json:"memos,omitempty"`
-	Folders    []model.Folder  `json:"folders,omitempty"`
-	Decks      []model.Deck    `json:"decks,omitempty"`
-	Cards      []model.Card    `json:"cards,omitempty"`
+	Version       int                  `json:"version"`
+	ExportedAt    time.Time            `json:"exported_at"`
+	Scope         string               `json:"scope"`
+	Tasks         []model.Task         `json:"tasks,omitempty"`
+	Subtasks      []model.Subtask      `json:"subtasks,omitempty"`
+	Projects      []model.Project      `json:"projects,omitempty"`
+	Memos         []model.Memo         `json:"memos,omitempty"`
+	Folders       []model.Folder       `json:"folders,omitempty"`
+	Decks         []model.Deck         `json:"decks,omitempty"`
+	Cards         []model.Card         `json:"cards,omitempty"`
+	CalendarNotes []model.CalendarNote `json:"calendar_notes,omitempty"`
 }
 
 // ----- export -----
@@ -95,6 +96,9 @@ func (h *BackupHandler) loadTasks(uid uint, p *backupPayload) error {
 	if err := h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&p.Projects).Error; err != nil {
 		return err
 	}
+	if err := h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&p.CalendarNotes).Error; err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -141,8 +145,8 @@ func requireBackupToken(next echo.HandlerFunc) echo.HandlerFunc {
 // ----- import -----
 
 type importRequest struct {
-	Mode string         `json:"mode"`
-	Data backupPayload  `json:"data"`
+	Mode string        `json:"mode"`
+	Data backupPayload `json:"data"`
 }
 
 type importResult struct {
@@ -192,6 +196,9 @@ func (h *BackupHandler) importData(c echo.Context) error {
 // 子テーブル (subtasks, cards) は親テーブル経由で user_id を絞る。
 func (h *BackupHandler) deleteUserRowsForScope(tx *gorm.DB, uid uint, scope string) error {
 	if needsScope(scope, "tasks") {
+		if err := tx.Exec("DELETE FROM calendar_notes WHERE user_id = ?", uid).Error; err != nil {
+			return err
+		}
 		if err := tx.Exec("DELETE FROM subtasks WHERE task_id IN (SELECT id FROM tasks WHERE user_id = ?)", uid).Error; err != nil {
 			return err
 		}
@@ -232,6 +239,13 @@ func (h *BackupHandler) replaceImport(tx *gorm.DB, uid uint, p *backupPayload, s
 	// マルチユーザーで他ユーザーが同じ ID を持っていれば PK 衝突になるが、
 	// 個人運用前提なので想定外。
 	if needsScope(scope, "tasks") {
+		for i := range p.CalendarNotes {
+			p.CalendarNotes[i].UserID = uid
+		}
+		if err := insertWithIDs(tx, p.CalendarNotes); err != nil {
+			return err
+		}
+		ins["calendar_notes"] = len(p.CalendarNotes)
 		for i := range p.Projects {
 			p.Projects[i].UserID = uid
 		}
@@ -302,13 +316,13 @@ func validScope(scope string) bool {
 func tablesForScope(scope string) []string {
 	switch scope {
 	case "tasks":
-		return []string{"subtasks", "tasks", "projects"}
+		return []string{"calendar_notes", "subtasks", "tasks", "projects"}
 	case "memos":
 		return []string{"memos", "folders"}
 	case "decks":
 		return []string{"cards", "decks"}
 	default:
-		return []string{"subtasks", "tasks", "projects", "memos", "folders", "cards", "decks"}
+		return []string{"calendar_notes", "subtasks", "tasks", "projects", "memos", "folders", "cards", "decks"}
 	}
 }
 
@@ -335,6 +349,13 @@ func (h *BackupHandler) mergeImport(tx *gorm.DB, uid uint, p *backupPayload, sco
 	taskMap := map[uint]uint{}
 
 	if needsScope(scope, "tasks") {
+		for _, it := range p.CalendarNotes {
+			newRow := model.CalendarNote{UserID: uid, Date: it.Date, Title: it.Title, Color: it.Color}
+			if err := tx.Create(&newRow).Error; err != nil {
+				return err
+			}
+		}
+		ins["calendar_notes"] = len(p.CalendarNotes)
 		if err := mergeProjects(tx, uid, p.Projects, projectMap); err != nil {
 			return err
 		}
@@ -518,6 +539,7 @@ func mergeTasks(tx *gorm.DB, uid uint, items []model.Task, projectMap, taskMap m
 			Description: it.Description,
 			Status:      it.Status,
 			Position:    it.Position,
+			StartDate:   it.StartDate,
 			DueDate:     it.DueDate,
 			ProjectID:   projectID,
 		}

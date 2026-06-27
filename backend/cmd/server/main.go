@@ -50,6 +50,7 @@ func main() {
 	handler.NewFolderHandler(conn).Register(protected)
 	handler.NewDeckHandler(conn).Register(protected)
 	handler.NewProjectHandler(conn).Register(protected)
+	handler.NewCalendarHandler(conn).Register(protected)
 	handler.NewBackupHandler(conn).Register(protected)
 
 	if cfg.StaticDir != "" {
