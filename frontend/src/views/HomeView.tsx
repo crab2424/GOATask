@@ -137,7 +137,10 @@ export function HomeView({ onOpenCalendar }: { onOpenCalendar: (date: string) =>
   const onToggleSubtask = async (taskId: number, sub: Subtask) => {
     try {
       await toggleSubtask(taskId, sub.id, !sub.done);
-      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["calendar"] }),
+      ]);
       setMutationError(null);
     } catch (e) {
       setMutationError(e instanceof Error ? e.message : String(e));

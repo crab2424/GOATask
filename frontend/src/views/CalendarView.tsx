@@ -16,6 +16,33 @@ function dateString(date: Date) {
 function addDays(date: Date, amount: number) { const next = new Date(date); next.setDate(next.getDate() + amount); return next; }
 function datePart(value?: string | null) { return value?.slice(0, 10) ?? null; }
 
+type TaskSegment = { task: Task; startCol: number; span: number; lane: number; startsHere: boolean; endsHere: boolean };
+
+function segmentsForWeek(weekDays: string[], tasks: Task[]): TaskSegment[] {
+  const ws = weekDays[0];
+  const we = weekDays[6];
+  const raw: Omit<TaskSegment, "lane">[] = [];
+  for (const t of tasks) {
+    const start = datePart(t.start_date) ?? datePart(t.due_date);
+    const end = datePart(t.due_date) ?? start;
+    if (!start || !end) continue;
+    if (end < ws || start > we) continue;
+    const clipStart = start < ws ? ws : start;
+    const clipEnd = end > we ? we : end;
+    const startCol = weekDays.indexOf(clipStart) + 1;
+    const endCol = weekDays.indexOf(clipEnd) + 1;
+    raw.push({ task: t, startCol, span: endCol - startCol + 1, startsHere: start >= ws, endsHere: end <= we });
+  }
+  raw.sort((a, b) => a.startCol - b.startCol || b.span - a.span || a.task.id - b.task.id);
+  const laneEnds: number[] = [];
+  return raw.map((seg) => {
+    let lane = laneEnds.findIndex((end) => end < seg.startCol);
+    if (lane === -1) { lane = laneEnds.length; laneEnds.push(0); }
+    laneEnds[lane] = seg.startCol + seg.span - 1;
+    return { ...seg, lane };
+  });
+}
+
 export function CalendarView({ initialDate }: { initialDate?: string | null }) {
   const initial = initialDate ? new Date(`${initialDate}T00:00:00`) : new Date();
   const [cursor, setCursor] = useState(new Date(initial.getFullYear(), initial.getMonth(), 1));
@@ -37,7 +64,7 @@ export function CalendarView({ initialDate }: { initialDate?: string | null }) {
   }, [cursor]);
   const from = dateString(cells[0]);
   const to = dateString(cells[cells.length - 1]);
-  const query = useQuery({ queryKey: ["calendar", from, to], queryFn: () => getCalendar(from, to) });
+  const query = useQuery({ queryKey: ["calendar", from, to], queryFn: () => getCalendar(from, to), staleTime: 0, refetchOnMount: "always" });
   const tasks = query.data?.tasks ?? [];
   const notes = query.data?.notes ?? [];
   const refresh = async () => { await Promise.all([client.invalidateQueries({ queryKey: ["calendar"] }), client.invalidateQueries({ queryKey: ["tasks"] })]); };
@@ -70,6 +97,12 @@ export function CalendarView({ initialDate }: { initialDate?: string | null }) {
     <button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="rounded border px-3 py-1.5">›</button>
   </div>;
 
+  const weeks = Array.from({ length: 6 }, (_, w) => cells.slice(w * 7, w * 7 + 7));
+  const maxLanes = isMobile ? 2 : 3;
+  const noteLimit = isMobile ? 1 : 2;
+  const barH = 18; // px per lane row
+  const todayStr = dateString(new Date());
+
   return <div className="mx-auto max-w-7xl">
     <div className="mb-4">
       <h1 className="text-2xl font-bold">カレンダー</h1>
@@ -80,11 +113,53 @@ export function CalendarView({ initialDate }: { initialDate?: string | null }) {
       <div>
         <div className="mb-3 hidden justify-center lg:flex">{monthControls}</div>
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="grid grid-cols-7 border-b bg-slate-50 text-center text-xs font-medium text-slate-500">{WEEKDAYS.map((w, i) => <div key={w} className={`py-2 ${i === 0 ? "text-rose-500" : i === 6 ? "text-sky-500" : ""}`}>{w}</div>)}</div>
-        <div className="grid grid-cols-7">{cells.map((date) => { const day = dateString(date); const dayTasks = tasksOn(day); const dayNotes = notesOn(day); const outside = date.getMonth() !== cursor.getMonth(); const active = day === selected; const items = [...dayTasks.map((t) => ({ type: "task" as const, value: t })), ...dayNotes.map((n) => ({ type: "note" as const, value: n }))]; const limit = isMobile ? 2 : 3; return <button key={day} onClick={() => selectDay(day)} className={`relative min-h-20 border-b border-r p-1 pt-8 text-left align-top sm:min-h-28 ${active ? "bg-blue-50 ring-2 ring-inset ring-blue-400" : "hover:bg-slate-50"}`}>
-          <span className={`absolute left-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${day === dateString(new Date()) ? "bg-slate-900 text-white" : outside ? "text-slate-300" : date.getDay() === 0 ? "text-rose-500" : date.getDay() === 6 ? "text-sky-500" : ""}`}>{date.getDate()}</span>
-          <div className="space-y-0.5">{items.slice(0, limit).map((item) => item.type === "task" ? <div key={`t${item.value.id}`} className={`truncate rounded px-1 py-0.5 text-[10px] sm:text-xs ${item.value.status === "done" ? "bg-slate-100 text-slate-400 line-through" : datePart(item.value.due_date) === day ? "bg-rose-100 text-rose-800" : "bg-sky-100 text-sky-800"}`}>{datePart(item.value.due_date) === day ? "⚑ " : ""}{item.value.title}</div> : <div key={`n${item.value.id}`} className={`truncate rounded px-1 py-0.5 text-[10px] sm:text-xs ${COLORS[item.value.color as keyof typeof COLORS] ?? COLORS.violet}`}>• {item.value.title}</div>)}{items.length > limit && <div className="px-1 text-[10px] text-slate-500">ほか{items.length - limit}件</div>}</div>
-        </button>; })}</div>
+          <div className="grid grid-cols-7 border-b bg-slate-50 text-center text-xs font-medium text-slate-500">{WEEKDAYS.map((w, i) => <div key={w} className={`py-2 ${i === 0 ? "text-rose-500" : i === 6 ? "text-sky-500" : ""}`}>{w}</div>)}</div>
+          {weeks.map((weekDates, wi) => {
+            const weekDays = weekDates.map(dateString);
+            const segs = segmentsForWeek(weekDays, tasks);
+            const visibleSegs = segs.filter((s) => s.lane < maxLanes);
+            const laneCount = visibleSegs.reduce((m, s) => Math.max(m, s.lane + 1), 0);
+            const overflowByCol = new Array(7).fill(0) as number[];
+            for (const s of segs) {
+              if (s.lane < maxLanes) continue;
+              for (let i = s.startCol - 1; i < s.startCol - 1 + s.span; i++) overflowByCol[i]++;
+            }
+            const barsAreaTop = 28; // px reserved for date number
+            const barsAreaHeight = laneCount * barH + (laneCount > 0 ? 4 : 0);
+            return <div key={wi} className="relative border-b last:border-b-0">
+              <div className="grid grid-cols-7">
+                {weekDates.map((date, di) => {
+                  const day = weekDays[di];
+                  const dayNotes = notesOn(day);
+                  const outside = date.getMonth() !== cursor.getMonth();
+                  const active = day === selected;
+                  const extraTasks = overflowByCol[di];
+                  return <button key={day} onClick={() => selectDay(day)} className={`relative min-h-24 border-r p-1 text-left align-top sm:min-h-32 ${active ? "bg-blue-50 ring-2 ring-inset ring-blue-400" : "hover:bg-slate-50"}`} style={{ paddingTop: `${barsAreaTop + barsAreaHeight}px` }}>
+                    <span className={`absolute left-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${day === todayStr ? "bg-slate-900 text-white" : outside ? "text-slate-300" : date.getDay() === 0 ? "text-rose-500" : date.getDay() === 6 ? "text-sky-500" : ""}`}>{date.getDate()}</span>
+                    <div className="space-y-0.5">
+                      {dayNotes.slice(0, noteLimit).map((n) => <div key={`n${n.id}`} className={`truncate rounded px-1 py-0.5 text-[10px] sm:text-xs ${COLORS[n.color as keyof typeof COLORS] ?? COLORS.violet}`}>• {n.title}</div>)}
+                      {dayNotes.length > noteLimit && <div className="px-1 text-[10px] text-slate-500">メモほか{dayNotes.length - noteLimit}件</div>}
+                      {extraTasks > 0 && <div className="px-1 text-[10px] text-slate-500">タスクほか{extraTasks}件</div>}
+                    </div>
+                  </button>;
+                })}
+              </div>
+              {visibleSegs.length > 0 && <div className="pointer-events-none absolute inset-x-0 grid grid-cols-7 px-0.5" style={{ top: `${barsAreaTop}px`, height: `${barsAreaHeight}px` }}>
+                {visibleSegs.map((s) => {
+                  const done = s.task.status === "done";
+                  const isPeriod = s.task.start_date && s.task.due_date && datePart(s.task.start_date) !== datePart(s.task.due_date);
+                  const base = done ? "bg-slate-200 text-slate-400 line-through" : isPeriod ? "bg-sky-200 text-sky-900" : "bg-rose-100 text-rose-800";
+                  const rounded = `${s.startsHere ? "rounded-l" : ""} ${s.endsHere ? "rounded-r" : ""}`.trim() || "rounded-none";
+                  return <div key={`seg-${wi}-${s.task.id}-${s.startCol}`}
+                    className={`pointer-events-auto mx-px truncate px-1 text-[10px] sm:text-xs ${base} ${rounded}`}
+                    style={{ gridColumn: `${s.startCol} / span ${s.span}`, gridRow: s.lane + 1, height: `${barH - 2}px`, lineHeight: `${barH - 2}px`, marginTop: "1px" }}
+                    onClick={(e) => { e.stopPropagation(); selectDay(datePart(s.task.due_date) ?? datePart(s.task.start_date) ?? weekDays[s.startCol - 1]); }}>
+                    {s.endsHere && !done ? "⚑ " : ""}{s.task.title}
+                  </div>;
+                })}
+              </div>}
+            </div>;
+          })}
         </div>
       </div>
       <aside className="space-y-4">

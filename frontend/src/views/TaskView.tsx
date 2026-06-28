@@ -276,6 +276,7 @@ export function TaskView() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["tasks"] }),
       queryClient.invalidateQueries({ queryKey: ["projects"] }),
+      queryClient.invalidateQueries({ queryKey: ["calendar"] }),
     ]);
     setError(null);
   };
