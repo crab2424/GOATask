@@ -112,6 +112,22 @@ export async function deleteCard(
   if (!res.ok) throw new Error(`deleteCard failed: ${res.status}`);
 }
 
+export async function deleteCardsBulk(
+  deckId: number,
+  ids: number[],
+): Promise<{ deleted: number }> {
+  const res = await apiFetch(`/api/decks/${deckId}/cards/bulk-delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`deleteCardsBulk failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
 export async function answerCard(
   deckId: number,
   cardId: number,

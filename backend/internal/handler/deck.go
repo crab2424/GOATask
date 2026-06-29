@@ -28,6 +28,7 @@ func (h *DeckHandler) Register(g *echo.Group) {
 	g.GET("/decks/:id/cards", h.listCards)
 	g.POST("/decks/:id/cards", h.createCard)
 	g.POST("/decks/:id/cards/import", h.importCards)
+	g.POST("/decks/:id/cards/bulk-delete", h.bulkDeleteCards)
 	g.PUT("/decks/:id/cards/:cid", h.updateCard)
 	g.DELETE("/decks/:id/cards/:cid", h.deleteCard)
 	g.PATCH("/decks/:id/cards/:cid/answer", h.answer)
@@ -234,6 +235,33 @@ func (h *DeckHandler) updateCard(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusOK, card)
+}
+
+type bulkDeleteReq struct {
+	IDs []uint `json:"ids"`
+}
+
+func (h *DeckHandler) bulkDeleteCards(c echo.Context) error {
+	uid := auth.UserID(c)
+	deckID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
+	}
+	if err := h.ownsDeck(uid, deckID); err != nil {
+		return err
+	}
+	var req bulkDeleteReq
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if len(req.IDs) == 0 {
+		return c.JSON(http.StatusOK, map[string]int{"deleted": 0})
+	}
+	res := h.DB.Where("deck_id = ? AND id IN ?", deckID, req.IDs).Delete(&model.Card{})
+	if res.Error != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, res.Error.Error())
+	}
+	return c.JSON(http.StatusOK, map[string]int64{"deleted": res.RowsAffected})
 }
 
 func (h *DeckHandler) deleteCard(c echo.Context) error {
