@@ -10,6 +10,7 @@ import {
   importCards,
   updateCard,
   deleteCard,
+  deleteCardsBulk,
   answerCard,
   toggleCardMark,
   resetCardStats,
@@ -342,6 +343,8 @@ export function FlashcardView() {
 
   const [cardFilters, setCardFilters] = useState<CardFilters>(DEFAULT_FILTERS);
   const [cardFiltersOpen, setCardFiltersOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | "all">(20);
   const [sortKey, setSortKey] = useState<
@@ -426,6 +429,7 @@ export function FlashcardView() {
     setEditBack("");
     setCardFront("");
     setCardBack("");
+    setSelectedIds(new Set());
   };
 
   const onAddCard = async (e: FormEvent) => {
@@ -537,6 +541,38 @@ export function FlashcardView() {
       await reloadDeck(selectedDeck.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const toggleSelected = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const onBulkDelete = async (ids: number[]) => {
+    if (!selectedDeck || ids.length === 0) return;
+    if (
+      !confirm(
+        `選択した ${ids.length} 枚のカードを削除します。元に戻せません。よろしいですか？`,
+      )
+    )
+      return;
+    setBulkDeleting(true);
+    try {
+      await deleteCardsBulk(selectedDeck.id, ids);
+      setSelectedIds(new Set());
+      if (editingCardId !== null && ids.includes(editingCardId)) {
+        cancelEditCard();
+      }
+      await reloadDeck(selectedDeck.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -1230,6 +1266,82 @@ export function FlashcardView() {
                 )}
               </div>
 
+              {(() => {
+                const pageIds = pageCards.map((c) => c.id);
+                const sortedIds = sorted.map((c) => c.id);
+                const selectedOnPage = pageIds.filter((id) =>
+                  selectedIds.has(id),
+                ).length;
+                const allPageSelected =
+                  pageIds.length > 0 && selectedOnPage === pageIds.length;
+                const someSelectedNotAll =
+                  selectedIds.size > 0 && !allPageSelected;
+                const allSortedSelected =
+                  sortedIds.length > 0 &&
+                  sortedIds.every((id) => selectedIds.has(id));
+                return (
+                  <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+                    <label className="flex items-center gap-2 text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={allPageSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someSelectedNotAll && !allPageSelected;
+                        }}
+                        onChange={(e) => {
+                          setSelectedIds((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) pageIds.forEach((id) => next.add(id));
+                            else pageIds.forEach((id) => next.delete(id));
+                            return next;
+                          });
+                        }}
+                        disabled={pageIds.length === 0}
+                        className="h-4 w-4 cursor-pointer accent-slate-900"
+                      />
+                      このページ全選択
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedIds(new Set(sortedIds))
+                      }
+                      disabled={
+                        sortedIds.length === 0 || allSortedSelected
+                      }
+                      className="rounded border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      全件選択（{sortedIds.length}枚）
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIds(new Set())}
+                      disabled={selectedIds.size === 0}
+                      className="rounded border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      選択解除
+                    </button>
+                    <span className="text-xs text-slate-500">
+                      選択中 {selectedIds.size} 枚
+                    </span>
+                    {selectedIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onBulkDelete(Array.from(selectedIds))
+                        }
+                        disabled={bulkDeleting}
+                        className="ml-auto rounded bg-rose-600 px-3 py-1 text-xs text-white hover:bg-rose-700 disabled:bg-rose-300"
+                      >
+                        {bulkDeleting
+                          ? "削除中…"
+                          : `${selectedIds.size}枚を削除`}
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
+
               {sorted.length === 0 ? (
                 <p className="text-sm text-slate-500">該当するカードがありません。</p>
               ) : (
@@ -1237,12 +1349,20 @@ export function FlashcardView() {
                   {pageCards.map((c) => {
               const total = c.correct_count + c.wrong_count;
               const isEditing = editingCardId === c.id;
+              const isSelected = selectedIds.has(c.id);
               if (isEditing) {
                 return (
                   <li
                     key={c.id}
                     className="flex items-start justify-between gap-3 rounded-lg border border-slate-300 bg-slate-50 p-3 shadow-sm"
                   >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      disabled
+                      className="mt-2 h-4 w-4 cursor-not-allowed accent-slate-900 opacity-50"
+                      title="編集中のカードは選択できません"
+                    />
                     <div className="flex-1">
                       <div className="mb-2 flex flex-col gap-2 sm:flex-row">
                         <input
@@ -1302,9 +1422,16 @@ export function FlashcardView() {
               return (
                 <li
                   key={c.id}
-                  className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+                  className={`flex items-center justify-between rounded-lg border bg-white p-3 shadow-sm ${isSelected ? "border-slate-900 ring-1 ring-slate-300" : "border-slate-200"}`}
                 >
                   <div className="flex flex-1 items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelected(c.id)}
+                      className="h-4 w-4 cursor-pointer accent-slate-900"
+                      aria-label="選択"
+                    />
                     <button
                       onClick={() => onToggleMark(c)}
                       className={`text-lg ${c.marked ? "text-amber-500" : "text-slate-300"} hover:text-amber-500`}
