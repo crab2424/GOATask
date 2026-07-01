@@ -934,6 +934,7 @@ export function MemoView() {
           <SidebarShortcuts
             favorites={favoriteEntries}
             recents={recentEntries}
+            storagePrefix="goatask:memo-shortcuts"
           />
           <ul role="tree" className="space-y-0.5">
             <li role="treeitem">

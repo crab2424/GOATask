@@ -123,7 +123,13 @@ function MiniCalendar({ onOpenCalendar, markedDates }: { onOpenCalendar: (date: 
   );
 }
 
-export function HomeView({ onOpenCalendar }: { onOpenCalendar: (date: string) => void }) {
+export function HomeView({
+  onOpenCalendar,
+  onOpenTask,
+}: {
+  onOpenCalendar: (date: string) => void;
+  onOpenTask: (taskId: number) => void;
+}) {
   const queryClient = useQueryClient();
   const tasksQuery = useQuery({ queryKey: ["tasks"], queryFn: listTasks });
   const tasks = useMemo(() => tasksQuery.data ?? [], [tasksQuery.data]);
@@ -252,14 +258,20 @@ export function HomeView({ onOpenCalendar }: { onOpenCalendar: (date: string) =>
                     {STATUS_LABEL[t.status]}
                   </span>
                   <div className="flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onOpenTask(t.id)}
+                      title="タスク画面で編集"
+                      className="flex flex-wrap items-center gap-2 text-left hover:underline"
+                    >
                       <p className="font-medium">{t.title}</p>
+                      <span aria-hidden className="text-xs text-slate-400">✎</span>
                       {subs.length > 0 && (
                         <span className="text-xs text-slate-500">
                           {subDoneCount}/{subs.length}（{subPct}%）
                         </span>
                       )}
-                    </div>
+                    </button>
                     {bodyText && (
                       <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-600">
                         <MdText text={bodyText} />

@@ -36,6 +36,7 @@ function App() {
   const [mode, setMode] = useState<Mode>("home");
   const [health, setHealth] = useState<string>("確認中...");
   const [calendarDate, setCalendarDate] = useState<string | null>(null);
+  const [openTaskId, setOpenTaskId] = useState<number | null>(null);
   const [showMore, setShowMore] = useState(false);
   const isMobile = useIsMobile();
   const [navCollapsed, setNavCollapsed] = useState<boolean>(() => {
@@ -78,8 +79,15 @@ function App() {
 
   const content = (
     <>
-      {mode === "home" && <HomeView onOpenCalendar={(date) => { setCalendarDate(date); setMode("calendar"); }} />}
-      {mode === "tasks" && <TaskView />}
+      {mode === "home" && (
+        <HomeView
+          onOpenCalendar={(date) => { setCalendarDate(date); setMode("calendar"); }}
+          onOpenTask={(taskId) => { setOpenTaskId(taskId); setMode("tasks"); }}
+        />
+      )}
+      {mode === "tasks" && (
+        <TaskView initialTaskId={openTaskId} onInitialTaskHandled={() => setOpenTaskId(null)} />
+      )}
       {mode === "calendar" && <CalendarView key={calendarDate ?? "calendar"} initialDate={calendarDate} />}
       {mode === "memos" && <MemoView />}
       {mode === "flashcards" && <FlashcardView />}

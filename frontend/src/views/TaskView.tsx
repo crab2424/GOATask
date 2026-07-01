@@ -165,7 +165,12 @@ function dueLabel(iso: string | null | undefined, status: TaskStatus) {
 type DragItem = { type: "task" | "project"; id: number } | null;
 type DropTarget = { kind: "folder"; projectId: number | null } | null;
 
-export function TaskView() {
+interface TaskViewProps {
+  initialTaskId?: number | null;
+  onInitialTaskHandled?: () => void;
+}
+
+export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps = {}) {
   const queryClient = useQueryClient();
   const tasksQuery = useQuery({ queryKey: ["tasks"], queryFn: listTasks });
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: listProjects });
@@ -1011,6 +1016,23 @@ export function TaskView() {
     setFocusTaskId(t.id);
   };
 
+  const openTaskForEdit = (t: Task) => {
+    const parentId = t.project_id ?? null;
+    if (parentId !== currentProjectId) navigateTo(parentId);
+    if (t.status === "done") setShowDone(true);
+    startEdit(t);
+    setFocusTaskId(t.id);
+  };
+
+  useEffect(() => {
+    if (initialTaskId == null) return;
+    const t = tasks.find((x) => x.id === initialTaskId);
+    if (!t) return;
+    openTaskForEdit(t);
+    onInitialTaskHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTaskId, tasks]);
+
   const renderTreeTask = (t: Task, depth: number): ReactElement => (
     <li key={`t-${t.id}`} role="treeitem">
       <div
@@ -1253,27 +1275,37 @@ export function TaskView() {
                 )}
               </div>
             </div>
-            {t.status !== "done" && (
-              <div
-                className="ml-3 flex gap-1"
-                onClick={(e) => e.stopPropagation()}
+            <div className="ml-3 flex gap-1" onClick={(e) => e.stopPropagation()}>
+              {t.status !== "done" && (
+                <>
+                  <button
+                    onClick={() => moveTask(t.id, "up")}
+                    className="rounded px-1 text-sm text-slate-400 hover:text-slate-700"
+                    title="上に移動"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    onClick={() => moveTask(t.id, "down")}
+                    className="rounded px-1 text-sm text-slate-400 hover:text-slate-700"
+                    title="下に移動"
+                  >
+                    ▼
+                  </button>
+                </>
+              )}
+              <button
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  openTaskCtxMenu(rect.right, rect.bottom);
+                }}
+                title="メニュー"
+                aria-label="メニュー"
+                className="rounded px-1.5 text-sm text-slate-400 hover:bg-slate-100 hover:text-slate-700"
               >
-                <button
-                  onClick={() => moveTask(t.id, "up")}
-                  className="rounded px-1 text-sm text-slate-400 hover:text-slate-700"
-                  title="上に移動"
-                >
-                  ▲
-                </button>
-                <button
-                  onClick={() => moveTask(t.id, "down")}
-                  className="rounded px-1 text-sm text-slate-400 hover:text-slate-700"
-                  title="下に移動"
-                >
-                  ▼
-                </button>
-              </div>
-            )}
+                ⋮
+              </button>
+            </div>
           </>
         )}
       </li>
@@ -1345,6 +1377,7 @@ export function TaskView() {
           <SidebarShortcuts
             favorites={favoriteEntries}
             recents={recentEntries}
+            storagePrefix="goatask:project-shortcuts"
           />
           <ul role="tree" className="space-y-0.5">
             <li role="treeitem">
@@ -1513,7 +1546,7 @@ export function TaskView() {
               return (
                 <div
                   key={p.id}
-                  className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-all ${
+                  className={`group relative flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-all ${
                     isDrop
                       ? "border-blue-400 bg-blue-50 ring-2 ring-blue-400"
                       : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
@@ -1533,6 +1566,21 @@ export function TaskView() {
                   onDragOver={(e) => handleFolderDragOver(e, p.id)}
                   onDrop={(e) => handleFolderDrop(e, p.id)}
                 >
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setCtxMenu({ x: rect.right, y: rect.bottom, projectId: p.id });
+                    }}
+                    title="メニュー"
+                    aria-label="メニュー"
+                    className={`absolute right-1.5 top-1.5 rounded px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 ${
+                      isMobile ? "" : "opacity-0 group-hover:opacity-100"
+                    }`}
+                  >
+                    ⋮
+                  </button>
                   <span className="text-2xl">📁</span>
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{p.name}</div>
