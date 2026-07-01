@@ -74,7 +74,18 @@ export function createLongPressHandlers(
     }
   };
 
-  const onTouchEnd = () => clearTimer();
+  // Suppressing the ghost click here (rather than only in onClickCapture) is
+  // the standard fix: calling preventDefault() on touchend stops the browser
+  // from synthesizing the trailing mouse/click events at all, so there's
+  // nothing left that could land on a menu item that just appeared under the
+  // finger. onClickCapture is kept as a fallback for browsers that still
+  // dispatch a click despite this.
+  const onTouchEnd = (e: ReactTouchEvent) => {
+    clearTimer();
+    if (state.firedAt !== null) {
+      e.preventDefault();
+    }
+  };
 
   const onClickCapture = (e: ReactMouseEvent) => {
     if (state.firedAt !== null && Date.now() - state.firedAt < FIRED_WINDOW_MS) {

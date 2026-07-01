@@ -59,6 +59,7 @@ import {
 } from "../lib/directoryTree";
 import { useHoverExpand } from "../lib/useHoverExpand";
 import { createLongPressHandlers, createLongPressStore } from "../lib/longPress";
+import { clampMenuPosition } from "../lib/menuPosition";
 import { MdText } from "../lib/mdInline";
 import { stripBulletLines } from "../lib/taskText";
 import { TaskDescriptionEditor } from "../components/TaskDescriptionEditor";
@@ -109,6 +110,10 @@ const STATUS_DOT_COLOR: Record<TaskStatus, string> = {
   done: "#10b981",
 };
 const OVERDUE_DOT_COLOR = "#f43f5e";
+const PROJECT_MENU_W = 190;
+const PROJECT_MENU_H = 160;
+const TASK_MENU_W = 150;
+const TASK_MENU_H = 90;
 const PROJECT_EXPANDED_KEY = "goatask-project-expanded";
 const CURRENT_PROJECT_KEY = "goatask-current-project";
 const TASK_SORT_KEY = "goatask:task-sort";
@@ -271,6 +276,10 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     taskId: number;
   } | null>(null);
   const taskCtxMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const openProjectCtxMenu = (x: number, y: number, projectId: number) => {
+    setCtxMenu({ ...clampMenuPosition(x, y, PROJECT_MENU_W, PROJECT_MENU_H), projectId });
+  };
 
   const hoverExpand = useHoverExpand(
     (id) =>
@@ -956,7 +965,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
           }}
           onContextMenu={(e) => {
             e.preventDefault();
-            setCtxMenu({ x: e.clientX, y: e.clientY, projectId: p.id });
+            openProjectCtxMenu(e.clientX, e.clientY, p.id);
           }}
           onDragStart={(e) => handleDragStart(e, "project", p.id)}
           onDragEnd={handleDragEnd}
@@ -1074,7 +1083,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     const isFocused = focusTaskId === t.id;
 
     const openTaskCtxMenu = (x: number, y: number) => {
-      setTaskCtxMenu({ x, y, taskId: t.id });
+      setTaskCtxMenu({ ...clampMenuPosition(x, y, TASK_MENU_W, TASK_MENU_H), taskId: t.id });
     };
     const longPress = createLongPressHandlers(longPressStore, `task:${t.id}`, openTaskCtxMenu);
 
@@ -1298,7 +1307,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
               <button
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
-                  openTaskCtxMenu(rect.right, rect.bottom);
+                  openTaskCtxMenu(rect.left, rect.bottom);
                 }}
                 title="メニュー"
                 aria-label="メニュー"
@@ -1542,7 +1551,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
               const subCount = (childProjectsMap.get(p.id) ?? []).length;
               const isDrop = isDropTargetFor(p.id);
               const longPress = createLongPressHandlers(longPressStore, `project:${p.id}`, (x, y) =>
-                setCtxMenu({ x, y, projectId: p.id }),
+                openProjectCtxMenu(x, y, p.id),
               );
               return (
                 <div
@@ -1556,7 +1565,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
                   onClickCapture={longPress.onClickCapture}
                   onContextMenu={(e) => {
                     e.preventDefault();
-                    setCtxMenu({ x: e.clientX, y: e.clientY, projectId: p.id });
+                    openProjectCtxMenu(e.clientX, e.clientY, p.id);
                   }}
                   onTouchStart={longPress.onTouchStart}
                   onTouchMove={longPress.onTouchMove}
@@ -1572,7 +1581,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
                     onClick={(e) => {
                       e.stopPropagation();
                       const rect = e.currentTarget.getBoundingClientRect();
-                      setCtxMenu({ x: rect.right, y: rect.bottom, projectId: p.id });
+                      openProjectCtxMenu(rect.left, rect.bottom, p.id);
                     }}
                     title="メニュー"
                     aria-label="メニュー"
@@ -1849,6 +1858,17 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
           className="fixed z-50 min-w-[140px] rounded border border-slate-200 bg-white py-1 text-sm shadow-lg"
           style={{ top: taskCtxMenu.y, left: taskCtxMenu.x }}
         >
+          <button
+            type="button"
+            onClick={() => {
+              const t = tasks.find((x) => x.id === taskCtxMenu.taskId);
+              setTaskCtxMenu(null);
+              if (t) startEdit(t);
+            }}
+            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
+          >
+            ✎ 編集
+          </button>
           <button
             type="button"
             onClick={() => {
