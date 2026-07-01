@@ -1048,15 +1048,6 @@ export function MemoView() {
           </div>
         )}
 
-        {/* Drag hint */}
-        {dragItem && (
-          <div className="mb-3 rounded border border-dashed border-blue-300 bg-blue-50 px-3 py-2 text-center text-sm text-blue-600">
-            {dragItem.type === "memo"
-              ? "📄 メモをドラッグ中 — フォルダにドロップで移動 / 一覧内で並び替え"
-              : "📁 フォルダをドラッグ中 — フォルダにドロップで階層変更（500ms ホバーで自動展開）"}
-          </div>
-        )}
-
         {showEditor ? (
           <>
             <div className="mb-3 flex items-center justify-between">
