@@ -3,7 +3,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   listTasks,
   toggleSubtask,
+  updateTask,
   type Subtask,
+  type Task,
   type TaskStatus,
 } from "../api/tasks";
 import { MdText } from "../lib/mdInline";
@@ -147,6 +149,20 @@ export function HomeView({ onOpenCalendar }: { onOpenCalendar: (date: string) =>
     }
   };
 
+  const onToggleDone = async (t: Task) => {
+    try {
+      const next: TaskStatus = t.status === "done" ? "todo" : "done";
+      await updateTask(t.id, { ...t, status: next });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["calendar"] }),
+      ]);
+      setMutationError(null);
+    } catch (e) {
+      setMutationError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const [showDone, setShowDone] = useState(true);
   const todayStr = formatDate(new Date());
   const markedDates = useMemo(() => new Set(tasks.flatMap((t) => [t.start_date?.slice(0, 10), t.due_date?.slice(0, 10)].filter((d): d is string => Boolean(d)))), [tasks]);
@@ -154,8 +170,8 @@ export function HomeView({ onOpenCalendar }: { onOpenCalendar: (date: string) =>
   const stickyIds = useRef<Set<number>>(new Set());
   for (const t of tasks) {
     if (
-      t.status === "doing" ||
-      (t.due_date != null && t.due_date.startsWith(todayStr))
+      t.due_date != null &&
+      (t.due_date.startsWith(todayStr) || t.status === "doing")
     ) {
       stickyIds.current.add(t.id);
     }
@@ -217,6 +233,19 @@ export function HomeView({ onOpenCalendar }: { onOpenCalendar: (date: string) =>
                   key={t.id}
                   className="flex items-start gap-2 rounded border border-slate-100 bg-slate-50 p-3"
                 >
+                  <input
+                    type="checkbox"
+                    checked={t.status === "done"}
+                    onChange={() => onToggleDone(t)}
+                    disabled={subs.length > 0}
+                    className={`mt-0.5 h-4 w-4 accent-slate-900 ${subs.length > 0 ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+                    aria-label="完了マーク"
+                    title={
+                      subs.length > 0
+                        ? "サブタスクのチェック状態で自動反映"
+                        : undefined
+                    }
+                  />
                   <span
                     className={`mt-0.5 rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status]}`}
                   >
@@ -247,25 +276,24 @@ export function HomeView({ onOpenCalendar }: { onOpenCalendar: (date: string) =>
                     {subs.length > 0 && (
                       <ul className="mt-2 space-y-1">
                         {subs.map((s) => (
-                          <li
-                            key={s.id}
-                            className="flex items-start gap-2 text-sm"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={s.done}
-                              onChange={() => onToggleSubtask(t.id, s)}
-                              className="mt-0.5 h-4 w-4 cursor-pointer accent-slate-900"
-                            />
-                            <span
-                              className={
-                                s.done
-                                  ? "break-words text-slate-400 line-through"
-                                  : "break-words text-slate-700"
-                              }
-                            >
-                              <MdText text={s.text} />
-                            </span>
+                          <li key={s.id} className="text-sm">
+                            <label className="flex cursor-pointer items-start gap-2">
+                              <input
+                                type="checkbox"
+                                checked={s.done}
+                                onChange={() => onToggleSubtask(t.id, s)}
+                                className="mt-0.5 h-4 w-4 cursor-pointer accent-slate-900"
+                              />
+                              <span
+                                className={
+                                  s.done
+                                    ? "break-words text-slate-400 line-through"
+                                    : "break-words text-slate-700"
+                                }
+                              >
+                                <MdText text={s.text} />
+                              </span>
+                            </label>
                           </li>
                         ))}
                       </ul>

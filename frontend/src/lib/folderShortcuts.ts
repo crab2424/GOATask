@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-const RECENT_LIMIT = 5;
+export const RECENT_LIMIT = 5;
 
 function readNumberArray(key: string): number[] {
   try {

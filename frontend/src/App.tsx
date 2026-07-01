@@ -139,9 +139,9 @@ function App() {
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-50 text-slate-900">
+    <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-900">
       <nav
-        className={`flex shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-150 ${
+        className={`flex shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white transition-[width] duration-150 ${
           navCollapsed ? "w-14" : "w-48"
         }`}
       >
@@ -200,7 +200,7 @@ function App() {
         </div>
       </nav>
 
-      <main className="min-w-0 flex-1 p-6">{content}</main>
+      <main className="min-w-0 flex-1 overflow-y-auto p-6">{content}</main>
     </div>
   );
 }

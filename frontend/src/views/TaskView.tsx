@@ -58,6 +58,7 @@ import {
   isDescendant,
 } from "../lib/directoryTree";
 import { useHoverExpand } from "../lib/useHoverExpand";
+import { createLongPressHandlers } from "../lib/longPress";
 import { MdText } from "../lib/mdInline";
 import { stripBulletLines } from "../lib/taskText";
 import { TaskDescriptionEditor } from "../components/TaskDescriptionEditor";
@@ -162,10 +163,7 @@ function dueLabel(iso: string | null | undefined, status: TaskStatus) {
 }
 
 type DragItem = { type: "task" | "project"; id: number } | null;
-type DropTarget =
-  | { kind: "folder"; projectId: number | null }
-  | { kind: "reorder"; taskId: number; before: boolean }
-  | null;
+type DropTarget = { kind: "folder"; projectId: number | null } | null;
 
 export function TaskView() {
   const queryClient = useQueryClient();
@@ -261,6 +259,13 @@ export function TaskView() {
   } | null>(null);
   const ctxMenuRef = useRef<HTMLDivElement | null>(null);
 
+  const [taskCtxMenu, setTaskCtxMenu] = useState<{
+    x: number;
+    y: number;
+    taskId: number;
+  } | null>(null);
+  const taskCtxMenuRef = useRef<HTMLDivElement | null>(null);
+
   const hoverExpand = useHoverExpand(
     (id) =>
       setExpanded((prev) => {
@@ -324,6 +329,23 @@ export function TaskView() {
       document.removeEventListener("keydown", onKey);
     };
   }, [ctxMenu]);
+
+  useEffect(() => {
+    if (!taskCtxMenu) return;
+    const onDown = (e: MouseEvent) => {
+      if (!taskCtxMenuRef.current?.contains(e.target as Node))
+        setTaskCtxMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTaskCtxMenu(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [taskCtxMenu]);
 
   const [hasNewDraftFlag, setHasNewDraftFlag] = useState(false);
   useEffect(() => {
@@ -541,22 +563,6 @@ export function TaskView() {
     dropTarget.kind === "folder" &&
     dropTarget.projectId === projectId;
 
-  const reorderIndicatorFor = (taskId: number): "before" | "after" | null => {
-    if (!dropTarget || dropTarget.kind !== "reorder") return null;
-    if (dropTarget.taskId !== taskId) return null;
-    return dropTarget.before ? "before" : "after";
-  };
-
-  const canReorderTask = (overTaskId: number): boolean => {
-    const item = dragItemRef.current;
-    if (!item || item.type !== "task") return false;
-    if (item.id === overTaskId) return false;
-    const dragged = tasks.find((t) => t.id === item.id);
-    const over = tasks.find((t) => t.id === overTaskId);
-    if (!dragged || !over) return false;
-    return (dragged.project_id ?? null) === (over.project_id ?? null);
-  };
-
   // --- Navigation ---
 
   const navigateTo = (id: number | null) => {
@@ -670,61 +676,6 @@ export function TaskView() {
     dragItemRef.current = null;
     setDragItem(null);
     setDropTarget(null);
-  };
-
-  const handleTaskReorderDragOver = (e: ReactDragEvent, overTaskId: number) => {
-    if (!canReorderTask(overTaskId)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const before = e.clientY < rect.top + rect.height / 2;
-    setDropTarget((prev) => {
-      if (
-        prev &&
-        prev.kind === "reorder" &&
-        prev.taskId === overTaskId &&
-        prev.before === before
-      ) {
-        return prev;
-      }
-      return { kind: "reorder", taskId: overTaskId, before };
-    });
-  };
-
-  const handleTaskReorderDrop = async (
-    e: ReactDragEvent,
-    overTaskId: number,
-  ) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const item = dragItemRef.current;
-    const target = dropTarget;
-    dragItemRef.current = null;
-    setDragItem(null);
-    setDropTarget(null);
-    hoverExpand.clear();
-    if (!item || item.type !== "task") return;
-    if (!target || target.kind !== "reorder" || target.taskId !== overTaskId)
-      return;
-    if (!canReorderTask(overTaskId)) return;
-
-    const draggedId = item.id;
-    const active = activeTasks.filter((t) => t.id !== draggedId);
-    const overIdx = active.findIndex((t) => t.id === overTaskId);
-    if (overIdx < 0) return;
-    const insertAt = target.before ? overIdx : overIdx + 1;
-    const dragged = activeTasks.find((t) => t.id === draggedId);
-    if (!dragged) return;
-    active.splice(insertAt, 0, dragged);
-    const allIds = tidied
-      ? [...active, ...doneTasks].map((t) => t.id)
-      : active.map((t) => t.id);
-    try {
-      await reorderTasks(allIds);
-      await reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
   };
 
   // --- Task CRUD ---
@@ -1095,11 +1046,14 @@ export function TaskView() {
     const bodyText = stripBulletLines(t.description);
     const subs = t.subtasks ?? [];
     const subDoneCount = subs.filter((s) => s.done).length;
-    const isDragging = dragItem?.type === "task" && dragItem.id === t.id;
-    const indicator = reorderIndicatorFor(t.id);
     const isEditing = editingId === t.id;
 
     const isFocused = focusTaskId === t.id;
+
+    const openTaskCtxMenu = (x: number, y: number) => {
+      setTaskCtxMenu({ x, y, taskId: t.id });
+    };
+    const longPress = createLongPressHandlers(openTaskCtxMenu);
 
     return (
       <li
@@ -1112,38 +1066,21 @@ export function TaskView() {
           isFocused
             ? "border-blue-400 ring-2 ring-blue-300"
             : "border-slate-200"
-        } ${isDragging ? "opacity-40" : ""}`}
-        draggable={!isEditing}
-        onDragStart={(e) => {
-          if (isEditing) {
-            e.preventDefault();
-            return;
-          }
-          handleDragStart(e, "task", t.id);
+        } ${!isEditing ? "cursor-pointer" : ""}`}
+        onClick={() => {
+          if (!isEditing) startEdit(t);
         }}
-        onDragEnd={handleDragEnd}
-        onDragOver={(e) => {
-          if (isEditing) {
-            e.stopPropagation();
-            return;
-          }
-          handleTaskReorderDragOver(e, t.id);
+        onContextMenu={(e) => {
+          if (isEditing) return;
+          e.preventDefault();
+          e.stopPropagation();
+          openTaskCtxMenu(e.clientX, e.clientY);
         }}
-        onDrop={(e) => {
-          if (isEditing) {
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
-          handleTaskReorderDrop(e, t.id);
-        }}
+        onTouchStart={isEditing ? undefined : longPress.onTouchStart}
+        onTouchMove={isEditing ? undefined : longPress.onTouchMove}
+        onTouchEnd={isEditing ? undefined : longPress.onTouchEnd}
+        onClickCapture={isEditing ? undefined : longPress.onClickCapture}
       >
-        {indicator === "before" && (
-          <span className="pointer-events-none absolute -top-1 left-0 right-0 h-0.5 rounded-full bg-blue-500" />
-        )}
-        {indicator === "after" && (
-          <span className="pointer-events-none absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-blue-500" />
-        )}
         {editingId === t.id ? (
           <div className="flex-1">
             <input
@@ -1226,6 +1163,7 @@ export function TaskView() {
                 type="checkbox"
                 checked={t.status === "done"}
                 onChange={() => toggleDone(t)}
+                onClick={(e) => e.stopPropagation()}
                 disabled={subs.length > 0}
                 className={`mt-1 h-4 w-4 accent-slate-900 ${subs.length > 0 ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
                 aria-label="完了マーク"
@@ -1246,7 +1184,10 @@ export function TaskView() {
                     </span>
                   ) : (
                     <button
-                      onClick={() => cycleStatus(t)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        cycleStatus(t);
+                      }}
                       className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status]}`}
                     >
                       {STATUS_LABEL[t.status]}
@@ -1283,65 +1224,56 @@ export function TaskView() {
                   />
                 )}
                 {subs.length > 0 && (
-                  <ul className="mt-2 space-y-1">
+                  <ul
+                    className="mt-2 space-y-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {subs.map((s) => (
-                      <li
-                        key={s.id}
-                        className="flex items-start gap-2 text-sm"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={s.done}
-                          onChange={() => onToggleSubtask(t.id, s)}
-                          className="mt-0.5 h-4 w-4 cursor-pointer accent-slate-900"
-                        />
-                        <span
-                          className={
-                            s.done
-                              ? "break-words text-slate-400 line-through"
-                              : "break-words text-slate-700"
-                          }
-                        >
-                          <MdText text={s.text} />
-                        </span>
+                      <li key={s.id} className="text-sm">
+                        <label className="flex cursor-pointer items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={s.done}
+                            onChange={() => onToggleSubtask(t.id, s)}
+                            className="mt-0.5 h-4 w-4 cursor-pointer accent-slate-900"
+                          />
+                          <span
+                            className={
+                              s.done
+                                ? "break-words text-slate-400 line-through"
+                                : "break-words text-slate-700"
+                            }
+                          >
+                            <MdText text={s.text} />
+                          </span>
+                        </label>
                       </li>
                     ))}
                   </ul>
                 )}
               </div>
             </div>
-            <div className="ml-3 flex flex-col items-end gap-1">
-              {t.status !== "done" && (
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => moveTask(t.id, "up")}
-                    className="rounded px-1 text-sm text-slate-400 hover:text-slate-700"
-                    title="上に移動"
-                  >
-                    ▲
-                  </button>
-                  <button
-                    onClick={() => moveTask(t.id, "down")}
-                    className="rounded px-1 text-sm text-slate-400 hover:text-slate-700"
-                    title="下に移動"
-                  >
-                    ▼
-                  </button>
-                </div>
-              )}
-              <button
-                onClick={() => startEdit(t)}
-                className="text-sm text-slate-600 hover:text-slate-900"
+            {t.status !== "done" && (
+              <div
+                className="ml-3 flex gap-1"
+                onClick={(e) => e.stopPropagation()}
               >
-                編集
-              </button>
-              <button
-                onClick={() => onDeleteTask(t)}
-                className="text-sm text-rose-600 hover:text-rose-800"
-              >
-                削除
-              </button>
-            </div>
+                <button
+                  onClick={() => moveTask(t.id, "up")}
+                  className="rounded px-1 text-sm text-slate-400 hover:text-slate-700"
+                  title="上に移動"
+                >
+                  ▲
+                </button>
+                <button
+                  onClick={() => moveTask(t.id, "down")}
+                  className="rounded px-1 text-sm text-slate-400 hover:text-slate-700"
+                  title="下に移動"
+                >
+                  ▼
+                </button>
+              </div>
+            )}
           </>
         )}
       </li>
@@ -1575,15 +1507,26 @@ export function TaskView() {
               const totalCount = count + doneCount;
               const subCount = (childProjectsMap.get(p.id) ?? []).length;
               const isDrop = isDropTargetFor(p.id);
+              const longPress = createLongPressHandlers((x, y) =>
+                setCtxMenu({ x, y, projectId: p.id }),
+              );
               return (
                 <div
                   key={p.id}
-                  className={`group flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-all ${
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-all ${
                     isDrop
                       ? "border-blue-400 bg-blue-50 ring-2 ring-blue-400"
                       : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
                   } ${dragItem?.type === "project" && dragItem.id === p.id ? "opacity-40" : ""}`}
                   onClick={() => navigateTo(p.id)}
+                  onClickCapture={longPress.onClickCapture}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setCtxMenu({ x: e.clientX, y: e.clientY, projectId: p.id });
+                  }}
+                  onTouchStart={longPress.onTouchStart}
+                  onTouchMove={longPress.onTouchMove}
+                  onTouchEnd={longPress.onTouchEnd}
                   draggable
                   onDragStart={(e) => handleDragStart(e, "project", p.id)}
                   onDragEnd={handleDragEnd}
@@ -1607,34 +1550,9 @@ export function TaskView() {
                       />
                     )}
                   </div>
-                  <div className="hidden gap-1 group-hover:flex">
-                    <button
-                      onClick={(e) => onRenameProject(p, e)}
-                      title="リネーム"
-                      className="rounded p-1 text-xs text-slate-400 hover:bg-slate-200 hover:text-slate-700"
-                    >
-                      ✎
-                    </button>
-                    <button
-                      onClick={(e) => onDeleteProject(p, e)}
-                      title="削除"
-                      className="rounded p-1 text-xs text-rose-400 hover:bg-rose-100 hover:text-rose-700"
-                    >
-                      🗑
-                    </button>
-                  </div>
                 </div>
               );
             })}
-          </div>
-        )}
-
-        {/* Drag hint */}
-        {dragItem && (
-          <div className="mb-4 rounded border border-dashed border-blue-300 bg-blue-50 px-3 py-2 text-center text-sm text-blue-600">
-            {dragItem.type === "task"
-              ? "📋 タスクをドラッグ中 — フォルダにドロップで移動 / 一覧内で並び替え"
-              : "📁 プロジェクトをドラッグ中 — フォルダにドロップで階層変更（500ms ホバーで自動展開）"}
           </div>
         )}
 
@@ -1869,6 +1787,25 @@ export function TaskView() {
               const p = projects.find((x) => x.id === ctxMenu.projectId);
               setCtxMenu(null);
               if (p) onDeleteProject(p);
+            }}
+            className="block w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50"
+          >
+            🗑 削除
+          </button>
+        </div>
+      )}
+      {taskCtxMenu && (
+        <div
+          ref={taskCtxMenuRef}
+          className="fixed z-50 min-w-[140px] rounded border border-slate-200 bg-white py-1 text-sm shadow-lg"
+          style={{ top: taskCtxMenu.y, left: taskCtxMenu.x }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              const t = tasks.find((x) => x.id === taskCtxMenu.taskId);
+              setTaskCtxMenu(null);
+              if (t) onDeleteTask(t);
             }}
             className="block w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50"
           >
