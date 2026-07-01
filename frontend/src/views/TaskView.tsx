@@ -1111,6 +1111,10 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
         onTouchStart={isEditing ? undefined : longPress.onTouchStart}
         onTouchMove={isEditing ? undefined : longPress.onTouchMove}
         onTouchEnd={isEditing ? undefined : longPress.onTouchEnd}
+        onMouseDown={isEditing ? undefined : longPress.onMouseDown}
+        onMouseMove={isEditing ? undefined : longPress.onMouseMove}
+        onMouseUp={isEditing ? undefined : longPress.onMouseUp}
+        onMouseLeave={isEditing ? undefined : longPress.onMouseLeave}
         onClickCapture={isEditing ? undefined : longPress.onClickCapture}
       >
         {editingId === t.id ? (
@@ -1570,8 +1574,15 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
                   onTouchStart={longPress.onTouchStart}
                   onTouchMove={longPress.onTouchMove}
                   onTouchEnd={longPress.onTouchEnd}
+                  onMouseDown={longPress.onMouseDown}
+                  onMouseMove={longPress.onMouseMove}
+                  onMouseUp={longPress.onMouseUp}
+                  onMouseLeave={longPress.onMouseLeave}
                   draggable
-                  onDragStart={(e) => handleDragStart(e, "project", p.id)}
+                  onDragStart={(e) => {
+                    longPress.cancel();
+                    handleDragStart(e, "project", p.id);
+                  }}
                   onDragEnd={handleDragEnd}
                   onDragOver={(e) => handleFolderDragOver(e, p.id)}
                   onDrop={(e) => handleFolderDrop(e, p.id)}

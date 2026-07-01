@@ -9,6 +9,7 @@ interface LongPressState {
   timer: number | null;
   start: { x: number; y: number } | null;
   firedAt: number | null;
+  mouseDown: boolean;
 }
 
 /**
@@ -28,7 +29,7 @@ export function createLongPressStore(): LongPressStore {
 function getState(store: LongPressStore, key: string): LongPressState {
   let state = store.get(key);
   if (!state) {
-    state = { timer: null, start: null, firedAt: null };
+    state = { timer: null, start: null, firedAt: null, mouseDown: false };
     store.set(key, state);
   }
   return state;
@@ -87,6 +88,44 @@ export function createLongPressHandlers(
     }
   };
 
+  // Mouse/trackpad has no "long press" concept natively, so click-and-hold
+  // is mirrored here with the same timer. Unlike touch, preventDefault() on
+  // mouseup can't stop the trailing click (the browser fires it regardless),
+  // so onClickCapture is the only suppression path for this input type.
+  const onMouseDown = (e: ReactMouseEvent) => {
+    if (e.button !== 0) return;
+    state.start = { x: e.clientX, y: e.clientY };
+    state.mouseDown = true;
+    clearTimer();
+    state.timer = window.setTimeout(() => {
+      state.firedAt = Date.now();
+      onLongPress(e.clientX, e.clientY);
+    }, delayMs);
+  };
+
+  const onMouseMove = (e: ReactMouseEvent) => {
+    if (!state.mouseDown || !state.start) return;
+    if (
+      Math.abs(e.clientX - state.start.x) > MOVE_TOLERANCE_PX ||
+      Math.abs(e.clientY - state.start.y) > MOVE_TOLERANCE_PX
+    ) {
+      clearTimer();
+      state.mouseDown = false;
+    }
+  };
+
+  const onMouseUp = () => {
+    clearTimer();
+    state.mouseDown = false;
+  };
+
+  const onMouseLeave = () => {
+    if (state.mouseDown) {
+      clearTimer();
+      state.mouseDown = false;
+    }
+  };
+
   const onClickCapture = (e: ReactMouseEvent) => {
     if (state.firedAt !== null && Date.now() - state.firedAt < FIRED_WINDOW_MS) {
       e.stopPropagation();
@@ -95,5 +134,23 @@ export function createLongPressHandlers(
     }
   };
 
-  return { onTouchStart, onTouchMove, onTouchEnd, onClickCapture };
+  // Call when native HTML5 drag-and-drop takes over the same mousedown (e.g.
+  // onDragStart), so the pending timer doesn't fire mid-drag with stale
+  // coordinates once the hold exceeds delayMs.
+  const cancel = () => {
+    clearTimer();
+    state.mouseDown = false;
+  };
+
+  return {
+    onTouchStart,
+    onTouchMove,
+    onTouchEnd,
+    onMouseDown,
+    onMouseMove,
+    onMouseUp,
+    onMouseLeave,
+    onClickCapture,
+    cancel,
+  };
 }
