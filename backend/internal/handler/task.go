@@ -164,6 +164,12 @@ func (h *TaskHandler) toggleSubtask(c echo.Context) error {
 	if err := h.DB.Save(&sub).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	if newDesc, changed := syncDescriptionCheckboxMarker(parent.Description, sub.Position, sub.Text, sub.Done); changed {
+		parent.Description = newDesc
+		if err := h.DB.Save(&parent).Error; err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		}
+	}
 	if err := reconcileParentStatus(h.DB, uint(taskID)); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
@@ -199,6 +205,13 @@ func (h *TaskHandler) reorder(c echo.Context) error {
 type subtaskLine struct {
 	Text     string
 	DoneHint *bool
+	// RawIndex is the line's index in strings.Split(description, "\n"),
+	// used to patch the exact line back when a checkbox is toggled.
+	RawIndex int
+	// IsCheckbox is true only for "- [ ]"/"- [x]" lines, which are the only
+	// style that carries a done marker in the text. "・" and "- " bullets
+	// have no marker to rewrite and must be left untouched.
+	IsCheckbox bool
 }
 
 // extractSubtaskLines pulls lines that start with "・", "- ", "- [ ]" or
@@ -206,34 +219,66 @@ type subtaskLine struct {
 // which is used only when a brand-new subtask row is created.
 func extractSubtaskLines(description string) []subtaskLine {
 	var lines []subtaskLine
-	for _, raw := range strings.Split(description, "\n") {
+	for i, raw := range strings.Split(description, "\n") {
 		trimmed := strings.TrimSpace(raw)
 		switch {
 		case strings.HasPrefix(trimmed, "- [ ]"):
 			text := strings.TrimSpace(strings.TrimPrefix(trimmed, "- [ ]"))
 			if text != "" {
 				done := false
-				lines = append(lines, subtaskLine{Text: text, DoneHint: &done})
+				lines = append(lines, subtaskLine{Text: text, DoneHint: &done, RawIndex: i, IsCheckbox: true})
 			}
 		case strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [X]"):
 			text := strings.TrimSpace(trimmed[5:])
 			if text != "" {
 				done := true
-				lines = append(lines, subtaskLine{Text: text, DoneHint: &done})
+				lines = append(lines, subtaskLine{Text: text, DoneHint: &done, RawIndex: i, IsCheckbox: true})
 			}
 		case strings.HasPrefix(trimmed, "・"):
 			text := strings.TrimSpace(strings.TrimPrefix(trimmed, "・"))
 			if text != "" {
-				lines = append(lines, subtaskLine{Text: text})
+				lines = append(lines, subtaskLine{Text: text, RawIndex: i})
 			}
 		case strings.HasPrefix(trimmed, "- "):
 			text := strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
 			if text != "" {
-				lines = append(lines, subtaskLine{Text: text})
+				lines = append(lines, subtaskLine{Text: text, RawIndex: i})
 			}
 		}
 	}
 	return lines
+}
+
+// syncDescriptionCheckboxMarker rewrites the "- [ ]"/"- [x]" marker of the
+// subtask line at position (matched by text as a sanity check) so the raw
+// description stays consistent with the checkbox's Done state. Lines written
+// with "・" or "- " have no marker and are left untouched, since there's
+// nothing to flip. Returns the original description and false if nothing
+// needed to change (e.g. the description was edited since the last sync and
+// no longer lines up with position).
+func syncDescriptionCheckboxMarker(description string, position int, text string, done bool) (string, bool) {
+	lines := extractSubtaskLines(description)
+	if position < 0 || position >= len(lines) {
+		return description, false
+	}
+	line := lines[position]
+	if !line.IsCheckbox || line.Text != text {
+		return description, false
+	}
+	marker := "- [ ] "
+	if done {
+		marker = "- [x] "
+	}
+	rawLines := strings.Split(description, "\n")
+	if line.RawIndex >= len(rawLines) {
+		return description, false
+	}
+	newLine := marker + text
+	if rawLines[line.RawIndex] == newLine {
+		return description, false
+	}
+	rawLines[line.RawIndex] = newLine
+	return strings.Join(rawLines, "\n"), true
 }
 
 // syncSubtasks reconciles subtask rows with the bullet lines in t.Description.

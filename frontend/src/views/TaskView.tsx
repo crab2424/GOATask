@@ -58,7 +58,7 @@ import {
   isDescendant,
 } from "../lib/directoryTree";
 import { useHoverExpand } from "../lib/useHoverExpand";
-import { createLongPressHandlers } from "../lib/longPress";
+import { createLongPressHandlers, createLongPressStore } from "../lib/longPress";
 import { MdText } from "../lib/mdInline";
 import { stripBulletLines } from "../lib/taskText";
 import { TaskDescriptionEditor } from "../components/TaskDescriptionEditor";
@@ -172,6 +172,7 @@ interface TaskViewProps {
 
 export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps = {}) {
   const queryClient = useQueryClient();
+  const longPressStore = useRef(createLongPressStore()).current;
   const tasksQuery = useQuery({ queryKey: ["tasks"], queryFn: listTasks });
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const tasks = tasksQuery.data ?? [];
@@ -1075,7 +1076,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     const openTaskCtxMenu = (x: number, y: number) => {
       setTaskCtxMenu({ x, y, taskId: t.id });
     };
-    const longPress = createLongPressHandlers(openTaskCtxMenu);
+    const longPress = createLongPressHandlers(longPressStore, `task:${t.id}`, openTaskCtxMenu);
 
     return (
       <li
@@ -1540,7 +1541,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
               const totalCount = count + doneCount;
               const subCount = (childProjectsMap.get(p.id) ?? []).length;
               const isDrop = isDropTargetFor(p.id);
-              const longPress = createLongPressHandlers((x, y) =>
+              const longPress = createLongPressHandlers(longPressStore, `project:${p.id}`, (x, y) =>
                 setCtxMenu({ x, y, projectId: p.id }),
               );
               return (
