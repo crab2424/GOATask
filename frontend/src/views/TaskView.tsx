@@ -58,7 +58,6 @@ import {
   isDescendant,
 } from "../lib/directoryTree";
 import { useHoverExpand } from "../lib/useHoverExpand";
-import { createLongPressHandlers, createLongPressStore } from "../lib/longPress";
 import {
   ContextMenu,
   ContextMenuItem,
@@ -181,7 +180,6 @@ interface TaskViewProps {
 
 export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps = {}) {
   const queryClient = useQueryClient();
-  const longPressStore = useRef(createLongPressStore()).current;
   const tasksQuery = useQuery({ queryKey: ["tasks"], queryFn: listTasks });
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const tasks = tasksQuery.data ?? [];
@@ -1052,7 +1050,6 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
       projectMenu.close();
       taskMenu.open(x, y, { taskId: t.id });
     };
-    const longPress = createLongPressHandlers(longPressStore, `task:${t.id}`, openTaskCtxMenu);
 
     return (
       <li
@@ -1075,14 +1072,6 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
           e.stopPropagation();
           openTaskCtxMenu(e.clientX, e.clientY);
         }}
-        onTouchStart={isEditing ? undefined : longPress.onTouchStart}
-        onTouchMove={isEditing ? undefined : longPress.onTouchMove}
-        onTouchEnd={isEditing ? undefined : longPress.onTouchEnd}
-        onMouseDown={isEditing ? undefined : longPress.onMouseDown}
-        onMouseMove={isEditing ? undefined : longPress.onMouseMove}
-        onMouseUp={isEditing ? undefined : longPress.onMouseUp}
-        onMouseLeave={isEditing ? undefined : longPress.onMouseLeave}
-        onClickCapture={isEditing ? undefined : longPress.onClickCapture}
       >
         {editingId === t.id ? (
           <div className="flex-1">
@@ -1521,9 +1510,6 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
               const totalCount = count + doneCount;
               const subCount = (childProjectsMap.get(p.id) ?? []).length;
               const isDrop = isDropTargetFor(p.id);
-              const longPress = createLongPressHandlers(longPressStore, `project:${p.id}`, (x, y) =>
-                openProjectCtxMenu(x, y, p.id),
-              );
               return (
                 <div
                   key={p.id}
@@ -1533,23 +1519,12 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
                       : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
                   } ${dragItem?.type === "project" && dragItem.id === p.id ? "opacity-40" : ""}`}
                   onClick={() => navigateTo(p.id)}
-                  onClickCapture={longPress.onClickCapture}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     openProjectCtxMenu(e.clientX, e.clientY, p.id);
                   }}
-                  onTouchStart={longPress.onTouchStart}
-                  onTouchMove={longPress.onTouchMove}
-                  onTouchEnd={longPress.onTouchEnd}
-                  onMouseDown={longPress.onMouseDown}
-                  onMouseMove={longPress.onMouseMove}
-                  onMouseUp={longPress.onMouseUp}
-                  onMouseLeave={longPress.onMouseLeave}
                   draggable
-                  onDragStart={(e) => {
-                    longPress.cancel();
-                    handleDragStart(e, "project", p.id);
-                  }}
+                  onDragStart={(e) => handleDragStart(e, "project", p.id)}
                   onDragEnd={handleDragEnd}
                   onDragOver={(e) => handleFolderDragOver(e, p.id)}
                   onDrop={(e) => handleFolderDrop(e, p.id)}

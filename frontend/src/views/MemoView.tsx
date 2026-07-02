@@ -64,7 +64,6 @@ import {
   isDescendant,
 } from "../lib/directoryTree";
 import { useHoverExpand } from "../lib/useHoverExpand";
-import { createLongPressHandlers, createLongPressStore } from "../lib/longPress";
 import {
   ContextMenu,
   ContextMenuItem,
@@ -165,8 +164,6 @@ export function MemoView() {
   const memoMenu = useContextMenu<{ memoId: number }>(MEMO_MENU_W, MEMO_MENU_H);
   const ctxMenu = folderMenu.menu;
   const memoCtxMenu = memoMenu.menu;
-
-  const longPressStore = useRef(createLongPressStore()).current;
 
   const openFolderCtxMenu = (x: number, y: number, folderId: number) => {
     memoMenu.close();
@@ -687,9 +684,6 @@ export function MemoView() {
 
   const renderTreeMemo = (m: Memo, depth: number): ReactElement => {
     const isDragging = dragItem?.type === "memo" && dragItem.id === m.id;
-    const longPress = createLongPressHandlers(longPressStore, `tree-memo:${m.id}`, (x, y) =>
-      openMemoCtxMenu(x, y, m.id),
-    );
     return (
       <li key={`m-${m.id}`} role="treeitem">
         <div
@@ -698,23 +692,12 @@ export function MemoView() {
           } ${m.id === selectedId ? "bg-slate-200 font-medium" : ""}`}
           style={{ paddingLeft: `${depth * 16 + 4}px` }}
           draggable
-          onDragStart={(e) => {
-            longPress.cancel();
-            handleDragStart(e, "memo", m.id);
-          }}
+          onDragStart={(e) => handleDragStart(e, "memo", m.id)}
           onDragEnd={handleDragEnd}
           onContextMenu={(e) => {
             e.preventDefault();
             openMemoCtxMenu(e.clientX, e.clientY, m.id);
           }}
-          onTouchStart={longPress.onTouchStart}
-          onTouchMove={longPress.onTouchMove}
-          onTouchEnd={longPress.onTouchEnd}
-          onMouseDown={longPress.onMouseDown}
-          onMouseMove={longPress.onMouseMove}
-          onMouseUp={longPress.onMouseUp}
-          onMouseLeave={longPress.onMouseLeave}
-          onClickCapture={longPress.onClickCapture}
         >
           <span className="flex w-4 shrink-0 items-center justify-center">
             <span
@@ -767,9 +750,6 @@ export function MemoView() {
         return next;
       });
     };
-    const longPress = createLongPressHandlers(longPressStore, `tree-folder:${f.id}`, (x, y) =>
-      openFolderCtxMenu(x, y, f.id),
-    );
     return (
       <li
         key={`f-${f.id}`}
@@ -813,19 +793,8 @@ export function MemoView() {
               e.preventDefault();
               openFolderCtxMenu(e.clientX, e.clientY, f.id);
             }}
-            onDragStart={(e) => {
-              longPress.cancel();
-              handleDragStart(e, "folder", f.id);
-            }}
+            onDragStart={(e) => handleDragStart(e, "folder", f.id)}
             onDragEnd={handleDragEnd}
-            onTouchStart={longPress.onTouchStart}
-            onTouchMove={longPress.onTouchMove}
-            onTouchEnd={longPress.onTouchEnd}
-            onMouseDown={longPress.onMouseDown}
-            onMouseMove={longPress.onMouseMove}
-            onMouseUp={longPress.onMouseUp}
-            onMouseLeave={longPress.onMouseLeave}
-            onClickCapture={longPress.onClickCapture}
             className="flex min-w-0 flex-1 items-center gap-1 px-1 py-1 text-left text-sm"
             style={{ paddingLeft: `${depth * 16 + 4}px` }}
           >
@@ -890,9 +859,6 @@ export function MemoView() {
     const isDragging = dragItem?.type === "memo" && dragItem.id === m.id;
     const indicator = reorderIndicatorFor(m.id);
     const preview = m.content.split("\n").find((l) => l.trim()) ?? "";
-    const longPress = createLongPressHandlers(longPressStore, `card-memo:${m.id}`, (x, y) =>
-      openMemoCtxMenu(x, y, m.id),
-    );
 
     return (
       <li
@@ -904,10 +870,7 @@ export function MemoView() {
           borderLeft: memoColor ? `4px solid ${memoColor}` : undefined,
         }}
         draggable
-        onDragStart={(e) => {
-          longPress.cancel();
-          handleDragStart(e, "memo", m.id);
-        }}
+        onDragStart={(e) => handleDragStart(e, "memo", m.id)}
         onDragEnd={handleDragEnd}
         onDragOver={(e) => handleMemoReorderDragOver(e, m.id)}
         onDrop={(e) => handleMemoReorderDrop(e, m.id)}
@@ -915,14 +878,6 @@ export function MemoView() {
           e.preventDefault();
           openMemoCtxMenu(e.clientX, e.clientY, m.id);
         }}
-        onTouchStart={longPress.onTouchStart}
-        onTouchMove={longPress.onTouchMove}
-        onTouchEnd={longPress.onTouchEnd}
-        onMouseDown={longPress.onMouseDown}
-        onMouseMove={longPress.onMouseMove}
-        onMouseUp={longPress.onMouseUp}
-        onMouseLeave={longPress.onMouseLeave}
-        onClickCapture={longPress.onClickCapture}
       >
         {indicator === "before" && (
           <span className="pointer-events-none absolute -top-1 left-0 right-0 h-0.5 rounded-full bg-blue-500" />
@@ -1229,11 +1184,6 @@ export function MemoView() {
                   const count = recursiveMemoCount.get(f.id) ?? 0;
                   const subCount = (childFolders.get(f.id) ?? []).length;
                   const isDrop = isDropTargetFor(f.id);
-                  const longPress = createLongPressHandlers(
-                    longPressStore,
-                    `card-folder:${f.id}`,
-                    (x, y) => openFolderCtxMenu(x, y, f.id),
-                  );
                   return (
                     <div
                       key={f.id}
@@ -1243,23 +1193,12 @@ export function MemoView() {
                           : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
                       } ${dragItem?.type === "folder" && dragItem.id === f.id ? "opacity-40" : ""}`}
                       onClick={() => navigateTo(f.id)}
-                      onClickCapture={longPress.onClickCapture}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         openFolderCtxMenu(e.clientX, e.clientY, f.id);
                       }}
-                      onTouchStart={longPress.onTouchStart}
-                      onTouchMove={longPress.onTouchMove}
-                      onTouchEnd={longPress.onTouchEnd}
-                      onMouseDown={longPress.onMouseDown}
-                      onMouseMove={longPress.onMouseMove}
-                      onMouseUp={longPress.onMouseUp}
-                      onMouseLeave={longPress.onMouseLeave}
                       draggable
-                      onDragStart={(e) => {
-                        longPress.cancel();
-                        handleDragStart(e, "folder", f.id);
-                      }}
+                      onDragStart={(e) => handleDragStart(e, "folder", f.id)}
                       onDragEnd={handleDragEnd}
                       onDragOver={(e) => handleFolderDragOver(e, f.id)}
                       onDragLeave={(e) => handleFolderDragLeave(e, f.id)}
