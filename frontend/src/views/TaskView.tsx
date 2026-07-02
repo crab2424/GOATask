@@ -59,7 +59,11 @@ import {
 } from "../lib/directoryTree";
 import { useHoverExpand } from "../lib/useHoverExpand";
 import { createLongPressHandlers, createLongPressStore } from "../lib/longPress";
-import { clampMenuPosition } from "../lib/menuPosition";
+import {
+  ContextMenu,
+  ContextMenuItem,
+  useContextMenu,
+} from "../components/ContextMenu";
 import { MdText } from "../lib/mdInline";
 import { stripBulletLines } from "../lib/taskText";
 import { TaskDescriptionEditor } from "../components/TaskDescriptionEditor";
@@ -263,22 +267,17 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
   const [focusTaskId, setFocusTaskId] = useState<number | null>(null);
   const taskRefs = useRef<Map<number, HTMLLIElement>>(new Map());
 
-  const [ctxMenu, setCtxMenu] = useState<{
-    x: number;
-    y: number;
-    projectId: number;
-  } | null>(null);
-  const ctxMenuRef = useRef<HTMLDivElement | null>(null);
-
-  const [taskCtxMenu, setTaskCtxMenu] = useState<{
-    x: number;
-    y: number;
-    taskId: number;
-  } | null>(null);
-  const taskCtxMenuRef = useRef<HTMLDivElement | null>(null);
+  const projectMenu = useContextMenu<{ projectId: number }>(
+    PROJECT_MENU_W,
+    PROJECT_MENU_H,
+  );
+  const taskMenu = useContextMenu<{ taskId: number }>(TASK_MENU_W, TASK_MENU_H);
+  const ctxMenu = projectMenu.menu;
+  const taskCtxMenu = taskMenu.menu;
 
   const openProjectCtxMenu = (x: number, y: number, projectId: number) => {
-    setCtxMenu({ ...clampMenuPosition(x, y, PROJECT_MENU_W, PROJECT_MENU_H), projectId });
+    taskMenu.close();
+    projectMenu.open(x, y, { projectId });
   };
 
   const hoverExpand = useHoverExpand(
@@ -328,39 +327,6 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
       currentProjectId === null ? "root" : String(currentProjectId),
     );
   }, [currentProjectId]);
-
-  useEffect(() => {
-    if (!ctxMenu) return;
-    const onDown = (e: MouseEvent) => {
-      if (!ctxMenuRef.current?.contains(e.target as Node)) setCtxMenu(null);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setCtxMenu(null);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [ctxMenu]);
-
-  useEffect(() => {
-    if (!taskCtxMenu) return;
-    const onDown = (e: MouseEvent) => {
-      if (!taskCtxMenuRef.current?.contains(e.target as Node))
-        setTaskCtxMenu(null);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setTaskCtxMenu(null);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [taskCtxMenu]);
 
   const [hasNewDraftFlag, setHasNewDraftFlag] = useState(false);
   useEffect(() => {
@@ -1083,7 +1049,8 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     const isFocused = focusTaskId === t.id;
 
     const openTaskCtxMenu = (x: number, y: number) => {
-      setTaskCtxMenu({ ...clampMenuPosition(x, y, TASK_MENU_W, TASK_MENU_H), taskId: t.id });
+      projectMenu.close();
+      taskMenu.open(x, y, { taskId: t.id });
     };
     const longPress = createLongPressHandlers(longPressStore, `task:${t.id}`, openTaskCtxMenu);
 
@@ -1811,87 +1778,74 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
         />
       )}
       {ctxMenu && (
-        <div
-          ref={ctxMenuRef}
-          className="fixed z-50 min-w-[180px] rounded border border-slate-200 bg-white py-1 text-sm shadow-lg"
-          style={{ top: ctxMenu.y, left: ctxMenu.x }}
+        <ContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          menuRef={projectMenu.ref}
+          minWidth={180}
         >
-          <button
-            type="button"
+          <ContextMenuItem
             onClick={() => {
               const id = ctxMenu.projectId;
-              setCtxMenu(null);
+              projectMenu.close();
               onCreateProjectIn(id);
             }}
-            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
           >
             ＋ サブプロジェクト追加
-          </button>
-          <button
-            type="button"
+          </ContextMenuItem>
+          <ContextMenuItem
             onClick={() => {
               favorites.toggle(ctxMenu.projectId);
-              setCtxMenu(null);
+              projectMenu.close();
             }}
-            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
           >
             {favorites.has(ctxMenu.projectId)
               ? "★ お気に入り解除"
               : "☆ お気に入り追加"}
-          </button>
-          <button
-            type="button"
+          </ContextMenuItem>
+          <ContextMenuItem
             onClick={() => {
               const p = projects.find((x) => x.id === ctxMenu.projectId);
-              setCtxMenu(null);
+              projectMenu.close();
               if (p) onRenameProject(p);
             }}
-            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
           >
             ✎ リネーム
-          </button>
-          <button
-            type="button"
+          </ContextMenuItem>
+          <ContextMenuItem
+            danger
             onClick={() => {
               const p = projects.find((x) => x.id === ctxMenu.projectId);
-              setCtxMenu(null);
+              projectMenu.close();
               if (p) onDeleteProject(p);
             }}
-            className="block w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50"
           >
             🗑 削除
-          </button>
-        </div>
+          </ContextMenuItem>
+        </ContextMenu>
       )}
       {taskCtxMenu && (
-        <div
-          ref={taskCtxMenuRef}
-          className="fixed z-50 min-w-[140px] rounded border border-slate-200 bg-white py-1 text-sm shadow-lg"
-          style={{ top: taskCtxMenu.y, left: taskCtxMenu.x }}
-        >
-          <button
-            type="button"
+        <ContextMenu x={taskCtxMenu.x} y={taskCtxMenu.y} menuRef={taskMenu.ref}>
+          <ContextMenuItem
             onClick={() => {
               const t = tasks.find((x) => x.id === taskCtxMenu.taskId);
-              setTaskCtxMenu(null);
+              taskMenu.close();
               if (t) startEdit(t);
             }}
-            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
           >
             ✎ 編集
-          </button>
-          <button
-            type="button"
+          </ContextMenuItem>
+          <ContextMenuItem
+            danger
             onClick={() => {
               const t = tasks.find((x) => x.id === taskCtxMenu.taskId);
-              setTaskCtxMenu(null);
+              taskMenu.close();
               if (t) onDeleteTask(t);
             }}
-            className="block w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50"
           >
             🗑 削除
-          </button>
-        </div>
+          </ContextMenuItem>
+        </ContextMenu>
       )}
     </div>
   );

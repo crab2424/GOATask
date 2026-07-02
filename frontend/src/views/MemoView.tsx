@@ -65,7 +65,11 @@ import {
 } from "../lib/directoryTree";
 import { useHoverExpand } from "../lib/useHoverExpand";
 import { createLongPressHandlers, createLongPressStore } from "../lib/longPress";
-import { clampMenuPosition } from "../lib/menuPosition";
+import {
+  ContextMenu,
+  ContextMenuItem,
+  useContextMenu,
+} from "../components/ContextMenu";
 
 const MEMO_DEFAULT_DOT_COLOR = "#cbd5e1"; // slate-300, 暫定色
 const FOLDER_EXPANDED_KEY = "goatask-folder-expanded";
@@ -154,29 +158,23 @@ export function MemoView() {
   const [dropTarget, setDropTarget] = useState<DropTarget>(null);
   const dragItemRef = useRef<DragItem>(null);
 
-  const [ctxMenu, setCtxMenu] = useState<{
-    x: number;
-    y: number;
-    folderId: number;
-  } | null>(null);
-  const ctxMenuRef = useRef<HTMLDivElement | null>(null);
-
-  const [memoCtxMenu, setMemoCtxMenu] = useState<{
-    x: number;
-    y: number;
-    memoId: number;
-  } | null>(null);
-  const memoCtxMenuRef = useRef<HTMLDivElement | null>(null);
+  const folderMenu = useContextMenu<{ folderId: number }>(
+    FOLDER_MENU_W,
+    FOLDER_MENU_H,
+  );
+  const memoMenu = useContextMenu<{ memoId: number }>(MEMO_MENU_W, MEMO_MENU_H);
+  const ctxMenu = folderMenu.menu;
+  const memoCtxMenu = memoMenu.menu;
 
   const longPressStore = useRef(createLongPressStore()).current;
 
   const openFolderCtxMenu = (x: number, y: number, folderId: number) => {
-    setMemoCtxMenu(null);
-    setCtxMenu({ ...clampMenuPosition(x, y, FOLDER_MENU_W, FOLDER_MENU_H), folderId });
+    memoMenu.close();
+    folderMenu.open(x, y, { folderId });
   };
   const openMemoCtxMenu = (x: number, y: number, memoId: number) => {
-    setCtxMenu(null);
-    setMemoCtxMenu({ ...clampMenuPosition(x, y, MEMO_MENU_W, MEMO_MENU_H), memoId });
+    folderMenu.close();
+    memoMenu.open(x, y, { memoId });
   };
 
   const hoverExpand = useHoverExpand(
@@ -198,39 +196,6 @@ export function MemoView() {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [exportOpen]);
-
-  useEffect(() => {
-    if (!ctxMenu) return;
-    const onDown = (e: MouseEvent) => {
-      if (!ctxMenuRef.current?.contains(e.target as Node)) setCtxMenu(null);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setCtxMenu(null);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [ctxMenu]);
-
-  useEffect(() => {
-    if (!memoCtxMenu) return;
-    const onDown = (e: MouseEvent) => {
-      if (!memoCtxMenuRef.current?.contains(e.target as Node))
-        setMemoCtxMenu(null);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMemoCtxMenu(null);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [memoCtxMenu]);
 
   useEffect(() => {
     if (!colorOpen) return;
@@ -1422,87 +1387,74 @@ export function MemoView() {
         />
       )}
       {ctxMenu && (
-        <div
-          ref={ctxMenuRef}
-          className="fixed z-50 min-w-[180px] rounded border border-slate-200 bg-white py-1 text-sm shadow-lg"
-          style={{ top: ctxMenu.y, left: ctxMenu.x }}
+        <ContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          menuRef={folderMenu.ref}
+          minWidth={180}
         >
-          <button
-            type="button"
+          <ContextMenuItem
             onClick={() => {
               const id = ctxMenu.folderId;
-              setCtxMenu(null);
+              folderMenu.close();
               onCreateFolder(id);
             }}
-            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
           >
             ＋ サブフォルダ追加
-          </button>
-          <button
-            type="button"
+          </ContextMenuItem>
+          <ContextMenuItem
             onClick={() => {
               favorites.toggle(ctxMenu.folderId);
-              setCtxMenu(null);
+              folderMenu.close();
             }}
-            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
           >
             {favorites.has(ctxMenu.folderId)
               ? "★ お気に入り解除"
               : "☆ お気に入り追加"}
-          </button>
-          <button
-            type="button"
+          </ContextMenuItem>
+          <ContextMenuItem
             onClick={() => {
               const f = folders.find((x) => x.id === ctxMenu.folderId);
-              setCtxMenu(null);
+              folderMenu.close();
               if (f) onRenameFolder(f);
             }}
-            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
           >
             ✎ リネーム
-          </button>
-          <button
-            type="button"
+          </ContextMenuItem>
+          <ContextMenuItem
+            danger
             onClick={() => {
               const f = folders.find((x) => x.id === ctxMenu.folderId);
-              setCtxMenu(null);
+              folderMenu.close();
               if (f) onDeleteFolder(f);
             }}
-            className="block w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50"
           >
             🗑 削除
-          </button>
-        </div>
+          </ContextMenuItem>
+        </ContextMenu>
       )}
       {memoCtxMenu && (
-        <div
-          ref={memoCtxMenuRef}
-          className="fixed z-50 min-w-[140px] rounded border border-slate-200 bg-white py-1 text-sm shadow-lg"
-          style={{ top: memoCtxMenu.y, left: memoCtxMenu.x }}
-        >
-          <button
-            type="button"
+        <ContextMenu x={memoCtxMenu.x} y={memoCtxMenu.y} menuRef={memoMenu.ref}>
+          <ContextMenuItem
             onClick={() => {
               const m = memos.find((x) => x.id === memoCtxMenu.memoId);
-              setMemoCtxMenu(null);
+              memoMenu.close();
               if (m) openExistingMemo(m);
             }}
-            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
           >
             ✎ 編集
-          </button>
-          <button
-            type="button"
+          </ContextMenuItem>
+          <ContextMenuItem
+            danger
             onClick={() => {
               const m = memos.find((x) => x.id === memoCtxMenu.memoId);
-              setMemoCtxMenu(null);
+              memoMenu.close();
               if (m) onDeleteMemoFromList(m);
             }}
-            className="block w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50"
           >
             🗑 削除
-          </button>
-        </div>
+          </ContextMenuItem>
+        </ContextMenu>
       )}
     </div>
   );
