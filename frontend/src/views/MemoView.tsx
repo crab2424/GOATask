@@ -64,6 +64,8 @@ import {
   isDescendant,
 } from "../lib/directoryTree";
 import { useHoverExpand } from "../lib/useHoverExpand";
+import { createLongPressHandlers, createLongPressStore } from "../lib/longPress";
+import { clampMenuPosition } from "../lib/menuPosition";
 
 const MEMO_DEFAULT_DOT_COLOR = "#cbd5e1"; // slate-300, 暫定色
 const FOLDER_EXPANDED_KEY = "goatask-folder-expanded";
@@ -71,6 +73,12 @@ const CURRENT_FOLDER_KEY = "goatask-current-folder";
 const MEMO_SORT_KEY = "goatask:memo-sort";
 const MEMO_COLOR_FILTER_KEY = "goatask:memo-color-filter";
 type MemoColorFilter = string; // "" = all, "none" = no color, otherwise hex
+
+// Context-menu dimensions used to clamp popups on screen (see clampMenuPosition).
+const FOLDER_MENU_W = 190;
+const FOLDER_MENU_H = 160;
+const MEMO_MENU_W = 150;
+const MEMO_MENU_H = 90;
 
 function memoDotColor(m: Memo): string {
   return isValidColor(m.color) ? m.color : MEMO_DEFAULT_DOT_COLOR;
@@ -153,6 +161,24 @@ export function MemoView() {
   } | null>(null);
   const ctxMenuRef = useRef<HTMLDivElement | null>(null);
 
+  const [memoCtxMenu, setMemoCtxMenu] = useState<{
+    x: number;
+    y: number;
+    memoId: number;
+  } | null>(null);
+  const memoCtxMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const longPressStore = useRef(createLongPressStore()).current;
+
+  const openFolderCtxMenu = (x: number, y: number, folderId: number) => {
+    setMemoCtxMenu(null);
+    setCtxMenu({ ...clampMenuPosition(x, y, FOLDER_MENU_W, FOLDER_MENU_H), folderId });
+  };
+  const openMemoCtxMenu = (x: number, y: number, memoId: number) => {
+    setCtxMenu(null);
+    setMemoCtxMenu({ ...clampMenuPosition(x, y, MEMO_MENU_W, MEMO_MENU_H), memoId });
+  };
+
   const hoverExpand = useHoverExpand(
     (id) =>
       setExpanded((prev) => {
@@ -188,6 +214,23 @@ export function MemoView() {
       document.removeEventListener("keydown", onKey);
     };
   }, [ctxMenu]);
+
+  useEffect(() => {
+    if (!memoCtxMenu) return;
+    const onDown = (e: MouseEvent) => {
+      if (!memoCtxMenuRef.current?.contains(e.target as Node))
+        setMemoCtxMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMemoCtxMenu(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [memoCtxMenu]);
 
   useEffect(() => {
     if (!colorOpen) return;
@@ -679,16 +722,34 @@ export function MemoView() {
 
   const renderTreeMemo = (m: Memo, depth: number): ReactElement => {
     const isDragging = dragItem?.type === "memo" && dragItem.id === m.id;
+    const longPress = createLongPressHandlers(longPressStore, `tree-memo:${m.id}`, (x, y) =>
+      openMemoCtxMenu(x, y, m.id),
+    );
     return (
       <li key={`m-${m.id}`} role="treeitem">
         <div
-          className={`flex items-center gap-1 rounded px-1 py-1 text-sm hover:bg-slate-50 ${
+          className={`group flex items-center gap-1 rounded px-1 py-1 text-sm hover:bg-slate-50 ${
             isDragging ? "opacity-40" : ""
           } ${m.id === selectedId ? "bg-slate-200 font-medium" : ""}`}
           style={{ paddingLeft: `${depth * 16 + 4}px` }}
           draggable
-          onDragStart={(e) => handleDragStart(e, "memo", m.id)}
+          onDragStart={(e) => {
+            longPress.cancel();
+            handleDragStart(e, "memo", m.id);
+          }}
           onDragEnd={handleDragEnd}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            openMemoCtxMenu(e.clientX, e.clientY, m.id);
+          }}
+          onTouchStart={longPress.onTouchStart}
+          onTouchMove={longPress.onTouchMove}
+          onTouchEnd={longPress.onTouchEnd}
+          onMouseDown={longPress.onMouseDown}
+          onMouseMove={longPress.onMouseMove}
+          onMouseUp={longPress.onMouseUp}
+          onMouseLeave={longPress.onMouseLeave}
+          onClickCapture={longPress.onClickCapture}
         >
           <span className="flex w-4 shrink-0 items-center justify-center">
             <span
@@ -698,10 +759,25 @@ export function MemoView() {
           </span>
           <button
             onClick={() => openExistingMemo(m)}
-            className="flex-1 truncate text-left text-slate-600"
+            className="min-w-0 flex-1 truncate text-left text-slate-600"
             data-tree-node={`memo:${m.id}`}
           >
             {m.title}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              openMemoCtxMenu(rect.left, rect.bottom, m.id);
+            }}
+            title="メニュー"
+            aria-label="メニュー"
+            className={`shrink-0 rounded px-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 ${
+              isMobile ? "" : "opacity-0 group-hover:opacity-100"
+            }`}
+          >
+            ⋮
           </button>
         </div>
       </li>
@@ -726,6 +802,9 @@ export function MemoView() {
         return next;
       });
     };
+    const longPress = createLongPressHandlers(longPressStore, `tree-folder:${f.id}`, (x, y) =>
+      openFolderCtxMenu(x, y, f.id),
+    );
     return (
       <li
         key={`f-${f.id}`}
@@ -736,66 +815,94 @@ export function MemoView() {
         onDragLeave={(e) => handleFolderDragLeave(e, f.id)}
         onDrop={(e) => handleFolderDrop(e, f.id)}
       >
-        <button
-          type="button"
-          draggable
-          data-tree-node={`folder:${f.id}`}
-          onClick={() => {
-            setCurrentFolderId(f.id);
-            setSelectedId(null);
-            setExpanded((prev) => {
-              const next = expandAncestors(folders, prev, f.id);
-              if (prev.has(f.id)) next.delete(f.id);
-              return next;
-            });
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowRight") {
-              e.preventDefault();
-              e.stopPropagation();
-              if (!isOpen) toggleFolderExpand();
-            } else if (e.key === "ArrowLeft") {
-              e.preventDefault();
-              e.stopPropagation();
-              if (isOpen) toggleFolderExpand();
-            }
-          }}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            setCtxMenu({ x: e.clientX, y: e.clientY, folderId: f.id });
-          }}
-          onDragStart={(e) => handleDragStart(e, "folder", f.id)}
-          onDragEnd={handleDragEnd}
-          className={`flex w-full items-center gap-1 rounded px-1 py-1 text-left text-sm transition-colors ${
-            isCurrent
-              ? "bg-slate-200 font-bold text-slate-900"
-              : "hover:bg-slate-100"
+        <div
+          className={`group flex items-center rounded ${
+            isCurrent ? "bg-slate-200 font-bold text-slate-900" : "hover:bg-slate-100"
           } ${isDragging ? "opacity-40" : ""}`}
-          style={{ paddingLeft: `${depth * 16 + 4}px` }}
         >
-          <span className="flex w-4 shrink-0 items-center justify-center text-slate-400">
-            <svg
-              viewBox="0 0 16 16"
-              aria-hidden
-              className={`h-3 w-3 transition-transform ${isOpen ? "rotate-90" : ""}`}
-            >
-              <path
-                d="M6 4l4 4-4 4"
-                stroke="currentColor"
-                strokeWidth="2"
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </span>
-          <span className="flex-1 truncate">
-            {f.name}
-            {count > 0 && (
-              <span className="ml-1 text-xs text-slate-400">{count}</span>
-            )}
-          </span>
-        </button>
+          <button
+            type="button"
+            draggable
+            data-tree-node={`folder:${f.id}`}
+            onClick={() => {
+              setCurrentFolderId(f.id);
+              setSelectedId(null);
+              setExpanded((prev) => {
+                const next = expandAncestors(folders, prev, f.id);
+                if (prev.has(f.id)) next.delete(f.id);
+                return next;
+              });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowRight") {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!isOpen) toggleFolderExpand();
+              } else if (e.key === "ArrowLeft") {
+                e.preventDefault();
+                e.stopPropagation();
+                if (isOpen) toggleFolderExpand();
+              }
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              openFolderCtxMenu(e.clientX, e.clientY, f.id);
+            }}
+            onDragStart={(e) => {
+              longPress.cancel();
+              handleDragStart(e, "folder", f.id);
+            }}
+            onDragEnd={handleDragEnd}
+            onTouchStart={longPress.onTouchStart}
+            onTouchMove={longPress.onTouchMove}
+            onTouchEnd={longPress.onTouchEnd}
+            onMouseDown={longPress.onMouseDown}
+            onMouseMove={longPress.onMouseMove}
+            onMouseUp={longPress.onMouseUp}
+            onMouseLeave={longPress.onMouseLeave}
+            onClickCapture={longPress.onClickCapture}
+            className="flex min-w-0 flex-1 items-center gap-1 px-1 py-1 text-left text-sm"
+            style={{ paddingLeft: `${depth * 16 + 4}px` }}
+          >
+            <span className="flex w-4 shrink-0 items-center justify-center text-slate-400">
+              <svg
+                viewBox="0 0 16 16"
+                aria-hidden
+                className={`h-3 w-3 transition-transform ${isOpen ? "rotate-90" : ""}`}
+              >
+                <path
+                  d="M6 4l4 4-4 4"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <span className="flex-1 truncate">
+              {f.name}
+              {count > 0 && (
+                <span className="ml-1 text-xs text-slate-400">{count}</span>
+              )}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              openFolderCtxMenu(rect.left, rect.bottom, f.id);
+            }}
+            title="メニュー"
+            aria-label="メニュー"
+            className={`shrink-0 rounded px-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 ${
+              isMobile ? "" : "opacity-0 group-hover:opacity-100"
+            }`}
+          >
+            ⋮
+          </button>
+        </div>
         {isOpen && hasChildren && (
           <ul className="relative space-y-0.5">
             <span
@@ -818,21 +925,39 @@ export function MemoView() {
     const isDragging = dragItem?.type === "memo" && dragItem.id === m.id;
     const indicator = reorderIndicatorFor(m.id);
     const preview = m.content.split("\n").find((l) => l.trim()) ?? "";
+    const longPress = createLongPressHandlers(longPressStore, `card-memo:${m.id}`, (x, y) =>
+      openMemoCtxMenu(x, y, m.id),
+    );
 
     return (
       <li
         key={m.id}
-        className={`relative rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-opacity hover:border-slate-300 hover:bg-slate-50 ${
+        className={`group relative rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-opacity hover:border-slate-300 hover:bg-slate-50 ${
           isDragging ? "opacity-40" : ""
         }`}
         style={{
           borderLeft: memoColor ? `4px solid ${memoColor}` : undefined,
         }}
         draggable
-        onDragStart={(e) => handleDragStart(e, "memo", m.id)}
+        onDragStart={(e) => {
+          longPress.cancel();
+          handleDragStart(e, "memo", m.id);
+        }}
         onDragEnd={handleDragEnd}
         onDragOver={(e) => handleMemoReorderDragOver(e, m.id)}
         onDrop={(e) => handleMemoReorderDrop(e, m.id)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          openMemoCtxMenu(e.clientX, e.clientY, m.id);
+        }}
+        onTouchStart={longPress.onTouchStart}
+        onTouchMove={longPress.onTouchMove}
+        onTouchEnd={longPress.onTouchEnd}
+        onMouseDown={longPress.onMouseDown}
+        onMouseMove={longPress.onMouseMove}
+        onMouseUp={longPress.onMouseUp}
+        onMouseLeave={longPress.onMouseLeave}
+        onClickCapture={longPress.onClickCapture}
       >
         {indicator === "before" && (
           <span className="pointer-events-none absolute -top-1 left-0 right-0 h-0.5 rounded-full bg-blue-500" />
@@ -857,11 +982,19 @@ export function MemoView() {
             </p>
           </button>
           <button
-            onClick={() => onDeleteMemoFromList(m)}
-            className="text-sm text-rose-500 hover:text-rose-700"
-            title="削除"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              openMemoCtxMenu(rect.left, rect.bottom, m.id);
+            }}
+            title="メニュー"
+            aria-label="メニュー"
+            className={`shrink-0 rounded px-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 ${
+              isMobile ? "" : "opacity-0 group-hover:opacity-100"
+            }`}
           >
-            🗑
+            ⋮
           </button>
         </div>
       </li>
@@ -1131,22 +1264,57 @@ export function MemoView() {
                   const count = recursiveMemoCount.get(f.id) ?? 0;
                   const subCount = (childFolders.get(f.id) ?? []).length;
                   const isDrop = isDropTargetFor(f.id);
+                  const longPress = createLongPressHandlers(
+                    longPressStore,
+                    `card-folder:${f.id}`,
+                    (x, y) => openFolderCtxMenu(x, y, f.id),
+                  );
                   return (
                     <div
                       key={f.id}
-                      className={`group flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-all ${
+                      className={`group relative flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-all ${
                         isDrop
                           ? "border-blue-400 bg-blue-50 ring-2 ring-blue-400"
                           : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
                       } ${dragItem?.type === "folder" && dragItem.id === f.id ? "opacity-40" : ""}`}
                       onClick={() => navigateTo(f.id)}
+                      onClickCapture={longPress.onClickCapture}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        openFolderCtxMenu(e.clientX, e.clientY, f.id);
+                      }}
+                      onTouchStart={longPress.onTouchStart}
+                      onTouchMove={longPress.onTouchMove}
+                      onTouchEnd={longPress.onTouchEnd}
+                      onMouseDown={longPress.onMouseDown}
+                      onMouseMove={longPress.onMouseMove}
+                      onMouseUp={longPress.onMouseUp}
+                      onMouseLeave={longPress.onMouseLeave}
                       draggable
-                      onDragStart={(e) => handleDragStart(e, "folder", f.id)}
+                      onDragStart={(e) => {
+                        longPress.cancel();
+                        handleDragStart(e, "folder", f.id);
+                      }}
                       onDragEnd={handleDragEnd}
                       onDragOver={(e) => handleFolderDragOver(e, f.id)}
                       onDragLeave={(e) => handleFolderDragLeave(e, f.id)}
                       onDrop={(e) => handleFolderDrop(e, f.id)}
                     >
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          openFolderCtxMenu(rect.left, rect.bottom, f.id);
+                        }}
+                        title="メニュー"
+                        aria-label="メニュー"
+                        className={`absolute right-1.5 top-1.5 rounded px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 ${
+                          isMobile ? "" : "opacity-0 group-hover:opacity-100"
+                        }`}
+                      >
+                        ⋮
+                      </button>
                       <span className="text-2xl">📁</span>
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">{f.name}</div>
@@ -1156,22 +1324,6 @@ export function MemoView() {
                           {subCount > 0 && `${subCount}サブ`}
                           {count === 0 && subCount === 0 && "空"}
                         </div>
-                      </div>
-                      <div className="hidden gap-1 group-hover:flex">
-                        <button
-                          onClick={(e) => onRenameFolder(f, e)}
-                          title="リネーム"
-                          className="rounded p-1 text-xs text-slate-400 hover:bg-slate-200 hover:text-slate-700"
-                        >
-                          ✎
-                        </button>
-                        <button
-                          onClick={(e) => onDeleteFolder(f, e)}
-                          title="削除"
-                          className="rounded p-1 text-xs text-rose-400 hover:bg-rose-100 hover:text-rose-700"
-                        >
-                          🗑
-                        </button>
                       </div>
                     </div>
                   );
@@ -1315,6 +1467,36 @@ export function MemoView() {
               const f = folders.find((x) => x.id === ctxMenu.folderId);
               setCtxMenu(null);
               if (f) onDeleteFolder(f);
+            }}
+            className="block w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50"
+          >
+            🗑 削除
+          </button>
+        </div>
+      )}
+      {memoCtxMenu && (
+        <div
+          ref={memoCtxMenuRef}
+          className="fixed z-50 min-w-[140px] rounded border border-slate-200 bg-white py-1 text-sm shadow-lg"
+          style={{ top: memoCtxMenu.y, left: memoCtxMenu.x }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              const m = memos.find((x) => x.id === memoCtxMenu.memoId);
+              setMemoCtxMenu(null);
+              if (m) openExistingMemo(m);
+            }}
+            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
+          >
+            ✎ 編集
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const m = memos.find((x) => x.id === memoCtxMenu.memoId);
+              setMemoCtxMenu(null);
+              if (m) onDeleteMemoFromList(m);
             }}
             className="block w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50"
           >
