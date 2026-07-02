@@ -166,6 +166,13 @@ export function MemoView() {
   const [dragItem, setDragItem] = useState<DragItem>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget>(null);
   const dragItemRef = useRef<DragItem>(null);
+  // Mirror of dropTarget so drop handlers see the latest value even before the
+  // last dragover's setState has committed (prod builds surface this timing).
+  const dropTargetRef = useRef<DropTarget>(null);
+  const applyDropTarget = (next: DropTarget) => {
+    dropTargetRef.current = next;
+    setDropTarget(next);
+  };
 
   const folderMenu = useContextMenu<{ folderId: number }>(
     FOLDER_MENU_W,
@@ -423,7 +430,7 @@ export function MemoView() {
   const handleDragEnd = () => {
     dragItemRef.current = null;
     setDragItem(null);
-    setDropTarget(null);
+    applyDropTarget(null);
     hoverExpand.clear();
   };
 
@@ -434,12 +441,12 @@ export function MemoView() {
     if (!dragItemRef.current) return;
     e.stopPropagation();
     if (!canDrop(targetFolderId)) {
-      setDropTarget((prev) => (prev === null ? prev : null));
+      if (dropTargetRef.current !== null) applyDropTarget(null);
       hoverExpand.clear();
       return;
     }
     e.preventDefault();
-    setDropTarget({ kind: "folder", folderId: targetFolderId });
+    applyDropTarget({ kind: "folder", folderId: targetFolderId });
     if (targetFolderId !== null) hoverExpand.schedule(targetFolderId);
     else hoverExpand.clear();
   };
@@ -479,7 +486,7 @@ export function MemoView() {
     }
     dragItemRef.current = null;
     setDragItem(null);
-    setDropTarget(null);
+    applyDropTarget(null);
   };
 
   const handleMemoReorderDragOver = (
@@ -491,17 +498,16 @@ export function MemoView() {
     e.stopPropagation();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const before = e.clientY < rect.top + rect.height / 2;
-    setDropTarget((prev) => {
-      if (
-        prev &&
-        prev.kind === "reorder" &&
-        prev.memoId === overMemoId &&
-        prev.before === before
-      ) {
-        return prev;
-      }
-      return { kind: "reorder", memoId: overMemoId, before };
-    });
+    const prev = dropTargetRef.current;
+    if (
+      prev &&
+      prev.kind === "reorder" &&
+      prev.memoId === overMemoId &&
+      prev.before === before
+    ) {
+      return;
+    }
+    applyDropTarget({ kind: "reorder", memoId: overMemoId, before });
   };
 
   const handleMemoReorderDrop = async (
@@ -511,7 +517,7 @@ export function MemoView() {
     e.preventDefault();
     e.stopPropagation();
     const item = dragItemRef.current;
-    const target = dropTarget;
+    const target = dropTargetRef.current;
     const isValid =
       item?.type === "memo" &&
       target?.kind === "reorder" &&
@@ -519,7 +525,7 @@ export function MemoView() {
       canReorderMemo(overMemoId);
     dragItemRef.current = null;
     setDragItem(null);
-    setDropTarget(null);
+    applyDropTarget(null);
     hoverExpand.clear();
     if (!item || !target || !isValid) return;
 

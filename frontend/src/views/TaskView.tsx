@@ -272,6 +272,13 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
   const [dragItem, setDragItem] = useState<DragItem>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget>(null);
   const dragItemRef = useRef<DragItem>(null);
+  // Mirror of dropTarget for reading inside the drop event: state updates from
+  // the last dragover may not be committed by the time drop fires in prod builds.
+  const dropTargetRef = useRef<DropTarget>(null);
+  const applyDropTarget = (next: DropTarget) => {
+    dropTargetRef.current = next;
+    setDropTarget(next);
+  };
 
   const [focusTaskId, setFocusTaskId] = useState<number | null>(null);
   const taskRefs = useRef<Map<number, HTMLLIElement>>(new Map());
@@ -608,7 +615,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     e.preventDefault();
     e.stopPropagation();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setDropTarget({
+    applyDropTarget({
       kind: "reorder",
       taskId: overTaskId,
       before: e.clientY < rect.top + rect.height / 2,
@@ -619,7 +626,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     e.preventDefault();
     e.stopPropagation();
     const item = dragItemRef.current;
-    const target = dropTarget;
+    const target = dropTargetRef.current;
     handleDragEnd();
     if (!item || item.type !== "task" || target?.kind !== "reorder") return;
     try {
@@ -690,7 +697,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
   const handleDragEnd = () => {
     dragItemRef.current = null;
     setDragItem(null);
-    setDropTarget(null);
+    applyDropTarget(null);
     hoverExpand.clear();
   };
 
@@ -701,12 +708,12 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     if (!dragItemRef.current) return;
     e.stopPropagation();
     if (!canDrop(targetProjectId)) {
-      setDropTarget((prev) => (prev === null ? prev : null));
+      if (dropTargetRef.current !== null) applyDropTarget(null);
       hoverExpand.clear();
       return;
     }
     e.preventDefault();
-    setDropTarget({ kind: "folder", projectId: targetProjectId });
+    applyDropTarget({ kind: "folder", projectId: targetProjectId });
     if (targetProjectId !== null) hoverExpand.schedule(targetProjectId);
     else hoverExpand.clear();
   };
@@ -748,7 +755,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     }
     dragItemRef.current = null;
     setDragItem(null);
-    setDropTarget(null);
+    applyDropTarget(null);
   };
 
   // --- Task CRUD ---
