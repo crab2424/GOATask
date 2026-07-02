@@ -545,6 +545,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     });
     try {
       await reorderTasks(orderedIds);
+      setSortMode("manual");
       await reload();
     } catch (error) {
       if (previous) {
@@ -558,7 +559,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
   };
 
   const touchTaskReorder = useTouchCardReorder(
-    sortMode === "manual" && editingId === null,
+    editingId === null,
     async (draggedId, target) => {
       if (!target) return;
       const ids = reorderIds(
@@ -1143,7 +1144,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
 
     const isFocused = focusTaskId === t.id;
     const visibleIndex = displayedTasks.findIndex((task) => task.id === t.id);
-    const reorderEnabled = sortMode === "manual" && !isEditing;
+    const reorderEnabled = !isEditing;
     const nativeIndicator =
       dropTarget?.kind === "reorder" && dropTarget.taskId === t.id
         ? dropTarget.before

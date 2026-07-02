@@ -328,6 +328,7 @@ export function MemoView() {
     });
     try {
       await reorderMemos(orderedIds);
+      setSortMode("manual");
       await reload();
     } catch (error) {
       if (previous) {
@@ -354,7 +355,7 @@ export function MemoView() {
   };
 
   const touchMemoReorder = useTouchCardReorder(
-    sortMode === "manual",
+    true,
     async (draggedId, target) => {
       if (!target) return;
       const ids = reorderIds(
@@ -968,7 +969,6 @@ export function MemoView() {
         : null;
     const indicator = touchIndicator ?? nativeIndicator;
     const visibleIndex = directMemos.findIndex((memo) => memo.id === m.id);
-    const reorderEnabled = sortMode === "manual";
     const preview = m.content.split("\n").find((l) => l.trim()) ?? "";
 
     return (
@@ -993,7 +993,7 @@ export function MemoView() {
         style={{
           borderLeft: memoColor ? `4px solid ${memoColor}` : undefined,
         }}
-        draggable={reorderEnabled}
+        draggable
         onDragStart={(e) => handleDragStart(e, "memo", m.id)}
         onDragEnd={handleDragEnd}
         onDragOver={(e) => handleMemoReorderDragOver(e, m.id)}
@@ -1032,8 +1032,8 @@ export function MemoView() {
           </button>
           <div data-reorder-ignore className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
             <CardReorderControls
-              canMoveUp={reorderEnabled && visibleIndex > 0}
-              canMoveDown={reorderEnabled && visibleIndex < directMemos.length - 1}
+              canMoveUp={visibleIndex > 0}
+              canMoveDown={visibleIndex < directMemos.length - 1}
               onMoveUp={() => void moveMemo(m.id, "up")}
               onMoveDown={() => void moveMemo(m.id, "down")}
             />
