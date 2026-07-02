@@ -173,6 +173,18 @@ export function MemoView() {
     folderMenu.close();
     memoMenu.open(x, y, { memoId });
   };
+  // ⋮-button toggle variants: if the menu is already open for the same item,
+  // close it instead of reopening. Prevents the "flash-close on mousedown,
+  // reopen on click" flicker that happens when the outside-click listener
+  // closes on mousedown before onClick fires.
+  const toggleFolderCtxMenu = (x: number, y: number, folderId: number) => {
+    memoMenu.close();
+    folderMenu.toggle(x, y, { folderId }, (curr) => curr.folderId === folderId);
+  };
+  const toggleMemoCtxMenu = (x: number, y: number, memoId: number) => {
+    folderMenu.close();
+    memoMenu.toggle(x, y, { memoId }, (curr) => curr.memoId === memoId);
+  };
 
   const hoverExpand = useHoverExpand(
     (id) =>
@@ -714,10 +726,11 @@ export function MemoView() {
           </button>
           <button
             type="button"
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               const rect = e.currentTarget.getBoundingClientRect();
-              openMemoCtxMenu(rect.left, rect.bottom, m.id);
+              toggleMemoCtxMenu(rect.left, rect.bottom, m.id);
             }}
             title="メニュー"
             aria-label="メニュー"
@@ -823,10 +836,11 @@ export function MemoView() {
           </button>
           <button
             type="button"
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               const rect = e.currentTarget.getBoundingClientRect();
-              openFolderCtxMenu(rect.left, rect.bottom, f.id);
+              toggleFolderCtxMenu(rect.left, rect.bottom, f.id);
             }}
             title="メニュー"
             aria-label="メニュー"
@@ -903,10 +917,11 @@ export function MemoView() {
           </button>
           <button
             type="button"
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               const rect = e.currentTarget.getBoundingClientRect();
-              openMemoCtxMenu(rect.left, rect.bottom, m.id);
+              toggleMemoCtxMenu(rect.left, rect.bottom, m.id);
             }}
             title="メニュー"
             aria-label="メニュー"
@@ -1206,10 +1221,11 @@ export function MemoView() {
                     >
                       <button
                         type="button"
+                        onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
                           const rect = e.currentTarget.getBoundingClientRect();
-                          openFolderCtxMenu(rect.left, rect.bottom, f.id);
+                          toggleFolderCtxMenu(rect.left, rect.bottom, f.id);
                         }}
                         title="メニュー"
                         aria-label="メニュー"

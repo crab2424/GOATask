@@ -30,6 +30,20 @@ export function useContextMenu<T>(width: number, height: number) {
     [width, height],
   );
 
+  // Close if the menu is currently open for the same item (isSame returns true),
+  // otherwise open at the given position. Used by ⋮ buttons so the second click
+  // dismisses the menu instead of reopening it after the outside-click listener
+  // closed it on mousedown.
+  const toggle = useCallback(
+    (x: number, y: number, data: T, isSame: (curr: T) => boolean) => {
+      setMenu((curr) => {
+        if (curr && isSame(curr as T)) return null;
+        return { ...clampMenuPosition(x, y, width, height), ...data };
+      });
+    },
+    [width, height],
+  );
+
   useEffect(() => {
     if (!menu) return;
     const onDown = (e: MouseEvent) => {
@@ -46,7 +60,7 @@ export function useContextMenu<T>(width: number, height: number) {
     };
   }, [menu]);
 
-  return { menu, open, close, ref };
+  return { menu, open, close, toggle, ref };
 }
 
 interface ContextMenuProps {

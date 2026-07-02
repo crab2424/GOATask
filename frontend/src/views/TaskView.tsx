@@ -1265,9 +1265,17 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
                 </>
               )}
               <button
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
+                  e.stopPropagation();
+                  projectMenu.close();
                   const rect = e.currentTarget.getBoundingClientRect();
-                  openTaskCtxMenu(rect.left, rect.bottom);
+                  taskMenu.toggle(
+                    rect.left,
+                    rect.bottom,
+                    { taskId: t.id },
+                    (curr) => curr.taskId === t.id,
+                  );
                 }}
                 title="メニュー"
                 aria-label="メニュー"
@@ -1531,10 +1539,17 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
                 >
                   <button
                     type="button"
+                    onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
+                      taskMenu.close();
                       const rect = e.currentTarget.getBoundingClientRect();
-                      openProjectCtxMenu(rect.left, rect.bottom, p.id);
+                      projectMenu.toggle(
+                        rect.left,
+                        rect.bottom,
+                        { projectId: p.id },
+                        (curr) => curr.projectId === p.id,
+                      );
                     }}
                     title="メニュー"
                     aria-label="メニュー"
