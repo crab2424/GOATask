@@ -5,6 +5,7 @@ import {
   type MouseEvent,
   type TouchEvent,
 } from "react";
+import { flushSync } from "react-dom";
 
 export type CardDropTarget = { id: number; before: boolean } | null;
 
@@ -29,8 +30,69 @@ export function mergeVisibleOrder(allIds: number[], visibleIds: number[]): numbe
   return allIds.map((id) => (visible.has(id) ? visibleIds[index++] : id));
 }
 
+export function reorderItemsInSlots<T extends { id: number }>(
+  items: T[],
+  orderedIds: number[],
+): T[] {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const ordered = orderedIds.map((id) => byId.get(id)).filter((item): item is T => !!item);
+  const affected = new Set(orderedIds);
+  let index = 0;
+  return items.map((item) => (affected.has(item.id) ? ordered[index++] : item));
+}
+
+/** FLIP animation for list order changes; rollback uses a deliberately faster return. */
+export function animateCardReorder(update: () => void, rollback = false) {
+  const before = new Map<number, DOMRect>();
+  document.querySelectorAll<HTMLElement>("[data-reorder-card]").forEach((card) => {
+    before.set(Number(card.dataset.reorderCard), card.getBoundingClientRect());
+  });
+
+  flushSync(update);
+  requestAnimationFrame(() => {
+    document.querySelectorAll<HTMLElement>("[data-reorder-card]").forEach((card) => {
+      const previous = before.get(Number(card.dataset.reorderCard));
+      if (!previous) return;
+      const current = card.getBoundingClientRect();
+      const deltaY = previous.top - current.top;
+      if (Math.abs(deltaY) < 1) return;
+      card.animate(
+        [{ transform: `translateY(${deltaY}px)` }, { transform: "translateY(0)" }],
+        { duration: rollback ? 80 : 220, easing: rollback ? "ease-out" : "cubic-bezier(0.2, 0, 0, 1)" },
+      );
+    });
+  });
+}
+
 const HOLD_MS = 500;
-const MOVE_TOLERANCE = 10;
+// Allow small finger drift while waiting for the long press to activate.
+const MOVE_TOLERANCE = 18;
+// Keep a card target selectable slightly beyond its visual bounds. This makes
+// touch reordering much less brittle near the gaps and viewport edges.
+const DROP_GRACE_PX = 36;
+
+function cardAtPoint(x: number, y: number): HTMLElement | null {
+  const direct = document
+    .elementFromPoint(x, y)
+    ?.closest<HTMLElement>("[data-reorder-card]");
+  if (direct) return direct;
+
+  let nearest: { card: HTMLElement; distance: number } | null = null;
+  for (const node of document.querySelectorAll<HTMLElement>("[data-reorder-card]")) {
+    const rect = node.getBoundingClientRect();
+    if (
+      x < rect.left - DROP_GRACE_PX ||
+      x > rect.right + DROP_GRACE_PX ||
+      y < rect.top - DROP_GRACE_PX ||
+      y > rect.bottom + DROP_GRACE_PX
+    ) {
+      continue;
+    }
+    const distance = Math.max(rect.top - y, 0, y - rect.bottom);
+    if (!nearest || distance < nearest.distance) nearest = { card: node, distance };
+  }
+  return nearest?.card ?? null;
+}
 
 export function useTouchCardReorder(
   enabled: boolean,
@@ -97,9 +159,7 @@ export function useTouchCardReorder(
         return;
       }
       e.preventDefault();
-      const card = document
-        .elementFromPoint(touch.clientX, touch.clientY)
-        ?.closest<HTMLElement>("[data-reorder-card]");
+      const card = cardAtPoint(touch.clientX, touch.clientY);
       const overId = Number(card?.dataset.reorderCard);
       if (!card || !Number.isFinite(overId) || overId === activeIdRef.current) {
         targetRef.current = null;

@@ -68,7 +68,9 @@ import { stripBulletLines } from "../lib/taskText";
 import { TaskDescriptionEditor } from "../components/TaskDescriptionEditor";
 import { CardReorderControls } from "../components/CardReorderControls";
 import {
+  animateCardReorder,
   mergeVisibleOrder,
+  reorderItemsInSlots,
   reorderIds,
   useTouchCardReorder,
 } from "../lib/cardReorder";
@@ -527,8 +529,25 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
 
   const persistTaskOrder = async (visibleIds: number[]) => {
     const allIds = directTasksRaw.map((task) => task.id);
-    await reorderTasks(mergeVisibleOrder(allIds, visibleIds));
-    await reload();
+    const orderedIds = mergeVisibleOrder(allIds, visibleIds);
+    const previous = queryClient.getQueryData<Task[]>(["tasks"]);
+    animateCardReorder(() => {
+      queryClient.setQueryData<Task[]>(["tasks"], (current) =>
+        current ? reorderItemsInSlots(current, orderedIds) : current,
+      );
+    });
+    try {
+      await reorderTasks(orderedIds);
+      await reload();
+    } catch (error) {
+      if (previous) {
+        animateCardReorder(
+          () => queryClient.setQueryData(["tasks"], previous),
+          true,
+        );
+      }
+      throw error;
+    }
   };
 
   const touchTaskReorder = useTouchCardReorder(
@@ -1145,10 +1164,21 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
           else taskRefs.current.delete(t.id);
         }}
         data-reorder-card={t.id}
-        className={`relative flex items-start justify-between rounded-lg border bg-white p-3 shadow-sm transition-all ${
+        className={`relative flex items-start justify-between rounded-lg border bg-white p-3 shadow-sm transition-[transform,opacity,border-color,box-shadow] ease-out ${
           isFocused
             ? "border-blue-400 ring-2 ring-blue-300"
             : "border-slate-200"
+        } ${dragItem?.type === "task" || touchTaskReorder.activeId !== null ? "duration-200" : "duration-75"} ${
+          indicator === "before"
+            ? "translate-y-1.5"
+            : indicator === "after"
+              ? "-translate-y-1.5"
+              : "translate-y-0"
+        } ${
+          (dragItem?.type === "task" && dragItem.id === t.id) ||
+          touchTaskReorder.activeId === t.id
+            ? "scale-[0.99] opacity-40"
+            : "scale-100"
         } ${!isEditing ? "cursor-pointer" : ""}`}
         draggable={reorderEnabled}
         onDragStart={(e) => handleDragStart(e, "task", t.id)}

@@ -66,7 +66,9 @@ import {
 import { useHoverExpand } from "../lib/useHoverExpand";
 import { CardReorderControls } from "../components/CardReorderControls";
 import {
+  animateCardReorder,
   mergeVisibleOrder,
+  reorderItemsInSlots,
   reorderIds,
   useTouchCardReorder,
 } from "../lib/cardReorder";
@@ -310,8 +312,25 @@ export function MemoView() {
 
   const persistMemoOrder = async (visibleIds: number[]) => {
     const allIds = directMemosRaw.map((memo) => memo.id);
-    await reorderMemos(mergeVisibleOrder(allIds, visibleIds));
-    await reload();
+    const orderedIds = mergeVisibleOrder(allIds, visibleIds);
+    const previous = queryClient.getQueryData<Memo[]>(["memos"]);
+    animateCardReorder(() => {
+      queryClient.setQueryData<Memo[]>(["memos"], (current) =>
+        current ? reorderItemsInSlots(current, orderedIds) : current,
+      );
+    });
+    try {
+      await reorderMemos(orderedIds);
+      await reload();
+    } catch (error) {
+      if (previous) {
+        animateCardReorder(
+          () => queryClient.setQueryData(["memos"], previous),
+          true,
+        );
+      }
+      throw error;
+    }
   };
 
   const moveMemo = async (memoId: number, direction: "up" | "down") => {
@@ -493,14 +512,16 @@ export function MemoView() {
     e.stopPropagation();
     const item = dragItemRef.current;
     const target = dropTarget;
+    const isValid =
+      item?.type === "memo" &&
+      target?.kind === "reorder" &&
+      target.memoId === overMemoId &&
+      canReorderMemo(overMemoId);
     dragItemRef.current = null;
     setDragItem(null);
     setDropTarget(null);
     hoverExpand.clear();
-    if (!item || item.type !== "memo") return;
-    if (!target || target.kind !== "reorder" || target.memoId !== overMemoId)
-      return;
-    if (!canReorderMemo(overMemoId)) return;
+    if (!item || !target || !isValid) return;
 
     const draggedId = item.id;
     const siblings = directMemos.filter((m) => m.id !== draggedId);
@@ -952,11 +973,17 @@ export function MemoView() {
           else memoRefs.current.delete(m.id);
         }}
         data-reorder-card={m.id}
-        className={`group relative rounded-lg border bg-white p-3 shadow-sm transition-all hover:bg-slate-50 ${
+        className={`group relative rounded-lg border bg-white p-3 shadow-sm transition-[transform,opacity,border-color,box-shadow,background-color] ease-out hover:bg-slate-50 ${
           focusMemoId === m.id
             ? "border-blue-400 ring-2 ring-blue-300"
             : "border-slate-200 hover:border-slate-300"
-        } ${isDragging || touchMemoReorder.activeId === m.id ? "opacity-40" : ""}`}
+        } ${dragItem?.type === "memo" || touchMemoReorder.activeId !== null ? "duration-200" : "duration-75"} ${
+          indicator === "before"
+            ? "translate-y-1.5"
+            : indicator === "after"
+              ? "-translate-y-1.5"
+              : "translate-y-0"
+        } ${isDragging || touchMemoReorder.activeId === m.id ? "scale-[0.99] opacity-40" : "scale-100"}`}
         style={{
           borderLeft: memoColor ? `4px solid ${memoColor}` : undefined,
         }}
