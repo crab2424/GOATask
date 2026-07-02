@@ -25,7 +25,7 @@ import {
   type Folder,
 } from "../api/folders";
 import { useIsMobile } from "../lib/useIsMobile";
-import { MobileDrawer } from "../components/MobileDrawer";
+import { CollectionShell } from "../components/CollectionShell";
 import {
   TreeSearch,
   matchesQuery,
@@ -1149,56 +1149,30 @@ export function MemoView() {
   );
 
   return (
-    <div
-      className={isMobile ? "h-full" : "flex h-full gap-4"}
-      onDragOver={(e) => {
-        if (dragItemRef.current) e.preventDefault();
+    <CollectionShell
+      isMobile={isMobile}
+      treeContent={treeContent}
+      treeOpen={treeOpen}
+      onTreeOpenChange={setTreeOpen}
+      mobileToggleLabel={currentLabel}
+      sidebarWidthClass="w-64"
+      sidebarClassName={
+        isDropTargetFor(null) && dragItem
+          ? "border-blue-400 ring-2 ring-blue-400"
+          : "border-slate-200"
+      }
+      sidebarProps={{
+        onDragOver: (e) => handleFolderDragOver(e, null),
+        onDrop: (e) => handleFolderDrop(e, null),
       }}
+      wrapperProps={{
+        onDragOver: (e) => {
+          if (dragItemRef.current) e.preventDefault();
+        },
+      }}
+      mainClassName="min-w-0"
     >
-      {/* Sidebar (desktop) */}
-      {!isMobile && (
-        <aside
-          className={`w-64 shrink-0 overflow-y-auto rounded-lg border bg-white p-2 transition-colors ${
-            isDropTargetFor(null) && dragItem
-              ? "border-blue-400 ring-2 ring-blue-400"
-              : "border-slate-200"
-          }`}
-          onDragOver={(e) => handleFolderDragOver(e, null)}
-          onDrop={(e) => handleFolderDrop(e, null)}
-        >
-          <div className="mb-2 px-1">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              ナビゲーション
-            </h2>
-          </div>
-          {treeContent}
-        </aside>
-      )}
-
-      {/* Sidebar (mobile drawer) */}
-      {isMobile && (
-        <MobileDrawer
-          open={treeOpen}
-          onClose={() => setTreeOpen(false)}
-          title="ナビゲーション"
-        >
-          {treeContent}
-        </MobileDrawer>
-      )}
-
-      {/* Main */}
-      <div className={isMobile ? "h-full min-w-0 overflow-y-auto" : "min-w-0 flex-1 overflow-y-auto"}>
-        {isMobile && (
-          <button
-            onClick={() => setTreeOpen(true)}
-            className="mb-3 inline-flex items-center gap-2 rounded border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm hover:bg-slate-100"
-            aria-label="ナビゲーションを開く"
-          >
-            <span aria-hidden="true">☰</span>
-            <span>{currentLabel}</span>
-          </button>
-        )}
-        {/* Breadcrumb */}
+      {/* Breadcrumb */}
         <nav className="mb-3 flex items-center gap-1.5 text-sm">
           <button
             onClick={() => navigateTo(null)}
@@ -1449,7 +1423,6 @@ export function MemoView() {
             </section>
           </>
         )}
-      </div>
 
       {undoState && (
         <UndoToast
@@ -1528,7 +1501,7 @@ export function MemoView() {
           </ContextMenuItem>
         </ContextMenu>
       )}
-    </div>
+    </CollectionShell>
   );
 }
 
