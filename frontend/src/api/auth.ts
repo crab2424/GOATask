@@ -23,6 +23,30 @@ export async function login(username: string, password: string): Promise<AuthUse
   return res.json();
 }
 
+export async function register(
+  username: string,
+  password: string,
+  inviteCode: string,
+): Promise<AuthUser> {
+  const res = await apiFetch(`/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password, invite_code: inviteCode }),
+  });
+  if (res.ok) return res.json();
+  let msg = `register failed: ${res.status}`;
+  try {
+    const body = await res.json();
+    if (typeof body?.message === "string") msg = body.message;
+  } catch {
+    // レスポンスがJSONでなくても既定メッセージで返す
+  }
+  if (res.status === 403) throw new Error(msg || "登録が許可されていません");
+  if (res.status === 409) throw new Error("そのユーザー名はすでに使われています");
+  if (res.status === 400) throw new Error(msg);
+  throw new Error(msg);
+}
+
 export async function logout(): Promise<void> {
   const res = await apiFetch(`/api/auth/logout`, { method: "POST" });
   if (!res.ok && res.status !== 204) throw new Error(`logout failed: ${res.status}`);

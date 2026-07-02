@@ -13,6 +13,7 @@ type Config struct {
 	DBPassword string
 	DBName     string
 	StaticDir  string
+	SignupInviteCode string
 }
 
 func Load() *Config {
@@ -24,6 +25,7 @@ func Load() *Config {
 		DBPassword: getEnv("DB_PASSWORD", "goatask_dev"),
 		DBName:     getEnv("DB_NAME", "goatask"),
 		StaticDir:  getEnv("STATIC_DIR", ""),
+		SignupInviteCode: getEnv("SIGNUP_INVITE_CODE", ""),
 	}
 }
 

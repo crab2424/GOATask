@@ -7,6 +7,7 @@ import { FlashcardView } from "./views/FlashcardView";
 import { BackupView } from "./views/BackupView";
 import { CalendarView } from "./views/CalendarView";
 import { LoginView } from "./views/LoginView";
+import { SignupView } from "./views/SignupView";
 import { useIsMobile } from "./lib/useIsMobile";
 import { useAuth } from "./lib/AuthContext";
 
@@ -38,6 +39,7 @@ function App() {
   const [calendarDate, setCalendarDate] = useState<string | null>(null);
   const [openTaskId, setOpenTaskId] = useState<number | null>(null);
   const [showMore, setShowMore] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const isMobile = useIsMobile();
   const [navCollapsed, setNavCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
@@ -63,7 +65,11 @@ function App() {
     );
   }
   if (authState.status === "anonymous") {
-    return <LoginView />;
+    return authMode === "login" ? (
+      <LoginView onSwitchToSignup={() => setAuthMode("signup")} />
+    ) : (
+      <SignupView onSwitchToLogin={() => setAuthMode("login")} />
+    );
   }
 
   const user = authState.user;

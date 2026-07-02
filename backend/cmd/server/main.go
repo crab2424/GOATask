@@ -42,7 +42,7 @@ func main() {
 	})
 
 	api := e.Group("/api")
-	handler.NewAuthHandler(conn).Register(api)
+	handler.NewAuthHandler(conn, cfg.SignupInviteCode).Register(api)
 
 	protected := api.Group("", auth.RequireAuth(conn))
 	handler.NewTaskHandler(conn).Register(protected)

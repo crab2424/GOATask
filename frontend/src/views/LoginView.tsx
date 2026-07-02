@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { useAuth } from "../lib/AuthContext";
+import { AuthField, AuthFormShell } from "../components/AuthFormShell";
 
-export function LoginView() {
+interface LoginViewProps {
+  onSwitchToSignup: () => void;
+}
+
+export function LoginView({ onSwitchToSignup }: LoginViewProps) {
   const { login } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -22,50 +27,40 @@ export function LoginView() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
-      >
-        <h1 className="text-xl font-bold text-slate-900">GOATask</h1>
-        <p className="text-xs text-slate-500">ログインしてください</p>
-
-        <label className="block">
-          <span className="text-sm font-medium text-slate-700">ユーザー名</span>
-          <input
-            type="text"
-            autoComplete="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-            required
-          />
-        </label>
-
-        <label className="block">
-          <span className="text-sm font-medium text-slate-700">パスワード</span>
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-            required
-          />
-        </label>
-
-        {error && (
-          <p className="rounded bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
-        )}
-
+    <AuthFormShell
+      title="GOATask"
+      subtitle="ログインしてください"
+      onSubmit={onSubmit}
+      error={error}
+      submitting={submitting}
+      submitLabel="ログイン"
+      submittingLabel="ログイン中..."
+      footer={
         <button
-          type="submit"
-          disabled={submitting}
-          className="w-full rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:bg-slate-400"
+          type="button"
+          onClick={onSwitchToSignup}
+          className="text-slate-600 underline hover:text-slate-900"
         >
-          {submitting ? "ログイン中..." : "ログイン"}
+          新規登録はこちら
         </button>
-      </form>
-    </div>
+      }
+    >
+      <AuthField
+        label="ユーザー名"
+        type="text"
+        value={username}
+        onChange={setUsername}
+        autoComplete="username"
+        required
+      />
+      <AuthField
+        label="パスワード"
+        type="password"
+        value={password}
+        onChange={setPassword}
+        autoComplete="current-password"
+        required
+      />
+    </AuthFormShell>
   );
 }

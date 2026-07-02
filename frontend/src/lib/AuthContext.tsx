@@ -1,6 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { fetchMe, login as apiLogin, logout as apiLogout, type AuthUser } from "../api/auth";
+import {
+  fetchMe,
+  login as apiLogin,
+  logout as apiLogout,
+  register as apiRegister,
+  type AuthUser,
+} from "../api/auth";
 
 type AuthState =
   | { status: "loading" }
@@ -10,6 +16,7 @@ type AuthState =
 interface AuthContextValue {
   state: AuthState;
   login: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string, inviteCode: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -31,13 +38,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ status: "authenticated", user });
   }, []);
 
+  const register = useCallback(async (username: string, password: string, inviteCode: string) => {
+    const user = await apiRegister(username, password, inviteCode);
+    setState({ status: "authenticated", user });
+  }, []);
+
   const logout = useCallback(async () => {
     await apiLogout();
     setState({ status: "anonymous" });
   }, []);
 
   return (
-    <AuthContext.Provider value={{ state, login, logout }}>
+    <AuthContext.Provider value={{ state, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
