@@ -66,6 +66,12 @@ import {
 import { MdText } from "../lib/mdInline";
 import { stripBulletLines } from "../lib/taskText";
 import { TaskDescriptionEditor } from "../components/TaskDescriptionEditor";
+import { CardReorderControls } from "../components/CardReorderControls";
+import {
+  mergeVisibleOrder,
+  reorderIds,
+  useTouchCardReorder,
+} from "../lib/cardReorder";
 import {
   clearDraft,
   editDraftKey,
@@ -171,7 +177,10 @@ function dueLabel(iso: string | null | undefined, status: TaskStatus) {
 }
 
 type DragItem = { type: "task" | "project"; id: number } | null;
-type DropTarget = { kind: "folder"; projectId: number | null } | null;
+type DropTarget =
+  | { kind: "folder"; projectId: number | null }
+  | { kind: "reorder"; taskId: number; before: boolean }
+  | null;
 
 interface TaskViewProps {
   initialTaskId?: number | null;
@@ -514,6 +523,32 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     });
   }, [activeTasksAll, filter]);
 
+  const displayedTasks = tidied ? [...activeTasks, ...doneTasks] : activeTasks;
+
+  const persistTaskOrder = async (visibleIds: number[]) => {
+    const allIds = directTasksRaw.map((task) => task.id);
+    await reorderTasks(mergeVisibleOrder(allIds, visibleIds));
+    await reload();
+  };
+
+  const touchTaskReorder = useTouchCardReorder(
+    sortMode === "manual" && editingId === null,
+    async (draggedId, target) => {
+      if (!target) return;
+      const ids = reorderIds(
+        displayedTasks.map((task) => task.id),
+        draggedId,
+        target.id,
+        target.before,
+      );
+      try {
+        await persistTaskOrder(ids);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
   // --- DnD helpers ---
 
   const canDrop = (targetProjectId: number | null): boolean => {
@@ -541,6 +576,46 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     dropTarget !== null &&
     dropTarget.kind === "folder" &&
     dropTarget.projectId === projectId;
+
+  const canReorderTask = (overTaskId: number) => {
+    const item = dragItemRef.current;
+    if (!item || item.type !== "task" || item.id === overTaskId) return false;
+    return displayedTasks.some((task) => task.id === item.id) &&
+      displayedTasks.some((task) => task.id === overTaskId);
+  };
+
+  const handleTaskReorderDragOver = (e: ReactDragEvent, overTaskId: number) => {
+    if (!canReorderTask(overTaskId)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setDropTarget({
+      kind: "reorder",
+      taskId: overTaskId,
+      before: e.clientY < rect.top + rect.height / 2,
+    });
+  };
+
+  const handleTaskReorderDrop = async (e: ReactDragEvent, overTaskId: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const item = dragItemRef.current;
+    const target = dropTarget;
+    handleDragEnd();
+    if (!item || item.type !== "task" || target?.kind !== "reorder") return;
+    try {
+      await persistTaskOrder(
+        reorderIds(
+          displayedTasks.map((task) => task.id),
+          item.id,
+          overTaskId,
+          target.before,
+        ),
+      );
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   // --- Navigation ---
 
@@ -740,18 +815,14 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
   };
 
   const moveTask = async (taskId: number, direction: "up" | "down") => {
-    const idx = activeTasks.findIndex((t) => t.id === taskId);
+    const ids = displayedTasks.map((task) => task.id);
+    const idx = ids.indexOf(taskId);
     if (idx < 0) return;
     const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= activeTasks.length) return;
-    const reordered = [...activeTasks];
-    [reordered[idx], reordered[swapIdx]] = [reordered[swapIdx], reordered[idx]];
-    const allIds = tidied
-      ? [...reordered, ...doneTasks].map((t) => t.id)
-      : reordered.map((t) => t.id);
+    if (swapIdx < 0 || swapIdx >= ids.length) return;
+    [ids[idx], ids[swapIdx]] = [ids[swapIdx], ids[idx]];
     try {
-      await reorderTasks(allIds);
-      await reload();
+      await persistTaskOrder(ids);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -1045,6 +1116,21 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     const isEditing = editingId === t.id;
 
     const isFocused = focusTaskId === t.id;
+    const visibleIndex = displayedTasks.findIndex((task) => task.id === t.id);
+    const reorderEnabled = sortMode === "manual" && !isEditing;
+    const nativeIndicator =
+      dropTarget?.kind === "reorder" && dropTarget.taskId === t.id
+        ? dropTarget.before
+          ? "before"
+          : "after"
+        : null;
+    const touchIndicator =
+      touchTaskReorder.target?.id === t.id
+        ? touchTaskReorder.target.before
+          ? "before"
+          : "after"
+        : null;
+    const indicator = touchIndicator ?? nativeIndicator;
 
     const openTaskCtxMenu = (x: number, y: number) => {
       projectMenu.close();
@@ -1058,13 +1144,22 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
           if (el) taskRefs.current.set(t.id, el);
           else taskRefs.current.delete(t.id);
         }}
+        data-reorder-card={t.id}
         className={`relative flex items-start justify-between rounded-lg border bg-white p-3 shadow-sm transition-all ${
           isFocused
             ? "border-blue-400 ring-2 ring-blue-300"
             : "border-slate-200"
         } ${!isEditing ? "cursor-pointer" : ""}`}
+        draggable={reorderEnabled}
+        onDragStart={(e) => handleDragStart(e, "task", t.id)}
+        onDragEnd={handleDragEnd}
+        onDragOver={(e) => handleTaskReorderDragOver(e, t.id)}
+        onDrop={(e) => handleTaskReorderDrop(e, t.id)}
+        {...touchTaskReorder.bind(t.id)}
         onClick={() => {
-          if (!isEditing) startEdit(t);
+          if (isEditing) return;
+          const dismissed = taskMenu.closeOnCardClick() || projectMenu.closeOnCardClick();
+          if (!dismissed) startEdit(t);
         }}
         onContextMenu={(e) => {
           if (isEditing) return;
@@ -1073,6 +1168,12 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
           openTaskCtxMenu(e.clientX, e.clientY);
         }}
       >
+        {indicator === "before" && (
+          <span className="pointer-events-none absolute -top-1 left-0 right-0 h-0.5 rounded-full bg-blue-500" />
+        )}
+        {indicator === "after" && (
+          <span className="pointer-events-none absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-blue-500" />
+        )}
         {editingId === t.id ? (
           <div className="flex-1">
             <input
@@ -1245,25 +1346,13 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
                 )}
               </div>
             </div>
-            <div className="ml-3 flex gap-1" onClick={(e) => e.stopPropagation()}>
-              {t.status !== "done" && (
-                <>
-                  <button
-                    onClick={() => moveTask(t.id, "up")}
-                    className="rounded px-1 text-sm text-slate-400 hover:text-slate-700"
-                    title="上に移動"
-                  >
-                    ▲
-                  </button>
-                  <button
-                    onClick={() => moveTask(t.id, "down")}
-                    className="rounded px-1 text-sm text-slate-400 hover:text-slate-700"
-                    title="下に移動"
-                  >
-                    ▼
-                  </button>
-                </>
-              )}
+            <div data-reorder-ignore className="ml-3 flex gap-1" onClick={(e) => e.stopPropagation()}>
+              <CardReorderControls
+                canMoveUp={reorderEnabled && visibleIndex > 0}
+                canMoveDown={reorderEnabled && visibleIndex < displayedTasks.length - 1}
+                onMoveUp={() => void moveTask(t.id, "up")}
+                onMoveDown={() => void moveTask(t.id, "down")}
+              />
               <button
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => {

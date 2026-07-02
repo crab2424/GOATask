@@ -20,6 +20,7 @@ import { clampMenuPosition } from "../lib/menuPosition";
 export function useContextMenu<T>(width: number, height: number) {
   const [menu, setMenu] = useState<({ x: number; y: number } & T) | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
+  const outsideDismissedAt = useRef(0);
 
   const close = useCallback(() => setMenu(null), []);
 
@@ -47,7 +48,10 @@ export function useContextMenu<T>(width: number, height: number) {
   useEffect(() => {
     if (!menu) return;
     const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setMenu(null);
+      if (!ref.current?.contains(e.target as Node)) {
+        outsideDismissedAt.current = Date.now();
+        setMenu(null);
+      }
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setMenu(null);
@@ -60,7 +64,18 @@ export function useContextMenu<T>(width: number, height: number) {
     };
   }, [menu]);
 
-  return { menu, open, close, toggle, ref };
+  /** Returns true when a card click was consumed solely to dismiss the menu. */
+  const closeOnCardClick = useCallback(() => {
+    if (menu) {
+      setMenu(null);
+      return true;
+    }
+    // The document-level mousedown runs before the card's click. Remember that
+    // dismissal briefly so the same gesture doesn't also activate the card.
+    return Date.now() - outsideDismissedAt.current < 400;
+  }, [menu]);
+
+  return { menu, open, close, toggle, closeOnCardClick, ref };
 }
 
 interface ContextMenuProps {

@@ -64,6 +64,12 @@ import {
   isDescendant,
 } from "../lib/directoryTree";
 import { useHoverExpand } from "../lib/useHoverExpand";
+import { CardReorderControls } from "../components/CardReorderControls";
+import {
+  mergeVisibleOrder,
+  reorderIds,
+  useTouchCardReorder,
+} from "../lib/cardReorder";
 import {
   ContextMenu,
   ContextMenuItem,
@@ -141,6 +147,8 @@ export function MemoView() {
     }
   });
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [focusMemoId, setFocusMemoId] = useState<number | null>(null);
+  const memoRefs = useRef<Map<number, HTMLLIElement>>(new Map());
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [folderId, setFolderId] = useState<number | null>(null);
@@ -299,6 +307,43 @@ export function MemoView() {
     }
     return sortByMode(arr, sortMode, (m) => m.title);
   }, [directMemosRaw, sortMode, colorFilter]);
+
+  const persistMemoOrder = async (visibleIds: number[]) => {
+    const allIds = directMemosRaw.map((memo) => memo.id);
+    await reorderMemos(mergeVisibleOrder(allIds, visibleIds));
+    await reload();
+  };
+
+  const moveMemo = async (memoId: number, direction: "up" | "down") => {
+    const ids = directMemos.map((memo) => memo.id);
+    const index = ids.indexOf(memoId);
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    if (index < 0 || swapIndex < 0 || swapIndex >= ids.length) return;
+    [ids[index], ids[swapIndex]] = [ids[swapIndex], ids[index]];
+    try {
+      await persistMemoOrder(ids);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const touchMemoReorder = useTouchCardReorder(
+    sortMode === "manual",
+    async (draggedId, target) => {
+      if (!target) return;
+      const ids = reorderIds(
+        directMemos.map((memo) => memo.id),
+        draggedId,
+        target.id,
+        target.before,
+      );
+      try {
+        await persistMemoOrder(ids);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
 
   // --- DnD ---
 
@@ -466,8 +511,7 @@ export function MemoView() {
     if (!dragged) return;
     siblings.splice(insertAt, 0, dragged);
     try {
-      await reorderMemos(siblings.map((m) => m.id));
-      await reload();
+      await persistMemoOrder(siblings.map((m) => m.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -551,6 +595,23 @@ export function MemoView() {
     selectMemo(m);
     setShowEditor(true);
   };
+
+  const focusMemoFromTree = (m: Memo) => {
+    const parentId = m.folder_id ?? null;
+    if (parentId !== currentFolderId) navigateTo(parentId);
+    setShowEditor(false);
+    setSelectedId(null);
+    setFocusMemoId(m.id);
+  };
+
+  useEffect(() => {
+    if (focusMemoId === null) return;
+    const el = memoRefs.current.get(focusMemoId);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const timer = window.setTimeout(() => setFocusMemoId(null), 1600);
+    return () => window.clearTimeout(timer);
+  }, [focusMemoId, currentFolderId, memos]);
 
   useEffect(() => {
     setShowEditor(selectedId !== null);
@@ -718,7 +779,7 @@ export function MemoView() {
             />
           </span>
           <button
-            onClick={() => openExistingMemo(m)}
+            onClick={() => focusMemoFromTree(m)}
             className="min-w-0 flex-1 truncate text-left text-slate-600"
             data-tree-node={`memo:${m.id}`}
           >
@@ -871,19 +932,35 @@ export function MemoView() {
   const renderMemoCard = (m: Memo) => {
     const memoColor = isValidColor(m.color) ? m.color : null;
     const isDragging = dragItem?.type === "memo" && dragItem.id === m.id;
-    const indicator = reorderIndicatorFor(m.id);
+    const nativeIndicator = reorderIndicatorFor(m.id);
+    const touchIndicator =
+      touchMemoReorder.target?.id === m.id
+        ? touchMemoReorder.target.before
+          ? "before"
+          : "after"
+        : null;
+    const indicator = touchIndicator ?? nativeIndicator;
+    const visibleIndex = directMemos.findIndex((memo) => memo.id === m.id);
+    const reorderEnabled = sortMode === "manual";
     const preview = m.content.split("\n").find((l) => l.trim()) ?? "";
 
     return (
       <li
         key={m.id}
-        className={`group relative rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-opacity hover:border-slate-300 hover:bg-slate-50 ${
-          isDragging ? "opacity-40" : ""
-        }`}
+        ref={(el) => {
+          if (el) memoRefs.current.set(m.id, el);
+          else memoRefs.current.delete(m.id);
+        }}
+        data-reorder-card={m.id}
+        className={`group relative rounded-lg border bg-white p-3 shadow-sm transition-all hover:bg-slate-50 ${
+          focusMemoId === m.id
+            ? "border-blue-400 ring-2 ring-blue-300"
+            : "border-slate-200 hover:border-slate-300"
+        } ${isDragging || touchMemoReorder.activeId === m.id ? "opacity-40" : ""}`}
         style={{
           borderLeft: memoColor ? `4px solid ${memoColor}` : undefined,
         }}
-        draggable
+        draggable={reorderEnabled}
         onDragStart={(e) => handleDragStart(e, "memo", m.id)}
         onDragEnd={handleDragEnd}
         onDragOver={(e) => handleMemoReorderDragOver(e, m.id)}
@@ -892,6 +969,7 @@ export function MemoView() {
           e.preventDefault();
           openMemoCtxMenu(e.clientX, e.clientY, m.id);
         }}
+        {...touchMemoReorder.bind(m.id)}
       >
         {indicator === "before" && (
           <span className="pointer-events-none absolute -top-1 left-0 right-0 h-0.5 rounded-full bg-blue-500" />
@@ -901,7 +979,11 @@ export function MemoView() {
         )}
         <div className="flex items-start gap-3">
           <button
-            onClick={() => openExistingMemo(m)}
+            data-reorder-handle
+            onClick={() => {
+              const dismissed = memoMenu.closeOnCardClick() || folderMenu.closeOnCardClick();
+              if (!dismissed) openExistingMemo(m);
+            }}
             className="min-w-0 flex-1 text-left"
           >
             <div className="flex items-center gap-2">
@@ -915,6 +997,13 @@ export function MemoView() {
               {new Date(m.updated_at).toLocaleString()}
             </p>
           </button>
+          <div data-reorder-ignore className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <CardReorderControls
+              canMoveUp={reorderEnabled && visibleIndex > 0}
+              canMoveDown={reorderEnabled && visibleIndex < directMemos.length - 1}
+              onMoveUp={() => void moveMemo(m.id, "up")}
+              onMoveDown={() => void moveMemo(m.id, "down")}
+            />
           <button
             type="button"
             onMouseDown={(e) => e.stopPropagation()}
@@ -931,6 +1020,7 @@ export function MemoView() {
           >
             ⋮
           </button>
+          </div>
         </div>
       </li>
     );
