@@ -1604,7 +1604,11 @@ function renderEditor(s: EditorState, a: EditorActions) {
         className="mb-2 w-full rounded border border-slate-300 px-3 py-2 font-mono focus:border-slate-500 focus:outline-none"
       />
       <div className="mb-2 text-right text-xs text-slate-500">
-        {[...s.content].length}文字
+        {[...s.content].length}文字 /{" "}
+        {s.content.trim() === ""
+          ? 0
+          : s.content.trim().split(/\s+/).length}
+        単語
       </div>
       <div className="flex items-center gap-2">
         <button
