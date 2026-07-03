@@ -45,6 +45,7 @@ import {
   type ShortcutEntry,
 } from "../components/SidebarShortcuts";
 import { UndoToast } from "../components/UndoToast";
+import { DirectoryTreeRow } from "../components/DirectoryTreeRow";
 import { handleTreeKeyDown } from "../lib/treeKeyboard";
 import { EXPORT_FORMATS, exportMemo } from "../lib/exportMemo";
 import { PRESET_COLORS, isValidColor } from "../lib/memoColor";
@@ -853,105 +854,39 @@ export function MemoView() {
       });
     };
     return (
-      <li
+      <DirectoryTreeRow
         key={`f-${f.id}`}
-        role="treeitem"
-        aria-expanded={isOpen}
-        className={`rounded ${isDrop ? "bg-blue-50 ring-2 ring-blue-400" : ""}`}
+        depth={depth}
+        isOpen={isOpen}
+        hasChildren={hasChildren}
+        isCurrent={isCurrent}
+        isDropTarget={isDrop}
+        isDragging={isDragging}
+        label={f.name}
+        count={count}
+        dataTreeNode={`folder:${f.id}`}
+        isMobile={isMobile}
+        onClick={() => {
+          setCurrentFolderId(f.id);
+          setSelectedId(null);
+          setExpanded((prev) => {
+            const next = expandAncestors(folders, prev, f.id);
+            if (prev.has(f.id)) next.delete(f.id);
+            return next;
+          });
+        }}
+        onToggleExpand={toggleFolderExpand}
+        onContextMenu={(x, y) => openFolderCtxMenu(x, y, f.id)}
+        onMenuToggle={(x, y) => toggleFolderCtxMenu(x, y, f.id)}
+        onDragStart={(e) => handleDragStart(e, "folder", f.id)}
+        onDragEnd={handleDragEnd}
         onDragOver={(e) => handleFolderDragOver(e, f.id)}
         onDragLeave={(e) => handleFolderDragLeave(e, f.id)}
         onDrop={(e) => handleFolderDrop(e, f.id)}
       >
-        <div
-          className={`group flex items-center rounded ${
-            isCurrent ? "bg-slate-200 font-bold text-slate-900" : "hover:bg-slate-100"
-          } ${isDragging ? "opacity-40" : ""}`}
-        >
-          <button
-            type="button"
-            draggable
-            data-tree-node={`folder:${f.id}`}
-            onClick={() => {
-              setCurrentFolderId(f.id);
-              setSelectedId(null);
-              setExpanded((prev) => {
-                const next = expandAncestors(folders, prev, f.id);
-                if (prev.has(f.id)) next.delete(f.id);
-                return next;
-              });
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "ArrowRight") {
-                e.preventDefault();
-                e.stopPropagation();
-                if (!isOpen) toggleFolderExpand();
-              } else if (e.key === "ArrowLeft") {
-                e.preventDefault();
-                e.stopPropagation();
-                if (isOpen) toggleFolderExpand();
-              }
-            }}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              openFolderCtxMenu(e.clientX, e.clientY, f.id);
-            }}
-            onDragStart={(e) => handleDragStart(e, "folder", f.id)}
-            onDragEnd={handleDragEnd}
-            className="flex min-w-0 flex-1 items-center gap-1 px-1 py-1 text-left text-sm"
-            style={{ paddingLeft: `${depth * 16 + 4}px` }}
-          >
-            <span className="flex w-4 shrink-0 items-center justify-center text-slate-400">
-              <svg
-                viewBox="0 0 16 16"
-                aria-hidden
-                className={`h-3 w-3 transition-transform ${isOpen ? "rotate-90" : ""}`}
-              >
-                <path
-                  d="M6 4l4 4-4 4"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-            <span className="flex-1 truncate">
-              {f.name}
-              {count > 0 && (
-                <span className="ml-1 text-xs text-slate-400">{count}</span>
-              )}
-            </span>
-          </button>
-          <button
-            type="button"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              const rect = e.currentTarget.getBoundingClientRect();
-              toggleFolderCtxMenu(rect.left, rect.bottom, f.id);
-            }}
-            title="メニュー"
-            aria-label="メニュー"
-            className={`shrink-0 rounded px-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 ${
-              isMobile ? "" : "opacity-0 group-hover:opacity-100"
-            }`}
-          >
-            ⋮
-          </button>
-        </div>
-        {isOpen && hasChildren && (
-          <ul className="relative space-y-0.5">
-            <span
-              aria-hidden
-              className="pointer-events-none absolute bottom-1 top-0 w-px bg-slate-200"
-              style={{ left: depth * 16 + 12 }}
-            />
-            {subFolders.map((sf) => renderTreeFolder(sf, depth + 1))}
-            {subMemos.map((sm) => renderTreeMemo(sm, depth + 1))}
-          </ul>
-        )}
-      </li>
+        {subFolders.map((sf) => renderTreeFolder(sf, depth + 1))}
+        {subMemos.map((sm) => renderTreeMemo(sm, depth + 1))}
+      </DirectoryTreeRow>
     );
   };
 

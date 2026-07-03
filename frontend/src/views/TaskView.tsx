@@ -48,6 +48,7 @@ import {
   type ShortcutEntry,
 } from "../components/SidebarShortcuts";
 import { UndoToast } from "../components/UndoToast";
+import { DirectoryTreeRow } from "../components/DirectoryTreeRow";
 import { handleTreeKeyDown } from "../lib/treeKeyboard";
 import {
   buildBreadcrumb,
@@ -997,110 +998,38 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
       });
     };
     return (
-      <li
+      <DirectoryTreeRow
         key={`p-${p.id}`}
-        role="treeitem"
-        aria-expanded={isOpen}
-        className={`rounded ${isDrop ? "bg-blue-50 ring-2 ring-blue-400" : ""}`}
+        depth={depth}
+        isOpen={isOpen}
+        hasChildren={hasChildren}
+        isCurrent={isCurrent}
+        isDropTarget={isDrop}
+        isDragging={dragItem?.type === "project" && dragItem.id === p.id}
+        label={p.name}
+        count={count}
+        dataTreeNode={`project:${p.id}`}
+        isMobile={isMobile}
+        onClick={() => {
+          setCurrentProjectId(p.id);
+          setExpanded((prev) => {
+            const next = expandAncestors(projects, prev, p.id);
+            if (prev.has(p.id)) next.delete(p.id);
+            return next;
+          });
+        }}
+        onToggleExpand={toggleProjectExpand}
+        onContextMenu={(x, y) => openProjectCtxMenu(x, y, p.id)}
+        onMenuToggle={(x, y) => toggleProjectCtxMenu(x, y, p.id)}
+        onDragStart={(e) => handleDragStart(e, "project", p.id)}
+        onDragEnd={handleDragEnd}
         onDragOver={(e) => handleFolderDragOver(e, p.id)}
         onDragLeave={(e) => handleFolderDragLeave(e, p.id)}
         onDrop={(e) => handleFolderDrop(e, p.id)}
       >
-        <div
-          className={`group flex items-center rounded ${
-            isCurrent
-              ? "bg-slate-200 font-bold text-slate-900"
-              : "hover:bg-slate-100"
-          } ${
-            dragItem?.type === "project" && dragItem.id === p.id
-              ? "opacity-40"
-              : ""
-          }`}
-        >
-          <button
-            type="button"
-            draggable
-            data-tree-node={`project:${p.id}`}
-            onClick={() => {
-              setCurrentProjectId(p.id);
-              setExpanded((prev) => {
-                const next = expandAncestors(projects, prev, p.id);
-                if (prev.has(p.id)) next.delete(p.id);
-                return next;
-              });
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "ArrowRight") {
-                e.preventDefault();
-                e.stopPropagation();
-                if (!isOpen) toggleProjectExpand();
-              } else if (e.key === "ArrowLeft") {
-                e.preventDefault();
-                e.stopPropagation();
-                if (isOpen) toggleProjectExpand();
-              }
-            }}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              openProjectCtxMenu(e.clientX, e.clientY, p.id);
-            }}
-            onDragStart={(e) => handleDragStart(e, "project", p.id)}
-            onDragEnd={handleDragEnd}
-            className="flex min-w-0 flex-1 items-center gap-1 px-1 py-1 text-left text-sm"
-            style={{ paddingLeft: `${depth * 16 + 4}px` }}
-          >
-            <span className="flex w-4 shrink-0 items-center justify-center text-slate-400">
-              <svg
-                viewBox="0 0 16 16"
-                aria-hidden
-                className={`h-3 w-3 transition-transform ${isOpen ? "rotate-90" : ""}`}
-              >
-                <path
-                  d="M6 4l4 4-4 4"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-            <span className="flex-1 truncate">
-              {p.name}
-              {count > 0 && (
-                <span className="ml-1 text-xs text-slate-400">{count}</span>
-              )}
-            </span>
-          </button>
-          <button
-            type="button"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              const rect = e.currentTarget.getBoundingClientRect();
-              toggleProjectCtxMenu(rect.left, rect.bottom, p.id);
-            }}
-            title="メニュー"
-            aria-label="メニュー"
-            className={`shrink-0 rounded px-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 ${
-              isMobile ? "" : "opacity-0 group-hover:opacity-100"
-            }`}
-          >
-            ⋮
-          </button>
-        </div>
-        {isOpen && hasChildren && (
-          <ul className="relative space-y-0.5">
-            <span
-              aria-hidden
-              className="pointer-events-none absolute bottom-1 top-0 w-px bg-slate-200"
-              style={{ left: depth * 16 + 12 }}
-            />
-            {subProjects.map((sp) => renderTreeProject(sp, depth + 1))}
-            {subTasks.map((t) => renderTreeTask(t, depth + 1))}
-          </ul>
-        )}
-      </li>
+        {subProjects.map((sp) => renderTreeProject(sp, depth + 1))}
+        {subTasks.map((t) => renderTreeTask(t, depth + 1))}
+      </DirectoryTreeRow>
     );
   };
 
