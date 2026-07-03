@@ -19,8 +19,15 @@ const (
 	contextUserKey = "user_id"
 )
 
-func cookieSecure() bool {
-	return os.Getenv("COOKIE_SECURE") != "false"
+// cookieSecure decides whether to set the cookie's Secure attribute.
+// COOKIE_SECURE overrides when set; otherwise it follows the request's
+// scheme (via X-Forwarded-Proto behind a proxy) so local HTTP dev servers
+// don't emit Secure cookies that browsers silently refuse to update.
+func cookieSecure(c echo.Context) bool {
+	if v := os.Getenv("COOKIE_SECURE"); v != "" {
+		return v != "false"
+	}
+	return c.Scheme() == "https"
 }
 
 func NewSessionID() (string, error) {
@@ -37,7 +44,7 @@ func SetSessionCookie(c echo.Context, id string, expires time.Time) {
 		Value:    id,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   cookieSecure(),
+		Secure:   cookieSecure(c),
 		SameSite: http.SameSiteLaxMode,
 		Expires:  expires,
 	})
@@ -49,7 +56,7 @@ func ClearSessionCookie(c echo.Context) {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   cookieSecure(),
+		Secure:   cookieSecure(c),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
