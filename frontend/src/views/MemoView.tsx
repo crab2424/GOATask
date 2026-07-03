@@ -1603,6 +1603,9 @@ function renderEditor(s: EditorState, a: EditorActions) {
         style={{ fontSize: `${fontSizePx(s.fontSize)}px`, lineHeight: 1.6 }}
         className="mb-2 w-full rounded border border-slate-300 px-3 py-2 font-mono focus:border-slate-500 focus:outline-none"
       />
+      <div className="mb-2 text-right text-xs text-slate-500">
+        {[...s.content].length}文字
+      </div>
       <div className="flex items-center gap-2">
         <button
           type="submit"
