@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { CalcError, evaluate, formatResult, type AngleMode } from "../lib/calculatorEngine";
 import { useIsMobile } from "../lib/useIsMobile";
 import { CalculatorEquationPanel } from "../components/CalculatorEquationPanel";
+import { MathExpression } from "../components/MathExpression";
 
 // 解析パネルはnerdamer（約400KB）を含むため、開いたときだけ読み込む
 const CalculatorAnalysisPanel = lazy(() =>
@@ -266,16 +267,25 @@ export function CalculatorView() {
       {/* 式表示: カーソル位置を自前描画して途中編集に対応 */}
       <div className="min-h-[2rem] break-all text-right font-mono text-xl text-slate-800">
         {expression === "" && <span className="text-slate-300">0</span>}
-        <span>{expression.slice(0, cursor)}</span>
-        <span className="inline-block h-5 w-0.5 animate-pulse rounded bg-slate-900 align-middle" />
-        <span>{expression.slice(cursor)}</span>
+        {cursor === expression.length ? (
+          <MathExpression expression={expression} />
+        ) : (
+          <>
+            <span>{expression.slice(0, cursor)}</span>
+            <span className="inline-block h-5 w-0.5 animate-pulse rounded bg-slate-900 align-middle" />
+            <span>{expression.slice(cursor)}</span>
+          </>
+        )}
+        {cursor === expression.length && (
+          <span className="inline-block h-5 w-0.5 animate-pulse rounded bg-slate-900 align-middle" />
+        )}
       </div>
       <div className={`${isMobile ? "mt-1 min-h-[2.25rem]" : "mt-2 min-h-[2.5rem]"} text-right`}>
         {error ? (
           <p className="text-sm text-rose-600">{error}</p>
         ) : (
           <p className={`break-all font-mono font-bold text-slate-900 ${isMobile ? "text-2xl" : "text-3xl"}`}>
-            {result !== null ? `= ${result}` : " "}
+            {result !== null ? <><span>= </span><MathExpression expression={result} /></> : " "}
           </p>
         )}
       </div>
@@ -389,8 +399,8 @@ export function CalculatorView() {
               className="w-full rounded px-2 py-1 text-right font-mono text-sm hover:bg-slate-100"
               title="結果を式に読み込む"
             >
-              <span className="text-slate-400">{entry.expression} =</span>{" "}
-              <span className="font-semibold text-slate-800">{entry.result}</span>
+              <span className="text-slate-400"><MathExpression expression={entry.expression} /> =</span>{" "}
+              <span className="font-semibold text-slate-800"><MathExpression expression={entry.result} /></span>
             </button>
           </li>
         ))}

@@ -10,6 +10,7 @@ import {
   simplifyExpression,
   type AnalysisOperation,
 } from "../lib/analysisEngine";
+import { MathExpression } from "./MathExpression";
 
 const INPUT_CLASS =
   "w-full rounded border border-slate-300 px-2 py-1.5 font-mono text-sm focus:border-slate-500 focus:outline-none";
@@ -77,6 +78,11 @@ export function CalculatorAnalysisPanel() {
             placeholder={opInfo.hint}
             className={INPUT_CLASS}
           />
+          {expression.trim() !== "" && (
+            <div className="mt-2 min-h-8 overflow-x-auto rounded-lg bg-slate-50 px-3 py-1.5 text-right text-lg text-slate-800" aria-label="数式プレビュー">
+              <MathExpression expression={expression} />
+            </div>
+          )}
         </div>
 
         <div className="flex gap-3">
@@ -133,7 +139,7 @@ export function CalculatorAnalysisPanel() {
           {error ? (
             <p className="text-sm text-rose-600">{error}</p>
           ) : (
-            <p className="break-all font-mono text-lg font-semibold text-slate-900">{result}</p>
+            <p className="break-all text-lg font-semibold text-slate-900"><MathExpression expression={result ?? ""} /></p>
           )}
         </div>
       )}
