@@ -5,8 +5,8 @@
 // - 分数キーは空のfracを挿入して分子にカーソル（直前の数字の引き込みはしない）
 // - ^キー（xʸ・物理キーボードの^とも）は常にsupノードを挿入して指数スロットにカーソル
 // - backspaceはMathQuill方式: 中身のあるノードの直後では「入って末尾へ」、
-//   全スロットが空のノードは丸ごと削除、スロット先頭では前のスロット末尾または
-//   ノードの左隣へ移動（削除はしない）
+//   全スロットが空のノードはどのスロットの先頭からでも丸ごと削除、一部のスロット
+//   にだけ中身がある場合はスロット先頭で前のスロット末尾／ノードの左隣へ移動（削除はしない）
 import {
   type CursorPath,
   type EditNode,
@@ -94,12 +94,21 @@ export function backspace(state: EditState): EditState {
     ]);
     return { tree: newTree, cursor: { steps: cursor.steps, offset: cursor.offset - 1 } };
   }
-  // スロットの先頭: 削除はせずカーソルだけ移動する
+  // スロットの先頭
   if (cursor.steps.length === 0) return state;
   const steps = cursor.steps.slice(0, -1);
   const last = cursor.steps[cursor.steps.length - 1];
   const parentRow = getRowAt(tree, steps);
   const parentNode = parentRow[last.nodeIndex];
+  // 全スロットが空のノード（√や指数は単一スロットなのでその場で該当、分数は
+  // 両方空のときだけ該当）は、どのスロットの先頭からでもノードごと削除する
+  if (nodeIsEmpty(parentNode)) {
+    const newParentRow = [...parentRow.slice(0, last.nodeIndex), ...parentRow.slice(last.nodeIndex + 1)];
+    const newTree = updateRowAt(tree, steps, () => newParentRow);
+    return { tree: newTree, cursor: { steps, offset: last.nodeIndex } };
+  }
+  // 一部のスロットに中身があるノード（例: 分子はあるが分母が空の分数）は削除せず、
+  // 前のスロットの末尾、または（先頭スロットなら）ノードの左隣へカーソルだけ移動する
   const slots = slotsOf(parentNode);
   const si = slots.indexOf(last.slot);
   if (si > 0) {

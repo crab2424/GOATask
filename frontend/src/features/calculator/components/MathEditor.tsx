@@ -105,10 +105,26 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
           </span>
         );
       case "sqrt":
+        // √記号を固定サイズの文字グリフではなくSVGで描く。items-stretch＋self-stretchで
+        // 兄弟要素（radicand）の高さに追従させ、preserveAspectRatio="none"で非一様スケールを
+        // 許すことで、中に分数などタテに大きくなる要素が入ってもチェック部分が上端まで伸びる。
+        // 横方向はradicandの内容量にborder-topが自動追従するため、幅は固定の細い比率で足りる。
         return (
-          <span key={node.id} className="inline-flex items-start align-middle">
-            <span className="text-[1.15em] leading-none">√</span>
-            <span className="border-t border-current px-0.5 leading-tight">{renderRow(node.radicand, stepTo("radicand"))}</span>
+          <span key={node.id} className="inline-flex items-stretch align-middle">
+            <svg viewBox="0 0 20 54" preserveAspectRatio="none" className="w-[0.6em] shrink-0 self-stretch">
+              <path
+                d="M0 32 L4 32 L8 50 L14 2 L20 2"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+            <span className="border-t-2 border-current pl-0.5 pt-0.5 leading-tight">
+              {renderRow(node.radicand, stepTo("radicand"))}
+            </span>
           </span>
         );
       case "sup":
