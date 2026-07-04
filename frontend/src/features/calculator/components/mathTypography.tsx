@@ -97,7 +97,11 @@ export function renderLinearParts(text: string, keyPrefix = "m"): ReactNode[] {
     }
     const identifier = text.slice(i).match(/^[a-zA-Zπ]+/);
     if (identifier) {
-      parts.push(<mi key={key}>{identifier[0]}</mi>);
+      // <mi>は1文字なら既定で斜体、複数文字なら通常体になるため、カーソル位置で
+      // 文字列が分割されたときに字体が変わらないよう変数は常に1文字ずつ組版する。
+      parts.push(...[...identifier[0]].map((ch, offset) => (
+        <mi key={`${key}-${offset}`}>{ch}</mi>
+      )));
       i += identifier[0].length;
       continue;
     }

@@ -18,7 +18,17 @@
 // カーソルの点滅バーは、組版ツリーの中に直接HTML装飾要素を差し込むのではなく、
 // 幅0のマーカー（CaretMarker、実体はmspace）をツリー内の正しい位置に置き、その
 // DOM座標をmeasureして絶対配置のオーバーレイとして重ねる。
-import { forwardRef, type MouseEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import {
+  cloneElement,
+  forwardRef,
+  isValidElement,
+  type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   type CharNode,
   type CursorPath,
@@ -46,7 +56,7 @@ interface CaretRect {
 
 /** カーソル位置を測るための幅0マーカー。見た目は持たず、座標だけを提供する */
 const CaretMarker = forwardRef<MathMLElement>((_props, ref) => (
-  <mspace ref={ref} width="0" height="0.8em" depth="0.1em" />
+  <mspace ref={ref} width="0" height="0" depth="0" />
 ));
 CaretMarker.displayName = "CaretMarker";
 
@@ -81,10 +91,14 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
     }
     const markerBox = markerRef.current.getBoundingClientRect();
     const containerBox = containerRef.current.getBoundingClientRect();
+    const fontSize = Number.parseFloat(window.getComputedStyle(markerRef.current).fontSize);
+    const caretHeight = fontSize * 0.9;
     const next: CaretRect = {
       left: markerBox.left - containerBox.left,
-      top: markerBox.top - containerBox.top,
-      height: markerBox.height,
+      // 高さ0のマーカーはベースライン上にある。字面のascent/descentに相当する
+      // 固定比率でHTMLカーソルを描き、mspace自体はMathMLの組版寸法へ影響させない。
+      top: markerBox.top - containerBox.top - fontSize * 0.8,
+      height: caretHeight,
     };
     setCaretRect((prev) =>
       prev && prev.left === next.left && prev.top === next.top && prev.height === next.height ? prev : next,
@@ -96,6 +110,15 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
     e.stopPropagation();
     onCursorChange({ steps, offset });
   };
+
+  // カーソル前後を別mrowで包むとmoの前置・中置・後置判定が変わるため、各atomを
+  // 同じmrowの兄弟として返す。クリック位置の指定は各atomへ直接付与する。
+  const renderClickableParts = (text: string, keyPrefix: string, onClick: (e: MouseEvent) => void): ReactNode[] =>
+    renderLinearParts(text, keyPrefix).map((part) =>
+      isValidElement(part)
+        ? cloneElement(part as ReactElement<{ onClick?: (e: MouseEvent) => void }>, { onClick })
+        : part,
+    );
 
   const renderContainer = (node: Exclude<Row[number], CharNode>, index: number, steps: CursorStep[]): ReactNode => {
     const stepTo = (slot: SlotName): CursorStep[] => [...steps, { nodeIndex: index, slot }];
@@ -174,30 +197,22 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
         j++;
       }
       if (caretAt > i && caretAt < j) {
-        out.push(
-          <mrow key={`t${i}`} onClick={placeCursor(steps, caretAt)}>
-            {renderLinearParts(text.slice(0, caretAt - i), `t${i}`)}
-          </mrow>,
-        );
+        out.push(...renderClickableParts(text.slice(0, caretAt - i), `t${i}`, placeCursor(steps, caretAt)));
         out.push(<CaretMarker ref={markerRef} key={`c${caretAt}`} />);
-        out.push(
-          <mrow key={`t${caretAt}`} onClick={placeCursor(steps, j)}>
-            {renderLinearParts(text.slice(caretAt - i), `t${caretAt}`)}
-          </mrow>,
-        );
+        out.push(...renderClickableParts(text.slice(caretAt - i), `t${caretAt}`, placeCursor(steps, j)));
       } else {
         if (caretAt === i) out.push(<CaretMarker ref={markerRef} key={`c${i}`} />);
-        out.push(
-          <mrow key={`t${i}`} onClick={placeCursor(steps, j)}>
-            {renderLinearParts(text, `t${i}`)}
-          </mrow>,
-        );
+        out.push(...renderClickableParts(text, `t${i}`, placeCursor(steps, j)));
       }
       i = j;
     }
     if (caretAt === end) out.push(<CaretMarker ref={markerRef} key={`c${end}`} />);
     return out;
   };
+
+  const caretKey = cursor
+    ? `${cursor.steps.map((step) => `${step.nodeIndex}:${step.slot}`).join("/")}:${cursor.offset}`
+    : "none";
 
   const renderRow = (row: Row, steps: CursorStep[]): ReactNode => {
     const caretAt = editable && cursor && sameSteps(cursor.steps, steps) ? cursor.offset : -1;
@@ -240,6 +255,7 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
       </math>
       {caretRect && (
         <span
+          key={caretKey}
           aria-hidden
           className="math-editor-caret absolute w-0.5 rounded bg-slate-900"
           style={{ left: caretRect.left - 1, top: caretRect.top, height: caretRect.height }}
