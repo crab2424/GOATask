@@ -9,7 +9,13 @@
 // 変えない、という2026-07-04の方針）、表示だけは√と同じSVGの伸縮ブラケットで包む。
 // 対応する閉じ括弧を行内で探し、中に分数など縦に大きい要素が挟まっていても
 // 高さに追従する（表示専用の変換で、編集ツリーそのものは触らない）。
-import type { MouseEvent, ReactNode } from "react";
+//
+// カーソルの点滅バーは、組版ツリーの中に直接HTML装飾要素を差し込むのではなく、
+// 幅0のマーカー（CaretMarker）をツリー内の正しい位置に置き、そのDOM座標を
+// measureして絶対配置のオーバーレイとして重ねる。将来MathMLへ描画を置き換えても
+// マーカーをmspaceに差し替えるだけでこの仕組みをそのまま流用できる（mrowの子として
+// 任意のスタイル付きHTMLを混ぜるのはブラウザ依存の挙動になり得るため避ける）。
+import { forwardRef, type MouseEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import {
   type CharNode,
   type CursorPath,
@@ -29,9 +35,17 @@ interface MathEditorProps {
   className?: string;
 }
 
-function Caret() {
-  return <span className="mx-px inline-block h-[1.1em] w-0.5 animate-pulse rounded bg-slate-900 align-middle" />;
+interface CaretRect {
+  left: number;
+  top: number;
+  height: number;
 }
+
+/** カーソル位置を測るための幅0マーカー。見た目は持たず、座標だけを提供する */
+const CaretMarker = forwardRef<HTMLSpanElement>((_props, ref) => (
+  <span ref={ref} className="inline-block h-[1.1em] w-0 align-middle" />
+));
+CaretMarker.displayName = "CaretMarker";
 
 /** 行内でindex位置の"("に対応する")"の行内インデックスを探す。containerノードは括弧の対応に数えない */
 function findMatchingParen(row: Row, openIndex: number): number {
@@ -50,6 +64,29 @@ function findMatchingParen(row: Row, openIndex: number): number {
 
 export function MathEditor({ tree, cursor, onCursorChange, className = "" }: MathEditorProps) {
   const editable = cursor != null;
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const markerRef = useRef<HTMLSpanElement>(null);
+  const [caretRect, setCaretRect] = useState<CaretRect | null>(null);
+
+  // 描画のたびにマーカーの実座標を測ってオーバーレイの位置を更新する。
+  // 値が変わっていなければ同じstateオブジェクトを返してReactの再レンダーを打ち切る
+  // （そうしないとsetState→再レンダー→effect再実行が無限ループする）。
+  useLayoutEffect(() => {
+    if (!editable || !markerRef.current || !containerRef.current) {
+      setCaretRect((prev) => (prev === null ? prev : null));
+      return;
+    }
+    const markerBox = markerRef.current.getBoundingClientRect();
+    const containerBox = containerRef.current.getBoundingClientRect();
+    const next: CaretRect = {
+      left: markerBox.left - containerBox.left,
+      top: markerBox.top - containerBox.top,
+      height: markerBox.height,
+    };
+    setCaretRect((prev) =>
+      prev && prev.left === next.left && prev.top === next.top && prev.height === next.height ? prev : next,
+    );
+  }, [tree, cursor, editable]);
 
   const placeCursor = (steps: CursorStep[], offset: number) => (e: MouseEvent) => {
     if (!editable || !onCursorChange) return;
@@ -134,7 +171,7 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
       if (node.kind === "char" && node.ch === "(") {
         const close = findMatchingParen(row, i);
         if (close !== -1 && close < end) {
-          if (caretAt === i) out.push(<Caret key={`c${i}`} />);
+          if (caretAt === i) out.push(<CaretMarker ref={markerRef} key={`c${i}`} />);
           out.push(
             <span key={`b${i}`} className="mx-px inline-flex items-stretch align-middle">
               <Bracket side="left" />
@@ -147,7 +184,7 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
         }
       }
       if (node.kind !== "char") {
-        if (caretAt === i) out.push(<Caret key={`c${i}`} />);
+        if (caretAt === i) out.push(<CaretMarker ref={markerRef} key={`c${i}`} />);
         out.push(renderContainer(node, i, steps));
         i++;
         continue;
@@ -167,14 +204,14 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
             {renderLinearParts(text.slice(0, caretAt - i), `t${i}`)}
           </span>,
         );
-        out.push(<Caret key={`c${caretAt}`} />);
+        out.push(<CaretMarker ref={markerRef} key={`c${caretAt}`} />);
         out.push(
           <span key={`t${caretAt}`} onClick={placeCursor(steps, j)}>
             {renderLinearParts(text.slice(caretAt - i), `t${caretAt}`)}
           </span>,
         );
       } else {
-        if (caretAt === i) out.push(<Caret key={`c${i}`} />);
+        if (caretAt === i) out.push(<CaretMarker ref={markerRef} key={`c${i}`} />);
         out.push(
           <span key={`t${i}`} onClick={placeCursor(steps, j)}>
             {renderLinearParts(text, `t${i}`)}
@@ -183,7 +220,7 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
       }
       i = j;
     }
-    if (caretAt === end) out.push(<Caret key={`c${end}`} />);
+    if (caretAt === end) out.push(<CaretMarker ref={markerRef} key={`c${end}`} />);
     return out;
   };
 
@@ -192,7 +229,7 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
     if (row.length === 0) {
       // 空のスロット: カーソルがあればカーソルのみ、編集中なら点線のプレースホルダ、
       // 読み取り専用（結果・履歴）では何も表示しない
-      if (caretAt === 0) return <Caret />;
+      if (caretAt === 0) return <CaretMarker ref={markerRef} />;
       if (!editable) return null;
       return (
         <span
@@ -206,10 +243,18 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
 
   return (
     <span
-      className={`tabular-nums ${className}`}
+      ref={containerRef}
+      className={`relative tabular-nums ${className}`}
       onClick={editable && onCursorChange ? placeCursor([], tree.length) : undefined}
     >
       {renderRow(tree, [])}
+      {caretRect && (
+        <span
+          aria-hidden
+          className="absolute w-0.5 animate-pulse rounded bg-slate-900"
+          style={{ left: caretRect.left - 1, top: caretRect.top, height: caretRect.height }}
+        />
+      )}
     </span>
   );
 }
