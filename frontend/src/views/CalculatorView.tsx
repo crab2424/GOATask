@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { CalcError, evaluate, formatResult, type AngleMode } from "../lib/calculatorEngine";
+import { evaluateAdvanced, isPlainNumeric } from "../lib/calcDispatch";
 import { useIsMobile } from "../lib/useIsMobile";
 import { CalculatorEquationPanel } from "../components/CalculatorEquationPanel";
 import { MathExpression } from "../components/MathExpression";
@@ -175,6 +176,8 @@ export function CalculatorView() {
   const [angleMode, setAngleMode] = useState<AngleMode>("DEG");
   const [activePageId, setActivePageId] = useState(KEY_PAGES[0].id);
   const [memory, setMemory] = useState<number | null>(null);
+  // 方程式・微積分・複素数はnerdamerの動的import待ちが発生しうるため、その間の表示用フラグ
+  const [isCalculating, setIsCalculating] = useState(false);
   // =直後に数字を打ったら新しい式を始める（実機電卓と同じ挙動）
   const justEvaluated = useRef(false);
 
@@ -218,24 +221,39 @@ export function CalculatorView() {
     setCursor((c) => Math.max(0, Math.min(expression.length, c + delta)));
   }, [expression.length]);
 
+  // 数値のみの式は既存の同期エンジンで即座に評価する（従来通り、カーソル位置エラー表示も維持）。
+  // 方程式(=)・微積分記法・文字式はcalcDispatchへ回し、必要な場合だけnerdamerを動的importする。
   const equals = useCallback(() => {
-    if (expression.trim() === "") return;
-    try {
-      const value = evaluate(expression, { angleMode });
-      const formatted = formatResult(value);
-      setResult(formatted);
-      setError(null);
-      setHistory((prev) => [{ expression, result: formatted }, ...prev].slice(0, 20));
-      justEvaluated.current = true;
-    } catch (e) {
-      if (e instanceof CalcError) {
-        setError(e.message);
-        if (e.position !== undefined) setCursor(Math.min(e.position, expression.length));
-      } else {
-        setError("計算に失敗しました");
+    if (expression.trim() === "" || isCalculating) return;
+    if (isPlainNumeric(expression)) {
+      try {
+        const value = evaluate(expression, { angleMode });
+        const formatted = formatResult(value);
+        setResult(formatted);
+        setError(null);
+        setHistory((prev) => [{ expression, result: formatted }, ...prev].slice(0, 20));
+        justEvaluated.current = true;
+      } catch (e) {
+        if (e instanceof CalcError) {
+          setError(e.message);
+          if (e.position !== undefined) setCursor(Math.min(e.position, expression.length));
+        } else {
+          setError("計算に失敗しました");
+        }
       }
+      return;
     }
-  }, [expression, angleMode]);
+    setError(null);
+    setIsCalculating(true);
+    evaluateAdvanced(expression)
+      .then((formatted) => {
+        setResult(formatted);
+        setHistory((prev) => [{ expression, result: formatted }, ...prev].slice(0, 20));
+        justEvaluated.current = true;
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "計算に失敗しました"))
+      .finally(() => setIsCalculating(false));
+  }, [expression, angleMode, isCalculating]);
 
   // M+/M-: 表示中の結果（なければ現在の式を評価した値）をメモリに加減算する
   const memoryAdd = useCallback((sign: 1 | -1) => {
@@ -334,6 +352,8 @@ export function CalculatorView() {
       <div className={`${isMobile ? "mt-1 min-h-[2.25rem]" : "mt-2 min-h-[2.5rem]"} text-right`}>
         {error ? (
           <p className="text-sm text-rose-600">{error}</p>
+        ) : isCalculating ? (
+          <p className="text-sm text-slate-400">計算中…</p>
         ) : (
           <p className={`break-all font-mono font-bold text-slate-900 ${isMobile ? "text-2xl" : "text-3xl"}`}>
             {result !== null ? <><span>= </span><MathExpression expression={result} /></> : " "}
