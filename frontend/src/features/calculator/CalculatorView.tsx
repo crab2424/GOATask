@@ -437,7 +437,7 @@ export function CalculatorView() {
         {treeIsEmpty(edit.tree) ? (
           <>
             <span className="text-slate-300">0</span>
-            <span className="inline-block h-5 w-0.5 animate-pulse rounded bg-slate-900 align-middle" />
+            <span className="math-editor-caret inline-block h-5 w-0.5 rounded bg-slate-900 align-middle" />
           </>
         ) : (
           <MathEditor

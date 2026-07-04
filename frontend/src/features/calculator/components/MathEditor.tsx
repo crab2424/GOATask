@@ -46,7 +46,7 @@ interface CaretRect {
 
 /** カーソル位置を測るための幅0マーカー。見た目は持たず、座標だけを提供する */
 const CaretMarker = forwardRef<MathMLElement>((_props, ref) => (
-  <mspace ref={ref} width="0" height="0.6em" depth="0.5em" />
+  <mspace ref={ref} width="0" height="0.8em" depth="0.1em" />
 ));
 CaretMarker.displayName = "CaretMarker";
 
@@ -102,10 +102,14 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
     switch (node.kind) {
       case "frac":
         return (
-          <mfrac key={node.id}>
-            <mrow>{renderRow(node.num, stepTo("num"))}</mrow>
-            <mrow>{renderRow(node.den, stepTo("den"))}</mrow>
-          </mfrac>
+          // inline MathMLのmfracは既定で分子・分母をscriptstyleへ縮小する。
+          // displaystyleにすることで、通常の数字と同じtextstyleで組版する。
+          <mstyle key={node.id} displaystyle="true" scriptlevel="0">
+            <mfrac>
+              <mrow>{renderRow(node.num, stepTo("num"))}</mrow>
+              <mrow>{renderRow(node.den, stepTo("den"))}</mrow>
+            </mfrac>
+          </mstyle>
         );
       case "sqrt":
         return (
@@ -200,15 +204,26 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
     if (row.length === 0) {
       // 空のスロット: カーソルがあればカーソルのみ、編集中なら点線のプレースホルダ、
       // 読み取り専用（結果・履歴）では何も表示しない
-      if (caretAt === 0) return <CaretMarker ref={markerRef} />;
       if (!editable) return null;
-      return (
+      const placeholder = (
         <mspace
           width="0.75em"
           height="1em"
           style={{ outline: "1px dashed rgb(203 213 225)", borderRadius: "2px" }}
           onClick={placeCursor(steps, 0)}
         />
+      );
+      // フォーカス中も空スロットの大きさを保ち、先頭にカーソルを重ねる。
+      if (caretAt === 0) {
+        return (
+          <mrow>
+            <CaretMarker ref={markerRef} />
+            {placeholder}
+          </mrow>
+        );
+      }
+      return (
+        placeholder
       );
     }
     return renderSpan(row, 0, row.length, steps, caretAt);
@@ -220,13 +235,13 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
       className={`relative tabular-nums align-middle ${className}`}
       onClick={editable && onCursorChange ? placeCursor([], tree.length) : undefined}
     >
-      <math>
+      <math className="math-editor-expression">
         <mrow>{renderRow(tree, [])}</mrow>
       </math>
       {caretRect && (
         <span
           aria-hidden
-          className="absolute w-0.5 animate-pulse rounded bg-slate-900"
+          className="math-editor-caret absolute w-0.5 rounded bg-slate-900"
           style={{ left: caretRect.left - 1, top: caretRect.top, height: caretRect.height }}
         />
       )}

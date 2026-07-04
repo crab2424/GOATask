@@ -6,3 +6,24 @@ body {
   margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
+
+/* UI用の等幅フォントではなく、根号と数字で同じ数学用メトリクスを使う。 */
+.math-editor-expression {
+  font-family: math;
+}
+
+/* opacityを半透明までしか落とさないpulseより、入力位置が明確な点滅にする。 */
+@keyframes math-editor-caret-blink {
+  0%, 45% { opacity: 1; }
+  46%, 100% { opacity: 0; }
+}
+
+.math-editor-caret {
+  animation: math-editor-caret-blink 1s step-end infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .math-editor-caret {
+    animation: none;
+  }
+}

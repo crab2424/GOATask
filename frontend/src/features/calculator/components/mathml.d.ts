@@ -9,6 +9,7 @@ declare module "react" {
   namespace JSX {
     interface IntrinsicElements {
       math: MathMLProps;
+      mstyle: MathMLProps & { displaystyle?: "true" | "false"; scriptlevel?: string };
       mrow: MathMLProps;
       mfrac: MathMLProps;
       msqrt: MathMLProps;
