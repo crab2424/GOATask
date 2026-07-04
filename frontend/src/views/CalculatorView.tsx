@@ -26,8 +26,9 @@ interface HistoryEntry {
 }
 
 // キーパッド定義。insertは式に挿入する文字列。
+// caretShiftは挿入後にカーソルを末尾から何文字戻すか（分数 ()/() で最初の括弧内に置く等）。
 type Key =
-  | { type: "insert"; label: string; text: string; className?: string }
+  | { type: "insert"; label: string; text: string; caretShift?: number; className?: string }
   | { type: "action"; label: string; action: "clear" | "backspace" | "equals" | "left" | "right"; className?: string };
 
 const KEY_OP = "bg-slate-200 hover:bg-slate-300 text-slate-800";
@@ -65,68 +66,93 @@ const NUMBER_PAD: Key[][] = [
   ],
 ];
 
-// 低頻度の記号・関数はパネルタブで切り替える。新しい分類（Σ・複素数・絶対値など）は
-// この配列に要素を追加するだけで対応できる。cols はパネル固有（数字パッドとは別）。
-interface KeyPanel {
+// キー定義を短く書くためのヘルパー。opは記号キー（関数・演算子）、insはそのまま挿入するキー。
+const op = (label: string, text: string, caretShift?: number): Key =>
+  ({ type: "insert", label, text, caretShift, className: KEY_OP });
+const ins = (label: string, text?: string): Key =>
+  ({ type: "insert", label, text: text ?? label, className: KEY_NUM });
+
+// Photomath形式のキーページ。ページ切替でキーパッド全体（数字含む）を入れ替えて
+// スペースを確保する。新しい分類はこの配列に要素を追加するだけで対応できる。
+// 注: 微積分・文字（x,y,ギリシャ文字等）のキーは入力のみ対応で、評価は式判定統合
+// （方程式・解析モードの融合）で対応予定。現状は = でエラーメッセージになる。
+interface KeyPage {
   id: string;
   label: string;
-  cols: 3 | 4 | 5;
+  cols: 3 | 4 | 5 | 6;
   keys: Key[][];
 }
 
-const KEY_PANELS: KeyPanel[] = [
+const KEY_PAGES: KeyPage[] = [
   {
-    id: "power",
-    label: "√ ^ π",
+    id: "main",
+    label: "基本",
     cols: 5,
     keys: [
-      [
-        { type: "insert", label: "√", text: "√", className: KEY_OP },
-        { type: "insert", label: "xʸ", text: "^", className: KEY_OP },
-        { type: "insert", label: "π", text: "π", className: KEY_OP },
-        { type: "insert", label: "e", text: "e", className: KEY_OP },
-        { type: "insert", label: "x!", text: "!", className: KEY_OP },
-      ],
+      [op("√", "√"), op("xʸ", "^"), op("π", "π"), op("e", "e"), op("x!", "!")],
+      // 分数は ()/() を挿入して最初の括弧内にカーソルを置く（線形入力での分数対応）
+      [op("a/b", "()/()", -4), op("x", "x"), op("y", "y"), op(",", ","), op("|a|", "abs(")],
+      ...NUMBER_PAD,
     ],
   },
   {
     id: "trig",
-    label: "sin cos tan",
+    label: "三角",
     cols: 3,
     keys: [
-      [
-        { type: "insert", label: "sin", text: "sin(", className: KEY_OP },
-        { type: "insert", label: "cos", text: "cos(", className: KEY_OP },
-        { type: "insert", label: "tan", text: "tan(", className: KEY_OP },
-      ],
-      [
-        { type: "insert", label: "sin⁻¹", text: "asin(", className: KEY_OP },
-        { type: "insert", label: "cos⁻¹", text: "acos(", className: KEY_OP },
-        { type: "insert", label: "tan⁻¹", text: "atan(", className: KEY_OP },
-      ],
+      [op("sin", "sin("), op("cos", "cos("), op("tan", "tan(")],
+      [op("sin⁻¹", "asin("), op("cos⁻¹", "acos("), op("tan⁻¹", "atan(")],
+      [op("sinh", "sinh("), op("cosh", "cosh("), op("tanh", "tanh(")],
+      [op("sinh⁻¹", "asinh("), op("cosh⁻¹", "acosh("), op("tanh⁻¹", "atanh(")],
     ],
   },
   {
     id: "log",
-    label: "log nPr",
+    label: "log・組合せ",
     cols: 5,
     keys: [
-      [
-        { type: "insert", label: "log", text: "log(", className: KEY_OP },
-        { type: "insert", label: "ln", text: "ln(", className: KEY_OP },
-        { type: "insert", label: "nPr", text: "nPr(", className: KEY_OP },
-        { type: "insert", label: "nCr", text: "nCr(", className: KEY_OP },
-        { type: "insert", label: ",", text: ",", className: KEY_OP },
-      ],
+      [op("log", "log("), op("ln", "ln("), op("eˣ", "exp("), op("|a|", "abs("), op(",", ",")],
+      [op("nPr", "nPr("), op("nCr", "nCr("), op("nHr", "nHr("), op("i", "i"), op("j", "j")],
+    ],
+  },
+  {
+    id: "calculus",
+    label: "微積分",
+    cols: 4,
+    keys: [
+      [op("∫", "∫("), op("d/dx", "d/dx("), op("lim", "lim("), op("Σ", "Σ(")],
+      [op("Π", "Π("), op("dx", "dx"), op("∞", "∞"), op("f'", "'")],
+    ],
+  },
+  {
+    id: "abc",
+    label: "abc",
+    cols: 6,
+    keys: [
+      ["a", "b", "c", "d", "e", "f"].map((c) => ins(c)),
+      ["g", "h", "i", "j", "k", "l"].map((c) => ins(c)),
+      ["m", "n", "o", "p", "q", "r"].map((c) => ins(c)),
+      ["s", "t", "u", "v", "w", "x"].map((c) => ins(c)),
+      ["y", "z", "α", "β", "γ", "δ"].map((c) => ins(c)),
+      ["ε", "θ", "λ", "μ", "σ", "ω"].map((c) => ins(c)),
     ],
   },
 ];
 
-// パネルごとに行列を尊重して描画するため、Tailwindが静的に拾えるようにマップで定義する。
-const PANEL_COLS_CLASS: Record<3 | 4 | 5, string> = {
+// 基本ページ以外にも = とカーソル移動・⌫を常設し、評価のたびにページを戻らなくて済むようにする。
+const CONTROL_ROW: Key[] = [
+  { type: "action", label: "←", action: "left", className: KEY_OP },
+  { type: "action", label: "→", action: "right", className: KEY_OP },
+  { type: "action", label: "⌫", action: "backspace", className: KEY_OP },
+  { type: "action", label: "=", action: "equals", className: KEY_ACCENT },
+];
+
+// ページごとに行列を尊重して描画するため、Tailwindが静的に拾えるようにマップで定義する。
+const PAGE_COLS_CLASS: Record<3 | 4 | 5 | 6, string> = {
   3: "grid-cols-3",
   4: "grid-cols-4",
   5: "grid-cols-5",
+  6: "grid-cols-6",
 };
 
 // 物理キーボード入力 → 挿入文字列の対応（PC向け）
@@ -147,12 +173,12 @@ export function CalculatorView() {
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [angleMode, setAngleMode] = useState<AngleMode>("DEG");
-  const [activePanelId, setActivePanelId] = useState(KEY_PANELS[0].id);
+  const [activePageId, setActivePageId] = useState(KEY_PAGES[0].id);
   const [memory, setMemory] = useState<number | null>(null);
   // =直後に数字を打ったら新しい式を始める（実機電卓と同じ挙動）
   const justEvaluated = useRef(false);
 
-  const insertText = useCallback((text: string) => {
+  const insertText = useCallback((text: string, caretShift = 0) => {
     setError(null);
     if (justEvaluated.current) {
       justEvaluated.current = false;
@@ -164,11 +190,11 @@ export function CalculatorView() {
       }
       setResult(null);
       setExpression(text);
-      setCursor(text.length);
+      setCursor(text.length + caretShift);
       return;
     }
     setExpression(expression.slice(0, cursor) + text + expression.slice(cursor));
-    setCursor(cursor + text.length);
+    setCursor(cursor + text.length + caretShift);
   }, [expression, cursor, result]);
 
   const backspace = useCallback(() => {
@@ -229,7 +255,7 @@ export function CalculatorView() {
 
   const handleKey = useCallback((key: Key) => {
     if (key.type === "insert") {
-      insertText(key.text);
+      insertText(key.text, key.caretShift ?? 0);
       return;
     }
     switch (key.action) {
@@ -317,42 +343,33 @@ export function CalculatorView() {
     </div>
   );
 
-  // 数字パッド（常設・5列固定）。行構造は無視して1つのgridに流し込む（0キーのcol-span-2で成立している）。
-  const renderNumberPad = (keys: Key[][]) => (
-    <div className="grid grid-cols-5 gap-2">
-      {keys.flat().map((key, i) => (
-        <button
-          key={i}
-          onClick={() => handleKey(key)}
-          className={`min-h-11 rounded-lg px-1 py-2 text-base font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${key.className ?? KEY_NUM}`}
-        >
-          {key.label}
-        </button>
-      ))}
-    </div>
-  );
+  // キーページ。行列を尊重し、行ごとに独立gridで描画する（0キーのcol-span-2は行内で成立）。
+  // 基本ページ以外にはCONTROL_ROW（←→⌫=）を末尾に足し、評価のたびにページを戻らなくて済むようにする。
+  const renderPage = (page: KeyPage) => {
+    const rows = page.id === "main" ? page.keys : [...page.keys, CONTROL_ROW];
+    return (
+      <div className="space-y-2">
+        {rows.map((row, rowIdx) => (
+          <div
+            key={rowIdx}
+            className={`grid gap-2 ${row === CONTROL_ROW ? "grid-cols-4" : PAGE_COLS_CLASS[page.cols]}`}
+          >
+            {row.map((key, i) => (
+              <button
+                key={i}
+                onClick={() => handleKey(key)}
+                className={`min-h-11 rounded-lg px-1 py-2 text-base font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${key.className ?? KEY_NUM}`}
+              >
+                {key.label}
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  };
 
-  // 記号パネル。行列を尊重し、行ごとに独立gridで描画する。パネル領域全体には最低高さを付け、
-  // 切替時に下の数字パッド位置が動かないようにする（=打鍵ミス防止）。
-  const renderPanelKeys = (panel: KeyPanel) => (
-    <div className="min-h-[6rem] space-y-2">
-      {panel.keys.map((row, rowIdx) => (
-        <div key={rowIdx} className={`grid gap-2 ${PANEL_COLS_CLASS[panel.cols]}`}>
-          {row.map((key, i) => (
-            <button
-              key={i}
-              onClick={() => handleKey(key)}
-              className={`min-h-11 rounded-lg px-1 py-2 text-base font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${key.className ?? KEY_NUM}`}
-            >
-              {key.label}
-            </button>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-
-  const activePanel = KEY_PANELS.find((p) => p.id === activePanelId) ?? KEY_PANELS[0];
+  const activePage = KEY_PAGES.find((p) => p.id === activePageId) ?? KEY_PAGES[0];
 
   // 常設ツールバー: AC/⌫、角度モード、メモリ操作。パネルタブに関わらず常に表示する。
   const calcToolbar = (
@@ -407,21 +424,21 @@ export function CalculatorView() {
     </div>
   );
 
-  // 記号パネルのタブ。将来のカテゴリ追加はKEY_PANELSに要素を足すだけでよい。
-  const panelTabs = (
+  // キーページのタブ。将来のカテゴリ追加はKEY_PAGESに要素を足すだけでよい。
+  const pageTabs = (
     <div className="flex items-center gap-1 overflow-x-auto">
-      {KEY_PANELS.map((panel) => (
+      {KEY_PAGES.map((page) => (
         <button
-          key={panel.id}
-          onClick={() => setActivePanelId(panel.id)}
-          aria-pressed={activePanelId === panel.id}
+          key={page.id}
+          onClick={() => setActivePageId(page.id)}
+          aria-pressed={activePageId === page.id}
           className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-            activePanelId === panel.id
+            activePageId === page.id
               ? "bg-slate-900 text-white"
               : "bg-slate-100 text-slate-600 hover:bg-slate-200"
           }`}
         >
-          {panel.label}
+          {page.label}
         </button>
       ))}
     </div>
@@ -497,9 +514,8 @@ export function CalculatorView() {
           const keypad = (
             <>
               {calcToolbar}
-              {panelTabs}
-              {renderPanelKeys(activePanel)}
-              {renderNumberPad(NUMBER_PAD)}
+              {pageTabs}
+              {renderPage(activePage)}
             </>
           );
           return isMobile ? (
