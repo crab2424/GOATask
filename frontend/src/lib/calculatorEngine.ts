@@ -134,13 +134,26 @@ function permutation(n: number, r: number): number {
   return result;
 }
 
+// ギリシャ文字は関数名に使われないため、πと同様に常に1文字単独の識別子として扱う。
+// これにより「θx」のような並びも θ と x の暗黙の乗算として解釈できる
+// （ラテン文字は sin/sqrt 等の関数名のため貪欲マッチのまま変えない）。
+const GREEK_LETTERS = new Set(["π", "α", "β", "γ", "δ", "ε", "θ", "λ", "μ", "σ", "ω"]);
+
 function isDigit(ch: string): boolean {
   return ch >= "0" && ch <= "9";
 }
 
 function isIdentChar(ch: string): boolean {
-  return /[a-zA-Zπ]/.test(ch);
+  return /[a-zA-Z]/.test(ch) || GREEK_LETTERS.has(ch);
 }
+
+/** 関数名として登録されているか（方程式抽出などで変数と区別するために使う） */
+export function isFunctionName(name: string): boolean {
+  return name in FUNCTIONS;
+}
+
+/** 定数として登録されている識別子名の集合（pi, π, e） */
+export const CONSTANT_NAMES: ReadonlySet<string> = new Set(Object.keys(CONSTANTS));
 
 export function tokenize(input: string): Token[] {
   const tokens: Token[] = [];
@@ -167,10 +180,10 @@ export function tokenize(input: string): Token[] {
     }
     if (isIdentChar(ch)) {
       const start = i;
-      // πは1文字で独立した定数として扱う（sinπのような連続に対応）
-      if (ch === "π") {
+      // ギリシャ文字は1文字で独立した識別子として扱う（sinπ、θxのような連続に対応）
+      if (GREEK_LETTERS.has(ch)) {
         i++;
-        tokens.push({ kind: "ident", value: "π", pos: start });
+        tokens.push({ kind: "ident", value: ch, pos: start });
         continue;
       }
       while (i < input.length && /[a-zA-Z]/.test(input[i])) i++;
