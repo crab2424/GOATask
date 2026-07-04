@@ -66,10 +66,11 @@ const NUMBER_PAD: Key[][] = [
 ];
 
 // 低頻度の記号・関数はパネルタブで切り替える。新しい分類（Σ・複素数・絶対値など）は
-// この配列に要素を追加するだけで対応できる。
+// この配列に要素を追加するだけで対応できる。cols はパネル固有（数字パッドとは別）。
 interface KeyPanel {
   id: string;
   label: string;
+  cols: 3 | 4 | 5;
   keys: Key[][];
 }
 
@@ -77,6 +78,7 @@ const KEY_PANELS: KeyPanel[] = [
   {
     id: "power",
     label: "√ ^ π",
+    cols: 5,
     keys: [
       [
         { type: "insert", label: "√", text: "√", className: KEY_OP },
@@ -90,6 +92,7 @@ const KEY_PANELS: KeyPanel[] = [
   {
     id: "trig",
     label: "sin cos tan",
+    cols: 3,
     keys: [
       [
         { type: "insert", label: "sin", text: "sin(", className: KEY_OP },
@@ -106,6 +109,7 @@ const KEY_PANELS: KeyPanel[] = [
   {
     id: "log",
     label: "log nPr",
+    cols: 5,
     keys: [
       [
         { type: "insert", label: "log", text: "log(", className: KEY_OP },
@@ -117,6 +121,13 @@ const KEY_PANELS: KeyPanel[] = [
     ],
   },
 ];
+
+// パネルごとに行列を尊重して描画するため、Tailwindが静的に拾えるようにマップで定義する。
+const PANEL_COLS_CLASS: Record<3 | 4 | 5, string> = {
+  3: "grid-cols-3",
+  4: "grid-cols-4",
+  5: "grid-cols-5",
+};
 
 // 物理キーボード入力 → 挿入文字列の対応（PC向け）
 const KEYBOARD_INSERT: Record<string, string> = {
@@ -306,18 +317,37 @@ export function CalculatorView() {
     </div>
   );
 
-  const renderKeypad = (keys: Key[][], cols: 4 | 5) => (
-    <div className={`grid gap-2 ${cols === 4 ? "grid-cols-4" : "grid-cols-5"}`}>
+  // 数字パッド（常設・5列固定）。行構造は無視して1つのgridに流し込む（0キーのcol-span-2で成立している）。
+  const renderNumberPad = (keys: Key[][]) => (
+    <div className="grid grid-cols-5 gap-2">
       {keys.flat().map((key, i) => (
         <button
           key={i}
           onClick={() => handleKey(key)}
-          className={`min-h-11 rounded-lg px-1 py-2 font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${
-            cols === 4 ? "text-lg" : "text-base"
-          } ${key.className ?? KEY_NUM}`}
+          className={`min-h-11 rounded-lg px-1 py-2 text-base font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${key.className ?? KEY_NUM}`}
         >
           {key.label}
         </button>
+      ))}
+    </div>
+  );
+
+  // 記号パネル。行列を尊重し、行ごとに独立gridで描画する。パネル領域全体には最低高さを付け、
+  // 切替時に下の数字パッド位置が動かないようにする（=打鍵ミス防止）。
+  const renderPanelKeys = (panel: KeyPanel) => (
+    <div className="min-h-[6rem] space-y-2">
+      {panel.keys.map((row, rowIdx) => (
+        <div key={rowIdx} className={`grid gap-2 ${PANEL_COLS_CLASS[panel.cols]}`}>
+          {row.map((key, i) => (
+            <button
+              key={i}
+              onClick={() => handleKey(key)}
+              className={`min-h-11 rounded-lg px-1 py-2 text-base font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${key.className ?? KEY_NUM}`}
+            >
+              {key.label}
+            </button>
+          ))}
+        </div>
       ))}
     </div>
   );
@@ -468,8 +498,8 @@ export function CalculatorView() {
             <>
               {calcToolbar}
               {panelTabs}
-              {renderKeypad(activePanel.keys, 5)}
-              {renderKeypad(NUMBER_PAD, 5)}
+              {renderPanelKeys(activePanel)}
+              {renderNumberPad(NUMBER_PAD)}
             </>
           );
           return isMobile ? (
