@@ -31,10 +31,15 @@ export interface SupNode {
   kind: "sup";
   exponent: Row;
 }
-export type EditNode = CharNode | FracNode | SqrtNode | SupNode;
+export interface AbsNode {
+  id: string;
+  kind: "abs";
+  inner: Row;
+}
+export type EditNode = CharNode | FracNode | SqrtNode | SupNode | AbsNode;
 export type Row = EditNode[];
 
-export type SlotName = "num" | "den" | "radicand" | "exponent";
+export type SlotName = "num" | "den" | "radicand" | "exponent" | "inner";
 
 /** ネストしたRowを特定するパス。stepsでスロットを辿り、offsetはそのRow内の位置（0〜row.length） */
 export interface CursorStep {
@@ -66,6 +71,10 @@ export function supNode(exponent: Row = []): SupNode {
   return { id: newId(), kind: "sup", exponent };
 }
 
+export function absNode(inner: Row = []): AbsNode {
+  return { id: newId(), kind: "abs", inner };
+}
+
 /** ノードが持つスロットを走査順（左→右のカーソル進行順）で返す。charは空配列 */
 export function slotsOf(node: EditNode): SlotName[] {
   switch (node.kind) {
@@ -75,6 +84,8 @@ export function slotsOf(node: EditNode): SlotName[] {
       return ["radicand"];
     case "sup":
       return ["exponent"];
+    case "abs":
+      return ["inner"];
     default:
       return [];
   }
@@ -92,6 +103,8 @@ export function getSlot(node: EditNode, slot: SlotName): Row | null {
       return slot === "radicand" ? node.radicand : null;
     case "sup":
       return slot === "exponent" ? node.exponent : null;
+    case "abs":
+      return slot === "inner" ? node.inner : null;
     default:
       return null;
   }
@@ -109,6 +122,9 @@ export function withSlot(node: EditNode, slot: SlotName, row: Row): EditNode {
       break;
     case "sup":
       if (slot === "exponent") return { ...node, exponent: row };
+      break;
+    case "abs":
+      if (slot === "inner") return { ...node, inner: row };
       break;
   }
   throw new Error(`ノード${node.kind}にスロット${slot}はありません`);

@@ -8,6 +8,7 @@ import {
   type EditState,
   backspace as backspaceEdit,
   emptyState,
+  insertAbs,
   insertChars,
   insertFraction,
   insertSqrt,
@@ -42,7 +43,7 @@ interface HistoryEntry {
 
 // キーパッド定義。insertは式に挿入する文字列、nodeは複数スロットを持つ構造ノード
 // （分数・√・上付き指数）を挿入して最初のスロットにカーソルを置く。
-type NodeKind = "frac" | "sqrt" | "sup";
+type NodeKind = "frac" | "sqrt" | "sup" | "abs";
 type Key =
   | { type: "insert"; label: string; text: string; className?: string }
   | { type: "node"; label: string; node: NodeKind; className?: string }
@@ -111,7 +112,7 @@ const KEY_PAGES: KeyPage[] = [
     keys: [
       // √・xʸ・a/bはスロットを持つ構造ノードとして挿入し、内側にカーソルを置く
       [nodeKey("√", "sqrt"), nodeKey("xʸ", "sup"), op("π", "π"), op("e", "e"), op("x!", "!")],
-      [nodeKey("a/b", "frac"), op("x", "x"), op("y", "y"), op(",", ","), op("|a|", "abs(")],
+      [nodeKey("a/b", "frac"), op("x", "x"), op("y", "y"), op(",", ","), nodeKey("|a|", "abs")],
       ...NUMBER_PAD,
     ],
   },
@@ -131,7 +132,7 @@ const KEY_PAGES: KeyPage[] = [
     label: "log・組合せ",
     cols: 5,
     keys: [
-      [op("log", "log("), op("ln", "ln("), op("eˣ", "exp("), op("|a|", "abs("), op(",", ",")],
+      [op("log", "log("), op("ln", "ln("), op("eˣ", "exp("), nodeKey("|a|", "abs"), op(",", ",")],
       [op("nPr", "nPr("), op("nCr", "nCr("), op("nHr", "nHr("), op("nVr", "nVr("), op("i", "i")],
     ],
   },
@@ -266,7 +267,12 @@ export function CalculatorView() {
   const insertNode = useCallback((node: NodeKind) => {
     setError(null);
     const base = beginOrContinue(node === "sup");
-    setEdit(node === "frac" ? insertFraction(base) : node === "sqrt" ? insertSqrt(base) : insertSup(base));
+    switch (node) {
+      case "frac": setEdit(insertFraction(base)); break;
+      case "sqrt": setEdit(insertSqrt(base)); break;
+      case "sup": setEdit(insertSup(base)); break;
+      case "abs": setEdit(insertAbs(base)); break;
+    }
   }, [beginOrContinue]);
 
   const backspace = useCallback(() => {

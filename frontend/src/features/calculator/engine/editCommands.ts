@@ -12,6 +12,7 @@ import {
   type EditNode,
   type Row,
   type SlotName,
+  absNode,
   charNodes,
   fracNode,
   getRowAt,
@@ -70,6 +71,11 @@ export function insertSqrt(state: EditState): EditState {
 
 export function insertSup(state: EditState): EditState {
   return insertContainer(state, supNode(), "exponent");
+}
+
+/** 空の絶対値記号|_|を挿入して中にカーソルを置く */
+export function insertAbs(state: EditState): EditState {
+  return insertContainer(state, absNode(), "inner");
 }
 
 export function backspace(state: EditState): EditState {

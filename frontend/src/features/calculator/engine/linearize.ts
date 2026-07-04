@@ -14,6 +14,7 @@
 import {
   type EditNode,
   type Row,
+  absNode,
   charNode,
   charNodes,
   fracNode,
@@ -37,6 +38,9 @@ export function linearize(row: Row): string {
         break;
       case "sup":
         out += `^(${linearize(node.exponent)})`;
+        break;
+      case "abs":
+        out += `abs(${linearize(node.inner)})`;
         break;
     }
   }
@@ -75,8 +79,8 @@ function isLetter(ch: string): boolean {
 function takeNumerator(row: Row): { startIndex: number; nodes: EditNode[] } | null {
   if (row.length === 0) return null;
   const last = row[row.length - 1];
-  // 分数・√ノード単体は安全に分子にできる（(√x)/2 と √x/2 は評価が同じ）
-  if (last.kind === "frac" || last.kind === "sqrt") {
+  // 分数・√・絶対値ノード単体は安全に分子にできる（(√x)/2 と √x/2 は評価が同じ）
+  if (last.kind === "frac" || last.kind === "sqrt" || last.kind === "abs") {
     return { startIndex: row.length - 1, nodes: [last] };
   }
   // supは基数とセットで意味を持つため分子に取らない（2^2/3 は (2^2)/3 で線形のままが正しい）
@@ -113,7 +117,7 @@ function takeNumerator(row: Row): { startIndex: number; nodes: EditNode[] } | nu
 }
 
 /**
- * text[i]以降から分母候補を1原子（数値・括弧グループ・√）取り出す。
+ * text[i]以降から分母候補を1原子（数値・括弧グループ・√・絶対値）取り出す。
  * 直後に^や!が続く場合は a/b^c = a/(b^c) ≠ (a/b)^c となり表示と評価がズレるためnull。
  */
 function takeDenominator(text: string, i: number, end: number): { nodes: EditNode[]; end: number } | null {
@@ -136,6 +140,11 @@ function takeDenominator(text: string, i: number, end: number): { nodes: EditNod
       nodes = [sqrtNode(charNodes(num))];
       j = i + 1 + num.length;
     }
+  } else if (text.startsWith("abs(", i)) {
+    const close = matchingParen(text, i + 3, end);
+    if (close === -1) return null;
+    nodes = [absNode(parseRange(text, i + 4, close))];
+    j = close + 1;
   } else {
     const num = matchNumber(text, i, end);
     if (!num) return null;
@@ -151,6 +160,14 @@ function parseRange(text: string, start: number, end: number): Row {
   let i = start;
   while (i < end) {
     const ch = text[i];
+    if (ch === "a" && text.startsWith("abs(", i)) {
+      const close = matchingParen(text, i + 3, end);
+      if (close !== -1) {
+        row.push(absNode(parseRange(text, i + 4, close)));
+        i = close + 1;
+        continue;
+      }
+    }
     if (ch === "√") {
       if (text[i + 1] === "(") {
         const close = matchingParen(text, i + 1, end);

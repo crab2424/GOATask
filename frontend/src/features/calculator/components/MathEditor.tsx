@@ -96,6 +96,16 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
             {renderRow(node.exponent, stepTo("exponent"))}
           </sup>
         );
+      case "abs":
+        // |x| の縦棒。border-leftを内容の高さに追従させるだけで済むため、√や括弧と違い
+        // SVGは不要（曲線を持たない直線なのでborderで十分きれいに伸びる）。
+        return (
+          <span key={node.id} className="mx-0.5 inline-flex items-stretch align-middle">
+            <span className="w-0 self-stretch border-l-2 border-current" />
+            <span className="px-0.5 leading-tight">{renderRow(node.inner, stepTo("inner"))}</span>
+            <span className="w-0 self-stretch border-l-2 border-current" />
+          </span>
+        );
     }
   };
 
