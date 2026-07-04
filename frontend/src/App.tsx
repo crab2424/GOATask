@@ -6,12 +6,13 @@ import { MemoView } from "./views/MemoView";
 import { FlashcardView } from "./views/FlashcardView";
 import { BackupView } from "./views/BackupView";
 import { CalendarView } from "./views/CalendarView";
+import { CalculatorView } from "./views/CalculatorView";
 import { LoginView } from "./views/LoginView";
 import { SignupView } from "./views/SignupView";
 import { useIsMobile } from "./lib/useIsMobile";
 import { useAuth } from "./lib/AuthContext";
 
-type Mode = "home" | "tasks" | "calendar" | "memos" | "flashcards" | "backup";
+type Mode = "home" | "tasks" | "calendar" | "memos" | "flashcards" | "calculator" | "backup";
 
 const TABS: { id: Mode; label: string; icon: string }[] = [
   { id: "home", label: "ホーム", icon: "🏠" },
@@ -19,6 +20,7 @@ const TABS: { id: Mode; label: string; icon: string }[] = [
   { id: "calendar", label: "カレンダー", icon: "▦" },
   { id: "memos", label: "メモ", icon: "📝" },
   { id: "flashcards", label: "単語帳", icon: "🃏" },
+  { id: "calculator", label: "電卓", icon: "🧮" },
   { id: "backup", label: "バックアップ", icon: "💾" },
 ];
 
@@ -97,6 +99,7 @@ function App() {
       {mode === "calendar" && <CalendarView key={calendarDate ?? "calendar"} initialDate={calendarDate} />}
       {mode === "memos" && <MemoView />}
       {mode === "flashcards" && <FlashcardView />}
+      {mode === "calculator" && <CalculatorView />}
       {mode === "backup" && <BackupView />}
     </>
   );
@@ -131,7 +134,7 @@ function App() {
               key={tab.id}
               onClick={() => { if (tab.id === "more") setShowMore(true); else { setMode(tab.id); setCalendarDate(null); } }}
               className={`flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] transition-colors ${
-                (tab.id === "more" ? mode === "flashcards" || mode === "backup" : mode === tab.id)
+                (tab.id === "more" ? mode === "flashcards" || mode === "calculator" || mode === "backup" : mode === tab.id)
                   ? "font-bold text-slate-900"
                   : "text-slate-500"
               }`}
@@ -144,7 +147,7 @@ function App() {
         {showMore && <div className="fixed inset-0 z-50 flex items-end bg-black/30" onClick={() => setShowMore(false)}>
           <div className="w-full rounded-t-2xl bg-white p-4 pb-8 shadow-xl" style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
             <div className="mx-auto mb-4 h-1 w-10 rounded bg-slate-300" />
-            {[{ id: "flashcards" as Mode, label: "単語帳", icon: "🃏" }, { id: "backup" as Mode, label: "バックアップ", icon: "💾" }].map((item) => <button key={item.id} onClick={() => { setMode(item.id); setShowMore(false); }} className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left hover:bg-slate-100"><span>{item.icon}</span><span>{item.label}</span></button>)}
+            {[{ id: "flashcards" as Mode, label: "単語帳", icon: "🃏" }, { id: "calculator" as Mode, label: "電卓", icon: "🧮" }, { id: "backup" as Mode, label: "バックアップ", icon: "💾" }].map((item) => <button key={item.id} onClick={() => { setMode(item.id); setShowMore(false); }} className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left hover:bg-slate-100"><span>{item.icon}</span><span>{item.label}</span></button>)}
             <button onClick={() => { setShowMore(false); handleLogout(); }} className="mt-2 flex w-full items-center gap-3 border-t px-4 py-3 text-left text-rose-600"><span>⏻</span><span>ログアウト</span></button>
           </div>
         </div>}
