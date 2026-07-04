@@ -40,8 +40,10 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
   const renderRow = (row: Row, steps: CursorStep[]): ReactNode => {
     const caretAt = editable && cursor && sameSteps(cursor.steps, steps) ? cursor.offset : -1;
     if (row.length === 0) {
-      // 空のスロット: カーソルがあればカーソルのみ、なければ点線のプレースホルダ
+      // 空のスロット: カーソルがあればカーソルのみ、編集中なら点線のプレースホルダ、
+      // 読み取り専用（結果・履歴）では何も表示しない
       if (caretAt === 0) return <Caret />;
+      if (!editable) return null;
       return (
         <span
           className="inline-block h-[1em] w-3 rounded-sm border border-dashed border-slate-300 align-middle"
