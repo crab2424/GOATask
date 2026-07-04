@@ -55,6 +55,7 @@ export function CalculatorAnalysisPanel() {
           <button
             key={op.id}
             onClick={() => { setOperation(op.id); setError(null); setResult(null); }}
+            aria-pressed={operation === op.id}
             className={`shrink-0 rounded-lg px-3 py-1.5 text-sm transition-colors ${
               operation === op.id
                 ? "bg-slate-200 font-semibold text-slate-900"

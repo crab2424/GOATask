@@ -77,6 +77,7 @@ export function CalculatorEquationPanel() {
           <button
             key={t.id}
             onClick={() => { setEqType(t.id); setError(null); setQuadResult(null); setLinResult(null); }}
+            aria-pressed={eqType === t.id}
             className={`shrink-0 rounded-lg px-3 py-1.5 text-sm transition-colors ${
               eqType === t.id
                 ? "bg-slate-200 font-semibold text-slate-900"

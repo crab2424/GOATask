@@ -114,6 +114,7 @@ const KEYBOARD_INSERT: Record<string, string> = {
 export function CalculatorView() {
   const isMobile = useIsMobile();
   const [subMode, setSubMode] = useState<CalcSubMode>("standard");
+  const [analysisOpened, setAnalysisOpened] = useState(false);
   const [expression, setExpression] = useState("");
   const [cursor, setCursor] = useState(0);
   const [result, setResult] = useState<string | null>(null);
@@ -254,7 +255,7 @@ export function CalculatorView() {
     <div className={`rounded-xl border border-slate-200 bg-white shadow-sm ${isMobile ? "p-3" : "p-4"}`}>
       <div className="mb-1 flex min-h-8 items-center gap-2 text-[11px] font-semibold text-slate-400">
         <div className="flex items-center gap-2">
-          {subMode === "function" && <span>{angleMode}</span>}
+          <span title="三角関数の角度モード">角度 {angleMode}</span>
           {memory !== null && <span title={`メモリ: ${formatResult(memory)}`}>M</span>}
         </div>
         <div className="ml-auto flex gap-1" aria-label="式のカーソル移動">
@@ -412,7 +413,11 @@ export function CalculatorView() {
         {SUB_MODES.map((m) => (
           <button
             key={m.id}
-            onClick={() => setSubMode(m.id)}
+            onClick={() => {
+              setSubMode(m.id);
+              if (m.id === "analysis") setAnalysisOpened(true);
+            }}
+            aria-pressed={subMode === m.id}
             className={`shrink-0 rounded-full px-3 py-1.5 text-sm transition-colors ${
               subMode === m.id
                 ? "bg-slate-900 font-semibold text-white"
@@ -424,8 +429,8 @@ export function CalculatorView() {
         ))}
       </div>
 
-      {subMode === "standard" || subMode === "function" ? (
-        (() => {
+      <div hidden={subMode !== "standard" && subMode !== "function"}>
+        {(() => {
           const keypad =
             subMode === "standard" ? (
               renderKeypad(STANDARD_KEYS, 4)
@@ -453,19 +458,25 @@ export function CalculatorView() {
               <div>{historyPanel}</div>
             </div>
           );
-        })()
-      ) : subMode === "equation" ? (
+        })()}
+      </div>
+
+      <div hidden={subMode !== "equation"}>
         <CalculatorEquationPanel />
-      ) : (
-        <Suspense
-          fallback={
-            <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
-              読み込み中...
-            </div>
-          }
-        >
-          <CalculatorAnalysisPanel />
-        </Suspense>
+      </div>
+
+      {analysisOpened && (
+        <div hidden={subMode !== "analysis"}>
+          <Suspense
+            fallback={
+              <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+                読み込み中...
+              </div>
+            }
+          >
+            <CalculatorAnalysisPanel />
+          </Suspense>
+        </div>
       )}
     </div>
   );
