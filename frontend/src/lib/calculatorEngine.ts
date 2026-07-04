@@ -101,6 +101,18 @@ const FUNCTIONS: Record<string, CalcFunction> = {
   },
   nPr: { arity: 2, apply: ([n, r]) => permutation(n, r) },
   nCr: { arity: 2, apply: ([n, r]) => permutation(n, r) / factorial(r, undefined) },
+  // 重複順列 nVr = n^r（同じものを繰り返し取れる並べ方の数）
+  nVr: {
+    arity: 2,
+    apply: ([n, r]) => {
+      if (!Number.isInteger(n) || !Number.isInteger(r) || n < 0 || r < 0)
+        throw new CalcError("nVrは0以上の整数のみ計算できます");
+      if (n === 0 && r > 0) throw new CalcError("nVrはn≧1が必要です（r≧1のとき）");
+      const result = Math.pow(n, r);
+      if (!Number.isFinite(result)) throw new CalcError("nVrの計算結果が大きすぎます");
+      return result;
+    },
+  },
   // 重複組合せ nHr = (n+r-1)Cr
   nHr: {
     arity: 2,
@@ -157,6 +169,49 @@ const MULTI_CHAR_IDENTS = [...Object.keys(FUNCTIONS), "pi"].sort((a, b) => b.len
 /** 関数名として登録されているか（方程式抽出などで変数と区別するために使う） */
 export function isFunctionName(name: string): boolean {
   return name in FUNCTIONS;
+}
+
+/**
+ * 式文字列をトークンの区切り位置（0始まり、両端含む）にスキャンする。
+ * 途中で解釈できない文字が出てもエラーを投げず、その1文字を1トークンとして進める
+ * （入力中の未完成の式でも境界を返せるようにするため）。
+ *
+ * カーソルをトークン単位で移動する用途（← → キー）に使う。
+ */
+export function tokenBoundaries(input: string): number[] {
+  const boundaries: number[] = [0];
+  const push = (pos: number) => {
+    if (boundaries[boundaries.length - 1] !== pos) boundaries.push(pos);
+  };
+  let i = 0;
+  while (i < input.length) {
+    const ch = input[i];
+    if (ch === " ") { i++; push(i); continue; }
+    if (isDigit(ch) || ch === ".") {
+      while (i < input.length && isDigit(input[i])) i++;
+      if (input[i] === ".") {
+        i++;
+        while (i < input.length && isDigit(input[i])) i++;
+      }
+      push(i);
+      continue;
+    }
+    if (GREEK_LETTERS.has(ch)) {
+      i++;
+      push(i);
+      continue;
+    }
+    if (/[a-zA-Z]/.test(ch)) {
+      const known = MULTI_CHAR_IDENTS.find((name) => input.startsWith(name, i));
+      i += known ? known.length : 1;
+      push(i);
+      continue;
+    }
+    // 演算子・括弧・カンマ・未定義文字は1文字1トークンとして区切る
+    i++;
+    push(i);
+  }
+  return boundaries;
 }
 
 /** 定数として登録されている識別子名の集合（pi, π, e） */

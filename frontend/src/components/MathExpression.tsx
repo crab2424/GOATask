@@ -9,7 +9,7 @@ interface MathExpressionProps {
 const FUNCTION_NAMES = [
   "asinh", "acosh", "atanh", "sinh", "cosh", "tanh",
   "asin", "acos", "atan", "sqrt", "sin", "cos", "tan",
-  "log", "ln", "exp", "abs", "nPr", "nCr", "nHr",
+  "log", "ln", "exp", "abs", "nPr", "nCr", "nHr", "nVr",
 ];
 
 function matchingParen(text: string, start: number): number {
@@ -72,6 +72,13 @@ function renderParts(text: string, keyPrefix = "m"): ReactNode[] {
     }
     if (text[i] === "^" && parts.length > 0) {
       const atom = nextAtom(text, i + 1);
+      // 編集中に "x^" のように指数が未入力の状態でカーソルを置くと空sup になり
+      // ^ 記号が視覚的に消えてしまう。中身が空のときは ^ をそのまま表示する。
+      if (atom.value === "") {
+        parts.push(<span key={key}>^</span>);
+        i++;
+        continue;
+      }
       parts.push(<sup key={key} className="text-[0.65em]">{renderParts(atom.value, key)}</sup>);
       i = atom.end;
       continue;

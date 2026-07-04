@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { CalcError, evaluate, formatResult, type AngleMode } from "../lib/calculatorEngine";
+import { CalcError, evaluate, formatResult, tokenBoundaries, type AngleMode } from "../lib/calculatorEngine";
 import { evaluateAdvanced, isPlainNumeric } from "../lib/calcDispatch";
 import { useIsMobile } from "../lib/useIsMobile";
 import { CalculatorEquationPanel } from "../components/CalculatorEquationPanel";
@@ -113,7 +113,7 @@ const KEY_PAGES: KeyPage[] = [
     cols: 5,
     keys: [
       [op("log", "log("), op("ln", "ln("), op("eˣ", "exp("), op("|a|", "abs("), op(",", ",")],
-      [op("nPr", "nPr("), op("nCr", "nCr("), op("nHr", "nHr("), op("i", "i"), op("j", "j")],
+      [op("nPr", "nPr("), op("nCr", "nCr("), op("nHr", "nHr("), op("nVr", "nVr("), op("i", "i")],
     ],
   },
   {
@@ -216,10 +216,22 @@ export function CalculatorView() {
     justEvaluated.current = false;
   }, []);
 
+  // カーソルはトークン境界単位で移動する。sin( や asinh のような複数文字トークンを
+  // 1タップで飛び越えられるようにするため、tokenBoundariesで区切り位置を求めて
+  // 現在位置から±deltaで最も近い境界へジャンプする（境界外の位置なら方向側の最寄りへ）。
   const moveCursor = useCallback((delta: number) => {
     justEvaluated.current = false;
-    setCursor((c) => Math.max(0, Math.min(expression.length, c + delta)));
-  }, [expression.length]);
+    setCursor((c) => {
+      const bounds = tokenBoundaries(expression);
+      const idx = bounds.indexOf(c);
+      if (idx === -1) {
+        if (delta > 0) return bounds.find((b) => b > c) ?? expression.length;
+        return [...bounds].reverse().find((b) => b < c) ?? 0;
+      }
+      const nextIdx = Math.max(0, Math.min(bounds.length - 1, idx + delta));
+      return bounds[nextIdx];
+    });
+  }, [expression]);
 
   // 数値のみの式は既存の同期エンジンで即座に評価する（従来通り、カーソル位置エラー表示も維持）。
   // 方程式(=)・微積分記法・文字式はcalcDispatchへ回し、必要な場合だけnerdamerを動的importする。
@@ -333,8 +345,9 @@ export function CalculatorView() {
           <button onClick={() => moveCursor(1)} className="min-h-8 min-w-9 rounded-md bg-slate-100 text-sm text-slate-600 hover:bg-slate-200" aria-label="カーソルを右へ">→</button>
         </div>
       </div>
-      {/* 編集中の式は常に等幅の生文字列＋カーソルで描画する。組版は結果・履歴だけに任せることで
-          カーソルを末尾/途中に移しても表示モデルが切り替わらない（sin⁻¹⇄asinのちらつき防止）。 */}
+      {/* 編集中の式もMathExpressionで組版する（× ÷ 上付き添字 √ 逆三角のsin⁻¹表記など）。
+          カーソルはトークン境界単位でしか止まらない（moveCursorがtokenBoundariesを使う）ため
+          "asin"の途中で分割される心配はなく、sin⁻¹⇄asinのちらつきは発生しない。 */}
       <div className="min-h-[2rem] break-all text-right font-mono text-xl text-slate-800">
         {expression === "" ? (
           <>
@@ -343,9 +356,9 @@ export function CalculatorView() {
           </>
         ) : (
           <>
-            <span>{expression.slice(0, cursor)}</span>
+            <MathExpression expression={expression.slice(0, cursor)} />
             <span className="inline-block h-5 w-0.5 animate-pulse rounded bg-slate-900 align-middle" />
-            <span>{expression.slice(cursor)}</span>
+            <MathExpression expression={expression.slice(cursor)} />
           </>
         )}
       </div>
