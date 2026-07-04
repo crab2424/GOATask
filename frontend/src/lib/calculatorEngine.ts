@@ -147,6 +147,13 @@ function isIdentChar(ch: string): boolean {
   return /[a-zA-Z]/.test(ch) || GREEK_LETTERS.has(ch);
 }
 
+// ラテン文字の並びは「既知の関数名／定数名（2文字以上）」と完全一致したときだけ
+// その名前としてまとめて認識し、それ以外は1文字ずつ独立した変数として区切る。
+// これにより "xy" は x*y（暗黙の乗算）、"sin" はsin関数、というように文字の並び自体で
+// 判定できる。longest-first（長い名前から先にチェック）でないと "sinh" が "sin"+"h" に
+// 誤って分割されてしまうため、長さの降順で並べる。
+const MULTI_CHAR_IDENTS = [...Object.keys(FUNCTIONS), "pi"].sort((a, b) => b.length - a.length);
+
 /** 関数名として登録されているか（方程式抽出などで変数と区別するために使う） */
 export function isFunctionName(name: string): boolean {
   return name in FUNCTIONS;
@@ -186,8 +193,16 @@ export function tokenize(input: string): Token[] {
         tokens.push({ kind: "ident", value: ch, pos: start });
         continue;
       }
-      while (i < input.length && /[a-zA-Z]/.test(input[i])) i++;
-      tokens.push({ kind: "ident", value: input.slice(start, i), pos: start });
+      // 既知の関数名／定数名と完全一致する場合だけまとめて1トークンにする（maximal munch）。
+      // 一致しなければ1文字だけを変数として切り出す（続く文字とは暗黙の乗算になる）。
+      const known = MULTI_CHAR_IDENTS.find((name) => input.startsWith(name, i));
+      if (known) {
+        i += known.length;
+        tokens.push({ kind: "ident", value: known, pos: start });
+        continue;
+      }
+      i++;
+      tokens.push({ kind: "ident", value: ch, pos: start });
       continue;
     }
     if (ch === "(") {
