@@ -282,7 +282,7 @@ export function CalculatorView() {
   }, [subMode, insertText, equals, backspace, clearAll, moveCursor]);
 
   const display = (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className={`rounded-xl border border-slate-200 bg-white shadow-sm ${isMobile ? "p-3" : "p-4"}`}>
       <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold text-slate-400">
         {subMode === "function" && <span>{angleMode}</span>}
         {memory !== null && <span title={`メモリ: ${formatResult(memory)}`}>M</span>}
@@ -294,11 +294,11 @@ export function CalculatorView() {
         <span className="inline-block h-5 w-0.5 animate-pulse rounded bg-slate-900 align-middle" />
         <span>{expression.slice(cursor)}</span>
       </div>
-      <div className="mt-2 min-h-[2.5rem] text-right">
+      <div className={`${isMobile ? "mt-1 min-h-[2.25rem]" : "mt-2 min-h-[2.5rem]"} text-right`}>
         {error ? (
           <p className="text-sm text-rose-600">{error}</p>
         ) : (
-          <p className="break-all font-mono text-3xl font-bold text-slate-900">
+          <p className={`break-all font-mono font-bold text-slate-900 ${isMobile ? "text-2xl" : "text-3xl"}`}>
             {result !== null ? `= ${result}` : " "}
           </p>
         )}
@@ -397,9 +397,18 @@ export function CalculatorView() {
     </div>
   );
 
+  const mobileHistory = history.length > 0 && (
+    <details className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-500">
+        履歴（{history.length}件）
+      </summary>
+      <div className="border-t border-slate-100 p-2">{historyPanel}</div>
+    </details>
+  );
+
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="mb-3 flex items-center gap-1 overflow-x-auto">
+      <div className={`${isMobile ? "mb-2" : "mb-3"} flex items-center gap-1 overflow-x-auto`}>
         {SUB_MODES.map((m) => (
           <button
             key={m.id}
@@ -427,10 +436,10 @@ export function CalculatorView() {
               </>
             );
           return isMobile ? (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {display}
               {keypad}
-              {historyPanel}
+              {mobileHistory}
             </div>
           ) : (
             <div className="grid grid-cols-[1fr_240px] gap-4">
