@@ -12,11 +12,10 @@ const CalculatorAnalysisPanel = lazy(() =>
 );
 
 // 電卓内のサブモード。1画面に詰め込まず、モードごとにキーパッドを切り替える。
-type CalcSubMode = "standard" | "function" | "equation" | "analysis";
+type CalcSubMode = "calc" | "equation" | "analysis";
 
 const SUB_MODES: { id: CalcSubMode; label: string }[] = [
-  { id: "standard", label: "基本" },
-  { id: "function", label: "関数" },
+  { id: "calc", label: "計算" },
   { id: "equation", label: "方程式" },
   { id: "analysis", label: "解析" },
 ];
@@ -35,73 +34,88 @@ const KEY_OP = "bg-slate-200 hover:bg-slate-300 text-slate-800";
 const KEY_NUM = "bg-white hover:bg-slate-100 text-slate-900 border border-slate-200";
 const KEY_ACCENT = "bg-slate-900 hover:bg-slate-700 text-white";
 
-const STANDARD_KEYS: Key[][] = [
-  [
-    { type: "action", label: "AC", action: "clear", className: "bg-rose-100 hover:bg-rose-200 text-rose-700" },
-    { type: "insert", label: "(", text: "(", className: KEY_OP },
-    { type: "insert", label: ")", text: ")", className: KEY_OP },
-    { type: "action", label: "⌫", action: "backspace", className: KEY_OP },
-  ],
-  [
-    { type: "insert", label: "√", text: "√", className: KEY_OP },
-    { type: "insert", label: "x^y", text: "^", className: KEY_OP },
-    { type: "insert", label: "%", text: "%", className: KEY_OP },
-    { type: "insert", label: "÷", text: "÷", className: KEY_OP },
-  ],
+// 数字＋四則演算＋括弧・%。全モード共通で常設するキーパッド。
+const NUMBER_PAD: Key[][] = [
   [
     { type: "insert", label: "7", text: "7", className: KEY_NUM },
     { type: "insert", label: "8", text: "8", className: KEY_NUM },
     { type: "insert", label: "9", text: "9", className: KEY_NUM },
-    { type: "insert", label: "×", text: "×", className: KEY_OP },
+    { type: "insert", label: "÷", text: "÷", className: KEY_OP },
+    { type: "insert", label: "%", text: "%", className: KEY_OP },
   ],
   [
     { type: "insert", label: "4", text: "4", className: KEY_NUM },
     { type: "insert", label: "5", text: "5", className: KEY_NUM },
     { type: "insert", label: "6", text: "6", className: KEY_NUM },
-    { type: "insert", label: "−", text: "-", className: KEY_OP },
+    { type: "insert", label: "×", text: "×", className: KEY_OP },
+    { type: "insert", label: "(", text: "(", className: KEY_OP },
   ],
   [
     { type: "insert", label: "1", text: "1", className: KEY_NUM },
     { type: "insert", label: "2", text: "2", className: KEY_NUM },
     { type: "insert", label: "3", text: "3", className: KEY_NUM },
-    { type: "insert", label: "＋", text: "+", className: KEY_OP },
+    { type: "insert", label: "−", text: "-", className: KEY_OP },
+    { type: "insert", label: ")", text: ")", className: KEY_OP },
   ],
   [
     { type: "insert", label: "0", text: "0", className: `${KEY_NUM} col-span-2` },
     { type: "insert", label: ".", text: ".", className: KEY_NUM },
+    { type: "insert", label: "＋", text: "+", className: KEY_OP },
     { type: "action", label: "=", action: "equals", className: KEY_ACCENT },
   ],
 ];
 
-// 関数モードの共通数字キー。低頻度の関数は2nd切替側にまとめる。
-const FUNCTION_NUMBER_KEYS: Key[][] = [
-  [
-    { type: "insert", label: "7", text: "7", className: KEY_NUM },
-    { type: "insert", label: "8", text: "8", className: KEY_NUM },
-    { type: "insert", label: "9", text: "9", className: KEY_NUM },
-    { type: "insert", label: "÷", text: "÷", className: KEY_OP },
-    { type: "insert", label: "%", text: "%", className: KEY_OP },
-  ],
-  [
-    { type: "insert", label: "4", text: "4", className: KEY_NUM },
-    { type: "insert", label: "5", text: "5", className: KEY_NUM },
-    { type: "insert", label: "6", text: "6", className: KEY_NUM },
-    { type: "insert", label: "×", text: "×", className: KEY_OP },
-    { type: "insert", label: "(", text: "(", className: KEY_OP },
-  ],
-  [
-    { type: "insert", label: "1", text: "1", className: KEY_NUM },
-    { type: "insert", label: "2", text: "2", className: KEY_NUM },
-    { type: "insert", label: "3", text: "3", className: KEY_NUM },
-    { type: "insert", label: "−", text: "-", className: KEY_OP },
-    { type: "insert", label: ")", text: ")", className: KEY_OP },
-  ],
-  [
-    { type: "insert", label: "0", text: "0", className: `${KEY_NUM} col-span-2` },
-    { type: "insert", label: ".", text: ".", className: KEY_NUM },
-    { type: "insert", label: "＋", text: "+", className: KEY_OP },
-    { type: "action", label: "=", action: "equals", className: KEY_ACCENT },
-  ],
+// 低頻度の記号・関数はパネルタブで切り替える。新しい分類（Σ・複素数・絶対値など）は
+// この配列に要素を追加するだけで対応できる。
+interface KeyPanel {
+  id: string;
+  label: string;
+  keys: Key[][];
+}
+
+const KEY_PANELS: KeyPanel[] = [
+  {
+    id: "power",
+    label: "√ ^ π",
+    keys: [
+      [
+        { type: "insert", label: "√", text: "√", className: KEY_OP },
+        { type: "insert", label: "xʸ", text: "^", className: KEY_OP },
+        { type: "insert", label: "π", text: "π", className: KEY_OP },
+        { type: "insert", label: "e", text: "e", className: KEY_OP },
+        { type: "insert", label: "x!", text: "!", className: KEY_OP },
+      ],
+    ],
+  },
+  {
+    id: "trig",
+    label: "sin cos tan",
+    keys: [
+      [
+        { type: "insert", label: "sin", text: "sin(", className: KEY_OP },
+        { type: "insert", label: "cos", text: "cos(", className: KEY_OP },
+        { type: "insert", label: "tan", text: "tan(", className: KEY_OP },
+      ],
+      [
+        { type: "insert", label: "sin⁻¹", text: "asin(", className: KEY_OP },
+        { type: "insert", label: "cos⁻¹", text: "acos(", className: KEY_OP },
+        { type: "insert", label: "tan⁻¹", text: "atan(", className: KEY_OP },
+      ],
+    ],
+  },
+  {
+    id: "log",
+    label: "log nPr",
+    keys: [
+      [
+        { type: "insert", label: "log", text: "log(", className: KEY_OP },
+        { type: "insert", label: "ln", text: "ln(", className: KEY_OP },
+        { type: "insert", label: "nPr", text: "nPr(", className: KEY_OP },
+        { type: "insert", label: "nCr", text: "nCr(", className: KEY_OP },
+        { type: "insert", label: ",", text: ",", className: KEY_OP },
+      ],
+    ],
+  },
 ];
 
 // 物理キーボード入力 → 挿入文字列の対応（PC向け）
@@ -114,7 +128,7 @@ const KEYBOARD_INSERT: Record<string, string> = {
 
 export function CalculatorView() {
   const isMobile = useIsMobile();
-  const [subMode, setSubMode] = useState<CalcSubMode>("standard");
+  const [subMode, setSubMode] = useState<CalcSubMode>("calc");
   const [analysisOpened, setAnalysisOpened] = useState(false);
   const [expression, setExpression] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -122,7 +136,7 @@ export function CalculatorView() {
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [angleMode, setAngleMode] = useState<AngleMode>("DEG");
-  const [functionShift, setFunctionShift] = useState(false);
+  const [activePanelId, setActivePanelId] = useState(KEY_PANELS[0].id);
   const [memory, setMemory] = useState<number | null>(null);
   // =直後に数字を打ったら新しい式を始める（実機電卓と同じ挙動）
   const justEvaluated = useRef(false);
@@ -219,7 +233,7 @@ export function CalculatorView() {
   // PC: 物理キーボード対応。他の入力欄にフォーカスがあるときは奪わない。
   // 方程式・解析モードはフォーム入力主体なのでリスナー自体を外す。
   useEffect(() => {
-    if (subMode !== "standard" && subMode !== "function") return;
+    if (subMode !== "calc") return;
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
@@ -308,69 +322,78 @@ export function CalculatorView() {
     </div>
   );
 
-  const functionKeys: Key[][] = [
-    [
-      { type: "insert", label: functionShift ? "sin⁻¹" : "sin", text: functionShift ? "asin(" : "sin(", className: KEY_OP },
-      { type: "insert", label: functionShift ? "cos⁻¹" : "cos", text: functionShift ? "acos(" : "cos(", className: KEY_OP },
-      { type: "insert", label: functionShift ? "tan⁻¹" : "tan", text: functionShift ? "atan(" : "tan(", className: KEY_OP },
-      { type: "action", label: "AC", action: "clear", className: "bg-rose-100 hover:bg-rose-200 text-rose-700" },
-      { type: "action", label: "⌫", action: "backspace", className: KEY_OP },
-    ],
-    [
-      { type: "insert", label: functionShift ? "nPr" : "log", text: functionShift ? "nPr(" : "log(", className: KEY_OP },
-      { type: "insert", label: functionShift ? "nCr" : "ln", text: functionShift ? "nCr(" : "ln(", className: KEY_OP },
-      { type: "insert", label: functionShift ? "," : "√", text: functionShift ? "," : "√", className: KEY_OP },
-      { type: "insert", label: functionShift ? "x!" : "xʸ", text: functionShift ? "!" : "^", className: KEY_OP },
-      { type: "insert", label: functionShift ? "e" : "π", text: functionShift ? "e" : "π", className: KEY_OP },
-    ],
-    ...FUNCTION_NUMBER_KEYS,
-  ];
+  const activePanel = KEY_PANELS.find((p) => p.id === activePanelId) ?? KEY_PANELS[0];
 
-  // 関数モード専用: DEG/RAD切替とメモリ操作のツールバー
-  const functionToolbar = (
-    <div className="flex items-center gap-2">
+  // 常設ツールバー: AC/⌫、角度モード、メモリ操作。パネルタブに関わらず常に表示する。
+  const calcToolbar = (
+    <div className="flex flex-wrap items-center gap-1.5">
       <button
-        onClick={() => setFunctionShift((v) => !v)}
-        className={`rounded-lg px-3 py-2 text-sm font-semibold ${functionShift ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-800 hover:bg-slate-300"}`}
-        aria-pressed={functionShift}
+        onClick={clearAll}
+        className="rounded-lg bg-rose-100 px-3 py-1.5 text-sm font-semibold text-rose-700 hover:bg-rose-200"
       >
-        2nd
+        AC
+      </button>
+      <button
+        onClick={backspace}
+        className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-300"
+      >
+        ⌫
       </button>
       <button
         onClick={() => setAngleMode((m) => (m === "DEG" ? "RAD" : "DEG"))}
-        className="rounded-lg bg-slate-200 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-300"
+        className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-300"
         title="角度モード切替"
       >
         {angleMode === "DEG" ? "DEG⇄" : "RAD⇄"}
       </button>
-      <div className="ml-auto flex gap-1">
+      <div className="ml-auto flex flex-wrap gap-1">
         <button
           onClick={() => setMemory(null)}
           disabled={memory === null}
-          className="rounded-lg bg-slate-200 px-3 py-2 text-sm text-slate-800 hover:bg-slate-300 disabled:opacity-40"
+          className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-300 disabled:opacity-40"
         >
           MC
         </button>
         <button
           onClick={() => { if (memory !== null) insertText(formatResult(memory)); }}
           disabled={memory === null}
-          className="rounded-lg bg-slate-200 px-3 py-2 text-sm text-slate-800 hover:bg-slate-300 disabled:opacity-40"
+          className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-300 disabled:opacity-40"
         >
           MR
         </button>
         <button
           onClick={() => memoryAdd(1)}
-          className="rounded-lg bg-slate-200 px-3 py-2 text-sm text-slate-800 hover:bg-slate-300"
+          className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-300"
         >
           M+
         </button>
         <button
           onClick={() => memoryAdd(-1)}
-          className="rounded-lg bg-slate-200 px-3 py-2 text-sm text-slate-800 hover:bg-slate-300"
+          className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-300"
         >
           M−
         </button>
       </div>
+    </div>
+  );
+
+  // 記号パネルのタブ。将来のカテゴリ追加はKEY_PANELSに要素を足すだけでよい。
+  const panelTabs = (
+    <div className="flex items-center gap-1 overflow-x-auto">
+      {KEY_PANELS.map((panel) => (
+        <button
+          key={panel.id}
+          onClick={() => setActivePanelId(panel.id)}
+          aria-pressed={activePanelId === panel.id}
+          className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+            activePanelId === panel.id
+              ? "bg-slate-900 text-white"
+              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+          }`}
+        >
+          {panel.label}
+        </button>
+      ))}
     </div>
   );
 
@@ -439,17 +462,16 @@ export function CalculatorView() {
         ))}
       </div>
 
-      <div hidden={subMode !== "standard" && subMode !== "function"}>
+      <div hidden={subMode !== "calc"}>
         {(() => {
-          const keypad =
-            subMode === "standard" ? (
-              renderKeypad(STANDARD_KEYS, 4)
-            ) : (
-              <>
-                {functionToolbar}
-                {renderKeypad(functionKeys, 5)}
-              </>
-            );
+          const keypad = (
+            <>
+              {calcToolbar}
+              {panelTabs}
+              {renderKeypad(activePanel.keys, 5)}
+              {renderKeypad(NUMBER_PAD, 5)}
+            </>
+          );
           return isMobile ? (
             <div className="space-y-2">
               {display}

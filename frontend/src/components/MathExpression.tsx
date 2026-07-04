@@ -47,7 +47,7 @@ function renderParts(text: string, keyPrefix = "m"): ReactNode[] {
       const inverse = fn.startsWith("a") && ["asin", "acos", "atan"].includes(fn);
       const label = inverse ? fn.slice(1) : fn;
       parts.push(
-        <span key={key} className="font-serif not-italic">
+        <span key={key}>
           {label}{inverse && <sup className="ml-px text-[0.65em]">−1</sup>}
         </span>,
       );
@@ -81,7 +81,7 @@ function renderParts(text: string, keyPrefix = "m"): ReactNode[] {
 /** 計算用文字列を変更せず、表示だけを数学記号に整える。 */
 export function MathExpression({ expression, className = "" }: MathExpressionProps) {
   return (
-    <span className={`font-serif tabular-nums ${className}`} aria-label={expression}>
+    <span className={`tabular-nums ${className}`} aria-label={expression}>
       {renderParts(expression)}
     </span>
   );
