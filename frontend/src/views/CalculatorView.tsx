@@ -1,16 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { CalcError, evaluate, formatResult, type AngleMode } from "../lib/calculatorEngine";
 import { useIsMobile } from "../lib/useIsMobile";
+import { CalculatorEquationPanel } from "../components/CalculatorEquationPanel";
+
+// 解析パネルはnerdamer（約400KB）を含むため、開いたときだけ読み込む
+const CalculatorAnalysisPanel = lazy(() =>
+  import("../components/CalculatorAnalysisPanel").then((m) => ({
+    default: m.CalculatorAnalysisPanel,
+  })),
+);
 
 // 電卓内のサブモード。1画面に詰め込まず、モードごとにキーパッドを切り替える。
-// standard以外は今後のセッションで実装する。
 type CalcSubMode = "standard" | "function" | "equation" | "analysis";
 
-const SUB_MODES: { id: CalcSubMode; label: string; ready: boolean }[] = [
-  { id: "standard", label: "基本", ready: true },
-  { id: "function", label: "関数", ready: true },
-  { id: "equation", label: "方程式", ready: false },
-  { id: "analysis", label: "解析", ready: false },
+const SUB_MODES: { id: CalcSubMode; label: string }[] = [
+  { id: "standard", label: "基本" },
+  { id: "function", label: "関数" },
+  { id: "equation", label: "方程式" },
+  { id: "analysis", label: "解析" },
 ];
 
 interface HistoryEntry {
@@ -239,7 +246,9 @@ export function CalculatorView() {
   }, [insertText, clearAll, backspace, equals, moveCursor]);
 
   // PC: 物理キーボード対応。他の入力欄にフォーカスがあるときは奪わない。
+  // 方程式・解析モードはフォーム入力主体なのでリスナー自体を外す。
   useEffect(() => {
+    if (subMode !== "standard" && subMode !== "function") return;
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
@@ -270,7 +279,7 @@ export function CalculatorView() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [insertText, equals, backspace, clearAll, moveCursor]);
+  }, [subMode, insertText, equals, backspace, clearAll, moveCursor]);
 
   const display = (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -436,10 +445,18 @@ export function CalculatorView() {
             </div>
           );
         })()
+      ) : subMode === "equation" ? (
+        <CalculatorEquationPanel />
       ) : (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-400">
-          「{SUB_MODES.find((m) => m.id === subMode)?.label}」モードは次回実装予定です
-        </div>
+        <Suspense
+          fallback={
+            <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+              読み込み中...
+            </div>
+          }
+        >
+          <CalculatorAnalysisPanel />
+        </Suspense>
       )}
     </div>
   );
