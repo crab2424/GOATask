@@ -22,6 +22,7 @@ type Token =
   | { kind: "op"; value: string; pos: number }
   | { kind: "lparen"; pos: number }
   | { kind: "rparen"; pos: number }
+  | { kind: "comma"; pos: number }
   | { kind: "ident"; value: string; pos: number };
 
 const CONSTANTS: Record<string, number> = {
@@ -30,28 +31,76 @@ const CONSTANTS: Record<string, number> = {
   e: Math.E,
 };
 
-// 引数1つの関数テーブル。三角関数は角度モードの影響を受ける。
-const FUNCTIONS: Record<string, (x: number, opts: Required<EvalOptions>) => number> = {
-  sqrt: (x) => {
-    if (x < 0) throw new CalcError("負の数の平方根は計算できません");
-    return Math.sqrt(x);
+// 関数テーブル。三角関数・逆三角関数は角度モードの影響を受ける。
+// arityは引数の個数。nPr/nCrのような2引数はカンマ区切り nCr(5,2) で呼ぶ。
+interface CalcFunction {
+  arity: number;
+  apply: (args: number[], opts: Required<EvalOptions>) => number;
+}
+
+const FUNCTIONS: Record<string, CalcFunction> = {
+  sqrt: {
+    arity: 1,
+    apply: ([x]) => {
+      if (x < 0) throw new CalcError("負の数の平方根は計算できません");
+      return Math.sqrt(x);
+    },
   },
-  abs: (x) => Math.abs(x),
-  sin: (x, o) => Math.sin(toRadians(x, o.angleMode)),
-  cos: (x, o) => Math.cos(toRadians(x, o.angleMode)),
-  tan: (x, o) => Math.tan(toRadians(x, o.angleMode)),
-  log: (x) => {
-    if (x <= 0) throw new CalcError("logの引数は正の数が必要です");
-    return Math.log10(x);
+  abs: { arity: 1, apply: ([x]) => Math.abs(x) },
+  sin: { arity: 1, apply: ([x], o) => Math.sin(toRadians(x, o.angleMode)) },
+  cos: { arity: 1, apply: ([x], o) => Math.cos(toRadians(x, o.angleMode)) },
+  tan: { arity: 1, apply: ([x], o) => Math.tan(toRadians(x, o.angleMode)) },
+  asin: {
+    arity: 1,
+    apply: ([x], o) => {
+      if (x < -1 || x > 1) throw new CalcError("asinの引数は-1〜1が必要です");
+      return fromRadians(Math.asin(x), o.angleMode);
+    },
   },
-  ln: (x) => {
-    if (x <= 0) throw new CalcError("lnの引数は正の数が必要です");
-    return Math.log(x);
+  acos: {
+    arity: 1,
+    apply: ([x], o) => {
+      if (x < -1 || x > 1) throw new CalcError("acosの引数は-1〜1が必要です");
+      return fromRadians(Math.acos(x), o.angleMode);
+    },
   },
+  atan: { arity: 1, apply: ([x], o) => fromRadians(Math.atan(x), o.angleMode) },
+  log: {
+    arity: 1,
+    apply: ([x]) => {
+      if (x <= 0) throw new CalcError("logの引数は正の数が必要です");
+      return Math.log10(x);
+    },
+  },
+  ln: {
+    arity: 1,
+    apply: ([x]) => {
+      if (x <= 0) throw new CalcError("lnの引数は正の数が必要です");
+      return Math.log(x);
+    },
+  },
+  nPr: { arity: 2, apply: ([n, r]) => permutation(n, r) },
+  nCr: { arity: 2, apply: ([n, r]) => permutation(n, r) / factorial(r, undefined) },
 };
 
 function toRadians(x: number, mode: AngleMode): number {
   return mode === "DEG" ? (x * Math.PI) / 180 : x;
+}
+
+function fromRadians(x: number, mode: AngleMode): number {
+  return mode === "DEG" ? (x * 180) / Math.PI : x;
+}
+
+function permutation(n: number, r: number): number {
+  if (!Number.isInteger(n) || !Number.isInteger(r) || n < 0 || r < 0)
+    throw new CalcError("nPr/nCrは0以上の整数のみ計算できます");
+  if (r > n) throw new CalcError("nPr/nCrはr≦nが必要です");
+  let result = 1;
+  for (let i = n - r + 1; i <= n; i++) {
+    result *= i;
+    if (!Number.isFinite(result)) throw new CalcError("nPr/nCrの計算結果が大きすぎます");
+  }
+  return result;
 }
 
 function isDigit(ch: string): boolean {
@@ -104,6 +153,11 @@ export function tokenize(input: string): Token[] {
     }
     if (ch === ")") {
       tokens.push({ kind: "rparen", pos: i });
+      i++;
+      continue;
+    }
+    if (ch === ",") {
+      tokens.push({ kind: "comma", pos: i });
       i++;
       continue;
     }
@@ -243,19 +297,27 @@ class Parser {
       const fn = FUNCTIONS[t.value];
       if (fn) {
         const open = this.peek();
-        let arg: number;
+        const args: number[] = [];
         if (open?.kind === "lparen") {
           this.next();
-          arg = this.parseAdditive();
+          args.push(this.parseAdditive());
+          while (this.peek()?.kind === "comma") {
+            this.next();
+            args.push(this.parseAdditive());
+          }
           const close = this.next();
           if (!close || close.kind !== "rparen")
             throw new CalcError("閉じ括弧が足りません", t.pos);
+        } else if (fn.arity === 1) {
+          // sin30 のような括弧省略に対応（1引数関数のみ）
+          args.push(this.parseUnary());
         } else {
-          // sin30 のような括弧省略に対応
-          arg = this.parseUnary();
+          throw new CalcError(`${t.value}は ${t.value}(n,r) の形式で入力してください`, t.pos);
         }
+        if (args.length !== fn.arity)
+          throw new CalcError(`${t.value}の引数は${fn.arity}個必要です`, t.pos);
         try {
-          return fn(arg, this.opts);
+          return fn.apply(args, this.opts);
         } catch (e) {
           if (e instanceof CalcError && e.position === undefined) e.position = t.pos;
           throw e;
@@ -267,7 +329,7 @@ class Parser {
   }
 }
 
-function factorial(n: number, pos: number): number {
+function factorial(n: number, pos: number | undefined): number {
   if (!Number.isInteger(n) || n < 0)
     throw new CalcError("階乗は0以上の整数のみ計算できます", pos);
   if (n > 170) throw new CalcError("階乗が大きすぎます（170まで）", pos);

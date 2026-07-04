@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CalcError, evaluate, formatResult } from "../lib/calculatorEngine";
+import { CalcError, evaluate, formatResult, type AngleMode } from "../lib/calculatorEngine";
 import { useIsMobile } from "../lib/useIsMobile";
 
 // 電卓内のサブモード。1画面に詰め込まず、モードごとにキーパッドを切り替える。
@@ -8,7 +8,7 @@ type CalcSubMode = "standard" | "function" | "equation" | "analysis";
 
 const SUB_MODES: { id: CalcSubMode; label: string; ready: boolean }[] = [
   { id: "standard", label: "基本", ready: true },
-  { id: "function", label: "関数", ready: false },
+  { id: "function", label: "関数", ready: true },
   { id: "equation", label: "方程式", ready: false },
   { id: "analysis", label: "解析", ready: false },
 ];
@@ -69,6 +69,65 @@ const STANDARD_KEYS: Key[][] = [
   ],
 ];
 
+// 関数モードのキーパッド（5列）。数字・四則も含めて1画面に収める。
+const FUNCTION_KEYS: Key[][] = [
+  [
+    { type: "insert", label: "sin", text: "sin(", className: KEY_OP },
+    { type: "insert", label: "cos", text: "cos(", className: KEY_OP },
+    { type: "insert", label: "tan", text: "tan(", className: KEY_OP },
+    { type: "action", label: "AC", action: "clear", className: "bg-rose-100 hover:bg-rose-200 text-rose-700" },
+    { type: "action", label: "⌫", action: "backspace", className: KEY_OP },
+  ],
+  [
+    { type: "insert", label: "sin⁻¹", text: "asin(", className: KEY_OP },
+    { type: "insert", label: "cos⁻¹", text: "acos(", className: KEY_OP },
+    { type: "insert", label: "tan⁻¹", text: "atan(", className: KEY_OP },
+    { type: "insert", label: "(", text: "(", className: KEY_OP },
+    { type: "insert", label: ")", text: ")", className: KEY_OP },
+  ],
+  [
+    { type: "insert", label: "log", text: "log(", className: KEY_OP },
+    { type: "insert", label: "ln", text: "ln(", className: KEY_OP },
+    { type: "insert", label: "√", text: "√", className: KEY_OP },
+    { type: "insert", label: "x^y", text: "^", className: KEY_OP },
+    { type: "insert", label: "x!", text: "!", className: KEY_OP },
+  ],
+  [
+    { type: "insert", label: "nPr", text: "nPr(", className: KEY_OP },
+    { type: "insert", label: "nCr", text: "nCr(", className: KEY_OP },
+    { type: "insert", label: ",", text: ",", className: KEY_OP },
+    { type: "insert", label: "π", text: "π", className: KEY_OP },
+    { type: "insert", label: "e", text: "e", className: KEY_OP },
+  ],
+  [
+    { type: "insert", label: "7", text: "7", className: KEY_NUM },
+    { type: "insert", label: "8", text: "8", className: KEY_NUM },
+    { type: "insert", label: "9", text: "9", className: KEY_NUM },
+    { type: "insert", label: "÷", text: "÷", className: KEY_OP },
+    { type: "insert", label: "%", text: "%", className: KEY_OP },
+  ],
+  [
+    { type: "insert", label: "4", text: "4", className: KEY_NUM },
+    { type: "insert", label: "5", text: "5", className: KEY_NUM },
+    { type: "insert", label: "6", text: "6", className: KEY_NUM },
+    { type: "insert", label: "×", text: "×", className: KEY_OP },
+    { type: "action", label: "←", action: "left", className: KEY_OP },
+  ],
+  [
+    { type: "insert", label: "1", text: "1", className: KEY_NUM },
+    { type: "insert", label: "2", text: "2", className: KEY_NUM },
+    { type: "insert", label: "3", text: "3", className: KEY_NUM },
+    { type: "insert", label: "−", text: "-", className: KEY_OP },
+    { type: "action", label: "→", action: "right", className: KEY_OP },
+  ],
+  [
+    { type: "insert", label: "0", text: "0", className: KEY_NUM },
+    { type: "insert", label: ".", text: ".", className: KEY_NUM },
+    { type: "insert", label: "＋", text: "+", className: KEY_OP },
+    { type: "action", label: "=", action: "equals", className: `${KEY_ACCENT} col-span-2` },
+  ],
+];
+
 // 物理キーボード入力 → 挿入文字列の対応（PC向け）
 const KEYBOARD_INSERT: Record<string, string> = {
   "0": "0", "1": "1", "2": "2", "3": "3", "4": "4",
@@ -85,6 +144,8 @@ export function CalculatorView() {
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [angleMode, setAngleMode] = useState<AngleMode>("DEG");
+  const [memory, setMemory] = useState<number | null>(null);
   // =直後に数字を打ったら新しい式を始める（実機電卓と同じ挙動）
   const justEvaluated = useRef(false);
 
@@ -131,7 +192,7 @@ export function CalculatorView() {
   const equals = useCallback(() => {
     if (expression.trim() === "") return;
     try {
-      const value = evaluate(expression);
+      const value = evaluate(expression, { angleMode });
       const formatted = formatResult(value);
       setResult(formatted);
       setError(null);
@@ -145,7 +206,23 @@ export function CalculatorView() {
         setError("計算に失敗しました");
       }
     }
-  }, [expression]);
+  }, [expression, angleMode]);
+
+  // M+/M-: 表示中の結果（なければ現在の式を評価した値）をメモリに加減算する
+  const memoryAdd = useCallback((sign: 1 | -1) => {
+    let value: number;
+    if (result !== null) {
+      value = parseFloat(result);
+    } else {
+      try {
+        value = evaluate(expression, { angleMode });
+      } catch {
+        setError("メモリに保存する値を計算できません");
+        return;
+      }
+    }
+    setMemory((m) => (m ?? 0) + sign * value);
+  }, [result, expression, angleMode]);
 
   const handleKey = useCallback((key: Key) => {
     if (key.type === "insert") {
@@ -170,6 +247,10 @@ export function CalculatorView() {
       if (e.key in KEYBOARD_INSERT) {
         e.preventDefault();
         insertText(KEYBOARD_INSERT[e.key]);
+      } else if (/^[a-zA-Z,]$/.test(e.key)) {
+        // sin(30) のような関数名をそのままタイプできるようにする
+        e.preventDefault();
+        insertText(e.key);
       } else if (e.key === "Enter" || e.key === "=") {
         e.preventDefault();
         equals();
@@ -193,6 +274,10 @@ export function CalculatorView() {
 
   const display = (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold text-slate-400">
+        {subMode === "function" && <span>{angleMode}</span>}
+        {memory !== null && <span title={`メモリ: ${formatResult(memory)}`}>M</span>}
+      </div>
       {/* 式表示: カーソル位置を自前描画して途中編集に対応 */}
       <div className="min-h-[2rem] break-all text-right font-mono text-xl text-slate-800">
         {expression === "" && <span className="text-slate-300">0</span>}
@@ -212,17 +297,60 @@ export function CalculatorView() {
     </div>
   );
 
-  const keypad = (
-    <div className="grid grid-cols-4 gap-2">
-      {STANDARD_KEYS.flat().map((key, i) => (
+  const renderKeypad = (keys: Key[][], cols: 4 | 5) => (
+    <div className={`grid gap-2 ${cols === 4 ? "grid-cols-4" : "grid-cols-5"}`}>
+      {keys.flat().map((key, i) => (
         <button
           key={i}
           onClick={() => handleKey(key)}
-          className={`rounded-lg py-3 text-lg font-medium transition-colors ${key.className ?? KEY_NUM}`}
+          className={`rounded-lg py-3 font-medium transition-colors ${
+            cols === 4 ? "text-lg" : "text-base"
+          } ${key.className ?? KEY_NUM}`}
         >
           {key.label}
         </button>
       ))}
+    </div>
+  );
+
+  // 関数モード専用: DEG/RAD切替とメモリ操作のツールバー
+  const functionToolbar = (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => setAngleMode((m) => (m === "DEG" ? "RAD" : "DEG"))}
+        className="rounded-lg bg-slate-200 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-300"
+        title="角度モード切替"
+      >
+        {angleMode === "DEG" ? "DEG⇄" : "RAD⇄"}
+      </button>
+      <div className="ml-auto flex gap-1">
+        <button
+          onClick={() => setMemory(null)}
+          disabled={memory === null}
+          className="rounded-lg bg-slate-200 px-3 py-2 text-sm text-slate-800 hover:bg-slate-300 disabled:opacity-40"
+        >
+          MC
+        </button>
+        <button
+          onClick={() => { if (memory !== null) insertText(formatResult(memory)); }}
+          disabled={memory === null}
+          className="rounded-lg bg-slate-200 px-3 py-2 text-sm text-slate-800 hover:bg-slate-300 disabled:opacity-40"
+        >
+          MR
+        </button>
+        <button
+          onClick={() => memoryAdd(1)}
+          className="rounded-lg bg-slate-200 px-3 py-2 text-sm text-slate-800 hover:bg-slate-300"
+        >
+          M+
+        </button>
+        <button
+          onClick={() => memoryAdd(-1)}
+          className="rounded-lg bg-slate-200 px-3 py-2 text-sm text-slate-800 hover:bg-slate-300"
+        >
+          M−
+        </button>
+      </div>
     </div>
   );
 
@@ -278,25 +406,36 @@ export function CalculatorView() {
         ))}
       </div>
 
-      {subMode === "standard" ? (
-        isMobile ? (
-          <div className="space-y-3">
-            {display}
-            {keypad}
-            {historyPanel}
-          </div>
-        ) : (
-          <div className="grid grid-cols-[1fr_240px] gap-4">
+      {subMode === "standard" || subMode === "function" ? (
+        (() => {
+          const keypad =
+            subMode === "standard" ? (
+              renderKeypad(STANDARD_KEYS, 4)
+            ) : (
+              <>
+                {functionToolbar}
+                {renderKeypad(FUNCTION_KEYS, 5)}
+              </>
+            );
+          return isMobile ? (
             <div className="space-y-3">
               {display}
               {keypad}
-              <p className="text-center text-[11px] text-slate-400">
-                キーボード入力対応: 数字・演算子・Enter(=)・Backspace・Esc(AC)・←→(カーソル移動)
-              </p>
+              {historyPanel}
             </div>
-            <div>{historyPanel}</div>
-          </div>
-        )
+          ) : (
+            <div className="grid grid-cols-[1fr_240px] gap-4">
+              <div className="space-y-3">
+                {display}
+                {keypad}
+                <p className="text-center text-[11px] text-slate-400">
+                  キーボード入力対応: 数字・演算子・関数名(sinなど)・Enter(=)・Backspace・Esc(AC)・←→(カーソル移動)
+                </p>
+              </div>
+              <div>{historyPanel}</div>
+            </div>
+          );
+        })()
       ) : (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-400">
           「{SUB_MODES.find((m) => m.id === subMode)?.label}」モードは次回実装予定です
