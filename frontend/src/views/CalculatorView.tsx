@@ -289,20 +289,20 @@ export function CalculatorView() {
           <button onClick={() => moveCursor(1)} className="min-h-8 min-w-9 rounded-md bg-slate-100 text-sm text-slate-600 hover:bg-slate-200" aria-label="カーソルを右へ">→</button>
         </div>
       </div>
-      {/* 式表示: カーソル位置を自前描画して途中編集に対応 */}
+      {/* 編集中の式は常に等幅の生文字列＋カーソルで描画する。組版は結果・履歴だけに任せることで
+          カーソルを末尾/途中に移しても表示モデルが切り替わらない（sin⁻¹⇄asinのちらつき防止）。 */}
       <div className="min-h-[2rem] break-all text-right font-mono text-xl text-slate-800">
-        {expression === "" && <span className="text-slate-300">0</span>}
-        {cursor === expression.length ? (
-          <MathExpression expression={expression} />
+        {expression === "" ? (
+          <>
+            <span className="text-slate-300">0</span>
+            <span className="inline-block h-5 w-0.5 animate-pulse rounded bg-slate-900 align-middle" />
+          </>
         ) : (
           <>
             <span>{expression.slice(0, cursor)}</span>
             <span className="inline-block h-5 w-0.5 animate-pulse rounded bg-slate-900 align-middle" />
             <span>{expression.slice(cursor)}</span>
           </>
-        )}
-        {cursor === expression.length && (
-          <span className="inline-block h-5 w-0.5 animate-pulse rounded bg-slate-900 align-middle" />
         )}
       </div>
       <div className={`${isMobile ? "mt-1 min-h-[2.25rem]" : "mt-2 min-h-[2.5rem]"} text-right`}>
