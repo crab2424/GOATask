@@ -1,4 +1,4 @@
-// MathEditorがネイティブMathML（math/mrow/mfrac/msqrt/mo/mspace）を直接描画するための
+// MathEditorがネイティブMathMLを直接描画するための
 // JSX型宣言。@types/reactはMathMLタグをIntrinsicElementsに含まないため、使用する
 // タグだけをここで補う。DOM側の型はlib.dom.d.tsのMathMLElementをそのまま使う。
 import type { DetailedHTMLProps, HTMLAttributes } from "react";
@@ -12,6 +12,9 @@ declare module "react" {
       mrow: MathMLProps;
       mfrac: MathMLProps;
       msqrt: MathMLProps;
+      msup: MathMLProps;
+      mi: MathMLProps & { mathvariant?: "normal" | "italic" };
+      mn: MathMLProps;
       mo: MathMLProps & { stretchy?: "true" | "false" };
       mspace: MathMLProps & { width?: string; height?: string; depth?: string };
     }

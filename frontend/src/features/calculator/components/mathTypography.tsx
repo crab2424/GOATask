@@ -2,14 +2,9 @@
 // MathExpression（結果・履歴の文字列表示）とMathEditor（編集ツリーのchar並び）で共用する。
 // 計算用の文字列は変更せず、表示だけを整える。
 //
-// ここで作るspan/supはMathEditorの<math>ツリーの中に置かれる非MathML要素になる。
-// MathML CoreのUAスタイルシートはmath配下の非MathML要素にdisplay:block mathを
-// 強制するため（SafariではCSSクラスでの上書きが効かなかった）、各要素に元の
-// 見た目と同じdisplay値をインラインstyleで明示し直す。
-import type { CSSProperties, ReactNode } from "react";
-
-const INLINE: CSSProperties = { display: "inline" };
-const INLINE_FLEX: CSSProperties = { display: "inline-flex" };
+// MathMLツリー内にHTMLのspan/supを混ぜるとSafariが内容を組版しないため、返す要素は
+// mn/mi/mo/msqrt/msup/mrowだけに限定する。
+import type { ReactNode } from "react";
 
 // 前方一致で探すため、長い名前（asinh等）を短い名前（asin等）より先に置くこと
 const FUNCTION_NAMES = [
@@ -48,31 +43,30 @@ export function renderLinearParts(text: string, keyPrefix = "m"): ReactNode[] {
       if (fn === "sqrt" && text[i + fn.length] === "(") {
         const atom = nextAtom(text, i + fn.length);
         parts.push(
-          <span key={key} className="inline-flex items-start" style={INLINE_FLEX}>
-            <span className="text-[1.15em] leading-none" style={INLINE}>√</span>
-            <span className="border-t border-current px-0.5 leading-tight" style={INLINE}>{renderLinearParts(atom.value, key)}</span>
-          </span>,
+          <msqrt key={key}>
+            <mrow>{renderLinearParts(atom.value, key)}</mrow>
+          </msqrt>,
         );
         i = atom.end;
         continue;
       }
       const inverse = fn.startsWith("a") && ["asin", "acos", "atan"].includes(fn);
       const label = inverse ? fn.slice(1) : fn;
-      parts.push(
-        <span key={key} style={INLINE}>
-          {label}{inverse && <sup className="ml-px text-[0.65em]" style={INLINE}>−1</sup>}
-        </span>,
-      );
+      parts.push(inverse ? (
+        <msup key={key}>
+          <mi mathvariant="normal">{label}</mi>
+          <mrow><mo>−</mo><mn>1</mn></mrow>
+        </msup>
+      ) : <mi key={key} mathvariant="normal">{label}</mi>);
       i += fn.length;
       continue;
     }
     if (text[i] === "√") {
       const atom = nextAtom(text, i + 1);
       parts.push(
-        <span key={key} className="inline-flex items-start" style={INLINE_FLEX}>
-          <span className="text-[1.15em] leading-none" style={INLINE}>√</span>
-          <span className="border-t border-current px-0.5 leading-tight" style={INLINE}>{renderLinearParts(atom.value, key)}</span>
-        </span>,
+        <msqrt key={key}>
+          <mrow>{renderLinearParts(atom.value, key)}</mrow>
+        </msqrt>,
       );
       i = atom.end;
       continue;
@@ -82,16 +76,33 @@ export function renderLinearParts(text: string, keyPrefix = "m"): ReactNode[] {
       // 編集中に "x^" のように指数が未入力の状態でカーソルを置くと空sup になり
       // ^ 記号が視覚的に消えてしまう。中身が空のときは ^ をそのまま表示する。
       if (atom.value === "") {
-        parts.push(<span key={key} style={INLINE}>^</span>);
+        parts.push(<mo key={key}>^</mo>);
         i++;
         continue;
       }
-      parts.push(<sup key={key} className="text-[0.65em]" style={INLINE}>{renderLinearParts(atom.value, key)}</sup>);
+      parts.push(
+        <msup key={key}>
+          <mspace width="0" />
+          <mrow>{renderLinearParts(atom.value, key)}</mrow>
+        </msup>,
+      );
       i = atom.end;
       continue;
     }
+    const number = text.slice(i).match(/^\d+(?:\.\d+)?/);
+    if (number) {
+      parts.push(<mn key={key}>{number[0]}</mn>);
+      i += number[0].length;
+      continue;
+    }
+    const identifier = text.slice(i).match(/^[a-zA-Zπ]+/);
+    if (identifier) {
+      parts.push(<mi key={key}>{identifier[0]}</mi>);
+      i += identifier[0].length;
+      continue;
+    }
     const symbol = text[i] === "-" ? "−" : text[i] === "*" || text[i] === "·" ? "×" : text[i];
-    parts.push(<span key={key} style={INLINE}>{symbol}</span>);
+    parts.push(<mo key={key}>{symbol}</mo>);
     i++;
   }
   return parts;

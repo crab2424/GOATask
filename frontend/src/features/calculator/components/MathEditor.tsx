@@ -3,10 +3,7 @@
 // 縦棒・括弧を内容の高さまで伸ばす。以前はSVGで手動計算していた伸縮をブラウザの
 // MathMLレイアウトエンジンに任せられるため、その分のコードは持たない。
 // cursorを渡さなければ読み取り専用の組版表示として使える（結果・履歴用）。
-// charの並びはmathTypographyの共有フォーマッタで整える（sin⁻¹・×・−など）。既存の
-// フォーマッタが返すのは通常のHTML（span/sup）で、mrowの子としては非MathML要素だが、
-// MathML Coreはmrow内の非MathML子要素を許容して描画する仕様なので変換していない
-// （文字の見た目自体は今回の要望の対象外で、変換コストに見合わない）。
+// charの並びはmathTypographyの共有フォーマッタでmn/mi/moへ変換する。
 // カーソルはトークン境界にしか止まらないため、charの並びをカーソル位置で分割しても
 // asin のような複数文字トークンが途中で割れることはない（従来の分割描画と同じ性質）。
 //
@@ -15,9 +12,8 @@
 // 対応する閉じ括弧を行内で探し、中に分数など縦に大きい要素が挟まっていても
 // 高さに追従する（表示専用の変換で、編集ツリーそのものは触らない）。
 //
-// xʸの指数（sup）だけは「基数」を編集ツリー上で持たない単項ノードのため、msup化
-// せずHTMLの<sup>のままにしている（msupは基数・指数の2引数を要求するが、このASTは
-// 直前のトークン列のどこまでを基数とみなすか一意に決められない）。
+// xʸの指数（sup）は「基数」を編集ツリー上で持たないため、幅0のmspaceを基数にした
+// msupとして現在位置に上付き表示する。
 //
 // カーソルの点滅バーは、組版ツリーの中に直接HTML装飾要素を差し込むのではなく、
 // 幅0のマーカー（CaretMarker、実体はmspace）をツリー内の正しい位置に置き、その
@@ -47,11 +43,6 @@ interface CaretRect {
   top: number;
   height: number;
 }
-
-// MathML CoreのUAスタイルシートは<math>配下の非MathML要素（span/sup）に
-// display:block mathを強制する。Safariではクラスセレクタでの上書き（math span{...}）
-// が効かなかったため、インラインstyle（詳細度で確実に勝つ）で明示的に上書きする。
-const INLINE_STYLE = { display: "inline" } as const;
 
 /** カーソル位置を測るための幅0マーカー。見た目は持たず、座標だけを提供する */
 const CaretMarker = forwardRef<MathMLElement>((_props, ref) => (
@@ -124,9 +115,10 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
         );
       case "sup":
         return (
-          <sup key={node.id} className="text-[0.65em]" style={INLINE_STYLE}>
-            {renderRow(node.exponent, stepTo("exponent"))}
-          </sup>
+          <msup key={node.id}>
+            <mspace width="0" />
+            <mrow>{renderRow(node.exponent, stepTo("exponent"))}</mrow>
+          </msup>
         );
       case "abs":
         return (
@@ -179,22 +171,22 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
       }
       if (caretAt > i && caretAt < j) {
         out.push(
-          <span key={`t${i}`} style={INLINE_STYLE} onClick={placeCursor(steps, caretAt)}>
+          <mrow key={`t${i}`} onClick={placeCursor(steps, caretAt)}>
             {renderLinearParts(text.slice(0, caretAt - i), `t${i}`)}
-          </span>,
+          </mrow>,
         );
         out.push(<CaretMarker ref={markerRef} key={`c${caretAt}`} />);
         out.push(
-          <span key={`t${caretAt}`} style={INLINE_STYLE} onClick={placeCursor(steps, j)}>
+          <mrow key={`t${caretAt}`} onClick={placeCursor(steps, j)}>
             {renderLinearParts(text.slice(caretAt - i), `t${caretAt}`)}
-          </span>,
+          </mrow>,
         );
       } else {
         if (caretAt === i) out.push(<CaretMarker ref={markerRef} key={`c${i}`} />);
         out.push(
-          <span key={`t${i}`} style={INLINE_STYLE} onClick={placeCursor(steps, j)}>
+          <mrow key={`t${i}`} onClick={placeCursor(steps, j)}>
             {renderLinearParts(text, `t${i}`)}
-          </span>,
+          </mrow>,
         );
       }
       i = j;
@@ -211,9 +203,10 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
       if (caretAt === 0) return <CaretMarker ref={markerRef} />;
       if (!editable) return null;
       return (
-        <span
-          className="inline-block h-[1em] w-3 rounded-sm border border-dashed border-slate-300 align-middle"
-          style={{ display: "inline-block" }}
+        <mspace
+          width="0.75em"
+          height="1em"
+          style={{ outline: "1px dashed rgb(203 213 225)", borderRadius: "2px" }}
           onClick={placeCursor(steps, 0)}
         />
       );
