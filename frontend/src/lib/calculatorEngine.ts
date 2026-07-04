@@ -79,8 +79,39 @@ const FUNCTIONS: Record<string, CalcFunction> = {
       return Math.log(x);
     },
   },
+  exp: { arity: 1, apply: ([x]) => Math.exp(x) },
+  // 双曲線関数は角度モードの影響を受けない（引数は角度ではない）
+  sinh: { arity: 1, apply: ([x]) => Math.sinh(x) },
+  cosh: { arity: 1, apply: ([x]) => Math.cosh(x) },
+  tanh: { arity: 1, apply: ([x]) => Math.tanh(x) },
+  asinh: { arity: 1, apply: ([x]) => Math.asinh(x) },
+  acosh: {
+    arity: 1,
+    apply: ([x]) => {
+      if (x < 1) throw new CalcError("acoshの引数は1以上が必要です");
+      return Math.acosh(x);
+    },
+  },
+  atanh: {
+    arity: 1,
+    apply: ([x]) => {
+      if (x <= -1 || x >= 1) throw new CalcError("atanhの引数は-1〜1の間が必要です");
+      return Math.atanh(x);
+    },
+  },
   nPr: { arity: 2, apply: ([n, r]) => permutation(n, r) },
   nCr: { arity: 2, apply: ([n, r]) => permutation(n, r) / factorial(r, undefined) },
+  // 重複組合せ nHr = (n+r-1)Cr
+  nHr: {
+    arity: 2,
+    apply: ([n, r]) => {
+      if (!Number.isInteger(n) || !Number.isInteger(r) || n < 0 || r < 0)
+        throw new CalcError("nHrは0以上の整数のみ計算できます");
+      if (n === 0 && r > 0) throw new CalcError("nHrはn≧1が必要です（r≧1のとき）");
+      if (r === 0) return 1;
+      return permutation(n + r - 1, r) / factorial(r, undefined);
+    },
+  },
 };
 
 function toRadians(x: number, mode: AngleMode): number {

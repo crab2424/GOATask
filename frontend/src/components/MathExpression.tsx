@@ -5,7 +5,12 @@ interface MathExpressionProps {
   className?: string;
 }
 
-const FUNCTION_NAMES = ["asin", "acos", "atan", "sqrt", "sin", "cos", "tan", "log", "ln", "nPr", "nCr"];
+// 前方一致で探すため、長い名前（asinh等）を短い名前（asin等）より先に置くこと
+const FUNCTION_NAMES = [
+  "asinh", "acosh", "atanh", "sinh", "cosh", "tanh",
+  "asin", "acos", "atan", "sqrt", "sin", "cos", "tan",
+  "log", "ln", "exp", "abs", "nPr", "nCr", "nHr",
+];
 
 function matchingParen(text: string, start: number): number {
   let depth = 0;
