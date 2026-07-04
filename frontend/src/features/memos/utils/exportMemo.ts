@@ -1,4 +1,4 @@
-import type { Memo } from "../api/memos";
+import type { Memo } from "../../../api/memos";
 
 export interface ExportFormat {
   ext: string;

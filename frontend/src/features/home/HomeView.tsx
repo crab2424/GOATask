@@ -7,9 +7,9 @@ import {
   type Subtask,
   type Task,
   type TaskStatus,
-} from "../api/tasks";
-import { MdText } from "../lib/mdInline";
-import { stripBulletLines } from "../lib/taskText";
+} from "../../api/tasks";
+import { MdText } from "../../shared/lib/mdInline";
+import { stripBulletLines } from "../tasks/utils/taskText";
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: "未着手",

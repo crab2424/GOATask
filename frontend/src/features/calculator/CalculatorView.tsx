@@ -1,14 +1,14 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { CalcError, evaluate, formatResult, tokenBoundaries, type AngleMode } from "../lib/calculatorEngine";
-import { evaluateAdvanced, isPlainNumeric } from "../lib/calcDispatch";
-import { tryEvaluateRational, formatFraction } from "../lib/rationalEngine";
-import { useIsMobile } from "../lib/useIsMobile";
-import { CalculatorEquationPanel } from "../components/CalculatorEquationPanel";
-import { MathExpression } from "../components/MathExpression";
+import { CalcError, evaluate, formatResult, tokenBoundaries, type AngleMode } from "./engine/calculatorEngine";
+import { evaluateAdvanced, isPlainNumeric } from "./engine/calcDispatch";
+import { tryEvaluateRational, formatFraction } from "./engine/rationalEngine";
+import { useIsMobile } from "../../shared/lib/useIsMobile";
+import { CalculatorEquationPanel } from "./components/CalculatorEquationPanel";
+import { MathExpression } from "./components/MathExpression";
 
 // 解析パネルはnerdamer（約400KB）を含むため、開いたときだけ読み込む
 const CalculatorAnalysisPanel = lazy(() =>
-  import("../components/CalculatorAnalysisPanel").then((m) => ({
+  import("./components/CalculatorAnalysisPanel").then((m) => ({
     default: m.CalculatorAnalysisPanel,
   })),
 );

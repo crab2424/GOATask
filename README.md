@@ -21,8 +21,11 @@ GOATask/
 │       └── model/        # ドメインモデル
 ├── frontend/             # Vite + React + TS
 │   └── src/
+│       ├── app/          # アプリ外枠・モードナビゲーション
 │       ├── api/          # バックエンド API クライアント
-│       └── App.tsx
+│       ├── features/     # tasks / memos などモード別の実装
+│       ├── shared/       # モード間で共有するUI・フック・処理
+│       └── App.tsx       # 認証と現在モードの制御
 └── docker-compose.yml    # PostgreSQL
 ```
 

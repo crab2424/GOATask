@@ -1,8 +1,8 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createTask, type Task } from "../api/tasks";
-import { createCalendarNote, deleteCalendarNote, getCalendar, updateCalendarNote, type CalendarNote } from "../api/calendar";
-import { useIsMobile } from "../lib/useIsMobile";
+import { createTask, type Task } from "../../api/tasks";
+import { createCalendarNote, deleteCalendarNote, getCalendar, updateCalendarNote, type CalendarNote } from "../../api/calendar";
+import { useIsMobile } from "../../shared/lib/useIsMobile";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 const COLORS = { violet: "bg-violet-100 text-violet-800", sky: "bg-sky-100 text-sky-800", amber: "bg-amber-100 text-amber-800", rose: "bg-rose-100 text-rose-800" } as const;

@@ -5,7 +5,7 @@ import {
   login as apiLogin,
   logout as apiLogout,
   register as apiRegister,
-} from "../api/auth";
+} from "../../api/auth";
 import { AuthContext, type AuthState } from "./authContextValue";
 
 export function AuthProvider({ children }: { children: ReactNode }) {

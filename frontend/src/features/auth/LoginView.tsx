@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useAuth } from "../lib/useAuth";
-import { AuthField, AuthFormShell } from "../components/AuthFormShell";
+import { useAuth } from "../../shared/lib/useAuth";
+import { AuthField, AuthFormShell } from "./components/AuthFormShell";
 
 interface LoginViewProps {
   onSwitchToSignup: () => void;

@@ -4,7 +4,7 @@ import {
   solveLinearSystem,
   type QuadraticResult,
   type LinearSystemResult,
-} from "../lib/equationSolver";
+} from "../engine/equationSolver";
 
 // 方程式サブモード: 係数入力フォーム型（式を打つのではなく係数を埋める方式）
 type EquationType = "quadratic" | "linear2" | "linear3";

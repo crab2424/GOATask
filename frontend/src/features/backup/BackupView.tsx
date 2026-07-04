@@ -8,7 +8,7 @@ import {
   type BackupScope,
   type ImportMode,
   type ImportResult,
-} from "../api/backup";
+} from "../../api/backup";
 
 const SCOPES: { id: BackupScope; label: string; desc: string }[] = [
   { id: "all", label: "全データ", desc: "タスク・メモ・単語帳をまとめて1ファイル" },

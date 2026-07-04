@@ -9,7 +9,7 @@ import {
   integrateIndefinite,
   simplifyExpression,
   type AnalysisOperation,
-} from "../lib/analysisEngine";
+} from "../engine/analysisEngine";
 import { MathExpression } from "./MathExpression";
 
 const INPUT_CLASS =

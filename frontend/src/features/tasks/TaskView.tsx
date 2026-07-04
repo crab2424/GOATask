@@ -19,37 +19,37 @@ import {
   type Subtask,
   type Task,
   type TaskStatus,
-} from "../api/tasks";
+} from "../../api/tasks";
 import {
   createProject,
   deleteProject,
   listProjects,
   updateProject,
   type Project,
-} from "../api/projects";
-import { useIsMobile } from "../lib/useIsMobile";
-import { CollectionShell } from "../components/CollectionShell";
-import { TreeSearch } from "../components/TreeSearch";
+} from "../../api/projects";
+import { useIsMobile } from "../../shared/lib/useIsMobile";
+import { CollectionShell } from "../../shared/components/CollectionShell";
+import { TreeSearch } from "../../shared/components/TreeSearch";
 import {
   matchesQuery,
   normalizeQuery,
   renderTreeSearchResults,
   type TreeSearchResult,
-} from "../components/treeSearchUtils";
+} from "../../shared/components/treeSearchUtils";
 import {
   TASK_SORT_OPTIONS,
   loadSortMode,
   sortByMode,
   type SortMode,
-} from "../lib/sortDirectory";
-import { useFavorites, useRecent } from "../lib/folderShortcuts";
+} from "../../shared/lib/sortDirectory";
+import { useFavorites, useRecent } from "../../shared/lib/folderShortcuts";
 import {
   SidebarShortcuts,
   type ShortcutEntry,
-} from "../components/SidebarShortcuts";
-import { UndoToast } from "../components/UndoToast";
-import { DirectoryTreeRow } from "../components/DirectoryTreeRow";
-import { handleTreeKeyDown } from "../lib/treeKeyboard";
+} from "../../shared/components/SidebarShortcuts";
+import { UndoToast } from "../../shared/components/UndoToast";
+import { DirectoryTreeRow } from "../../shared/components/DirectoryTreeRow";
+import { handleTreeKeyDown } from "../../shared/lib/treeKeyboard";
 import {
   buildBreadcrumb,
   buildChildMap,
@@ -57,21 +57,21 @@ import {
   expandAncestors,
   flatTreeOptions,
   isDescendant,
-} from "../lib/directoryTree";
-import { useHoverExpand } from "../lib/useHoverExpand";
-import { ContextMenu, ContextMenuItem } from "../components/ContextMenu";
-import { useContextMenu } from "../components/useContextMenu";
-import { MdText } from "../lib/mdInline";
-import { stripBulletLines } from "../lib/taskText";
-import { TaskDescriptionEditor } from "../components/TaskDescriptionEditor";
-import { CardReorderControls } from "../components/CardReorderControls";
+} from "../../shared/lib/directoryTree";
+import { useHoverExpand } from "../../shared/lib/useHoverExpand";
+import { ContextMenu, ContextMenuItem } from "../../shared/components/ContextMenu";
+import { useContextMenu } from "../../shared/components/useContextMenu";
+import { MdText } from "../../shared/lib/mdInline";
+import { stripBulletLines } from "./utils/taskText";
+import { TaskDescriptionEditor } from "./components/TaskDescriptionEditor";
+import { CardReorderControls } from "../../shared/components/CardReorderControls";
 import {
   animateCardReorder,
   mergeVisibleOrder,
   reorderItemsInSlots,
   reorderIds,
   useTouchCardReorder,
-} from "../lib/cardReorder";
+} from "../../shared/lib/cardReorder";
 import {
   clearDraft,
   editDraftKey,
@@ -79,7 +79,7 @@ import {
   loadDraft,
   newDraftKey,
   saveDraft,
-} from "../lib/taskDraft";
+} from "./utils/taskDraft";
 
 function ProgressBar({
   value,
