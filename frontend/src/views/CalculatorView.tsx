@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { CalcError, evaluate, formatResult, tokenBoundaries, type AngleMode } from "../lib/calculatorEngine";
 import { evaluateAdvanced, isPlainNumeric } from "../lib/calcDispatch";
+import { tryEvaluateRational, formatFraction } from "../lib/rationalEngine";
 import { useIsMobile } from "../lib/useIsMobile";
 import { CalculatorEquationPanel } from "../components/CalculatorEquationPanel";
 import { MathExpression } from "../components/MathExpression";
@@ -156,6 +157,18 @@ const PAGE_COLS_CLASS: Record<3 | 4 | 5 | 6, string> = {
   6: "grid-cols-6",
 };
 
+// 結果の分数トグル表示を出すかどうかを判定する。
+// 整数（分数にする意味がない）・厳密評価不可（sin/log/piなど）・桁数が大きすぎて
+// スマホ画面でも読みにくくなる場合はnull（トグルボタン自体を出さない）。
+// float評価値とも突き合わせ、rationalEngine側にバグがあっても誤った分数を出さないようにする。
+function pickFractionDisplay(expression: string, value: number): string | null {
+  const rational = tryEvaluateRational(expression);
+  if (!rational || rational.isInt()) return null;
+  if (rational.num.toString().replace("-", "").length > 12 || rational.den.toString().length > 12) return null;
+  if (Math.abs(rational.toNumber() - value) > 1e-9 * Math.max(1, Math.abs(value))) return null;
+  return formatFraction(rational);
+}
+
 // 物理キーボード入力 → 挿入文字列の対応（PC向け）
 const KEYBOARD_INSERT: Record<string, string> = {
   "0": "0", "1": "1", "2": "2", "3": "3", "4": "4",
@@ -171,6 +184,9 @@ export function CalculatorView() {
   const [expression, setExpression] = useState("");
   const [cursor, setCursor] = useState(0);
   const [result, setResult] = useState<string | null>(null);
+  // 数値のみの式かつ厳密な有理数として計算できたときだけ入る（詳細はrationalEngine.ts）
+  const [resultFraction, setResultFraction] = useState<string | null>(null);
+  const [showFraction, setShowFraction] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [angleMode, setAngleMode] = useState<AngleMode>("DEG");
@@ -192,6 +208,8 @@ export function CalculatorView() {
         return;
       }
       setResult(null);
+      setResultFraction(null);
+      setShowFraction(false);
       setExpression(text);
       setCursor(text.length + caretShift);
       return;
@@ -212,6 +230,8 @@ export function CalculatorView() {
     setExpression("");
     setCursor(0);
     setResult(null);
+    setResultFraction(null);
+    setShowFraction(false);
     setError(null);
     justEvaluated.current = false;
   }, []);
@@ -242,6 +262,8 @@ export function CalculatorView() {
         const value = evaluate(expression, { angleMode });
         const formatted = formatResult(value);
         setResult(formatted);
+        setResultFraction(pickFractionDisplay(expression, value));
+        setShowFraction(false);
         setError(null);
         setHistory((prev) => [{ expression, result: formatted }, ...prev].slice(0, 20));
         justEvaluated.current = true;
@@ -257,6 +279,8 @@ export function CalculatorView() {
     }
     setError(null);
     setIsCalculating(true);
+    setResultFraction(null);
+    setShowFraction(false);
     evaluateAdvanced(expression)
       .then((formatted) => {
         setResult(formatted);
@@ -362,15 +386,35 @@ export function CalculatorView() {
           </>
         )}
       </div>
-      <div className={`${isMobile ? "mt-1 min-h-[2.25rem]" : "mt-2 min-h-[2.5rem]"} text-right`}>
+      <div className={`${isMobile ? "mt-1 min-h-[2.25rem]" : "mt-2 min-h-[2.5rem]"} flex items-center justify-end gap-2`}>
         {error ? (
           <p className="text-sm text-rose-600">{error}</p>
         ) : isCalculating ? (
           <p className="text-sm text-slate-400">計算中…</p>
         ) : (
-          <p className={`break-all font-mono font-bold text-slate-900 ${isMobile ? "text-2xl" : "text-3xl"}`}>
-            {result !== null ? <><span>= </span><MathExpression expression={result} /></> : " "}
-          </p>
+          <>
+            {/* 分数⇄小数の切替チップ。厳密な有理数として計算できたときだけ表示する（rationalEngine.ts）。
+                新しい行を作らず同じ行に収めてスマホでも詰まないようにする。 */}
+            {resultFraction && (
+              <button
+                onClick={() => setShowFraction((v) => !v)}
+                className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-200"
+                title="分数⇄小数を切替"
+              >
+                {showFraction ? "0.x" : "a/b"}
+              </button>
+            )}
+            <p className={`break-all font-mono font-bold text-slate-900 ${isMobile ? "text-2xl" : "text-3xl"}`}>
+              {result !== null ? (
+                <>
+                  <span>= </span>
+                  <MathExpression expression={showFraction && resultFraction ? resultFraction : result} />
+                </>
+              ) : (
+                " "
+              )}
+            </p>
+          </>
         )}
       </div>
     </div>
@@ -496,6 +540,8 @@ export function CalculatorView() {
                 setExpression(entry.result);
                 setCursor(entry.result.length);
                 setResult(null);
+                setResultFraction(null);
+                setShowFraction(false);
                 setError(null);
                 justEvaluated.current = false;
               }}
