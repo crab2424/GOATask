@@ -48,6 +48,11 @@ interface CaretRect {
   height: number;
 }
 
+// MathML CoreのUAスタイルシートは<math>配下の非MathML要素（span/sup）に
+// display:block mathを強制する。Safariではクラスセレクタでの上書き（math span{...}）
+// が効かなかったため、インラインstyle（詳細度で確実に勝つ）で明示的に上書きする。
+const INLINE_STYLE = { display: "inline" } as const;
+
 /** カーソル位置を測るための幅0マーカー。見た目は持たず、座標だけを提供する */
 const CaretMarker = forwardRef<MathMLElement>((_props, ref) => (
   <mspace ref={ref} width="0" height="0.6em" depth="0.5em" />
@@ -119,7 +124,7 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
         );
       case "sup":
         return (
-          <sup key={node.id} className="text-[0.65em]">
+          <sup key={node.id} className="text-[0.65em]" style={INLINE_STYLE}>
             {renderRow(node.exponent, stepTo("exponent"))}
           </sup>
         );
@@ -174,20 +179,20 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
       }
       if (caretAt > i && caretAt < j) {
         out.push(
-          <span key={`t${i}`} onClick={placeCursor(steps, caretAt)}>
+          <span key={`t${i}`} style={INLINE_STYLE} onClick={placeCursor(steps, caretAt)}>
             {renderLinearParts(text.slice(0, caretAt - i), `t${i}`)}
           </span>,
         );
         out.push(<CaretMarker ref={markerRef} key={`c${caretAt}`} />);
         out.push(
-          <span key={`t${caretAt}`} onClick={placeCursor(steps, j)}>
+          <span key={`t${caretAt}`} style={INLINE_STYLE} onClick={placeCursor(steps, j)}>
             {renderLinearParts(text.slice(caretAt - i), `t${caretAt}`)}
           </span>,
         );
       } else {
         if (caretAt === i) out.push(<CaretMarker ref={markerRef} key={`c${i}`} />);
         out.push(
-          <span key={`t${i}`} onClick={placeCursor(steps, j)}>
+          <span key={`t${i}`} style={INLINE_STYLE} onClick={placeCursor(steps, j)}>
             {renderLinearParts(text, `t${i}`)}
           </span>,
         );
@@ -208,6 +213,7 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
       return (
         <span
           className="inline-block h-[1em] w-3 rounded-sm border border-dashed border-slate-300 align-middle"
+          style={{ display: "inline-block" }}
           onClick={placeCursor(steps, 0)}
         />
       );
