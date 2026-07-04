@@ -66,46 +66,14 @@ const STANDARD_KEYS: Key[][] = [
     { type: "insert", label: "＋", text: "+", className: KEY_OP },
   ],
   [
-    { type: "insert", label: "0", text: "0", className: KEY_NUM },
+    { type: "insert", label: "0", text: "0", className: `${KEY_NUM} col-span-2` },
     { type: "insert", label: ".", text: ".", className: KEY_NUM },
-    { type: "action", label: "←", action: "left", className: KEY_OP },
-    { type: "action", label: "→", action: "right", className: KEY_OP },
-  ],
-  [
-    { type: "action", label: "=", action: "equals", className: `${KEY_ACCENT} col-span-4` },
+    { type: "action", label: "=", action: "equals", className: KEY_ACCENT },
   ],
 ];
 
-// 関数モードのキーパッド（5列）。数字・四則も含めて1画面に収める。
-const FUNCTION_KEYS: Key[][] = [
-  [
-    { type: "insert", label: "sin", text: "sin(", className: KEY_OP },
-    { type: "insert", label: "cos", text: "cos(", className: KEY_OP },
-    { type: "insert", label: "tan", text: "tan(", className: KEY_OP },
-    { type: "action", label: "AC", action: "clear", className: "bg-rose-100 hover:bg-rose-200 text-rose-700" },
-    { type: "action", label: "⌫", action: "backspace", className: KEY_OP },
-  ],
-  [
-    { type: "insert", label: "sin⁻¹", text: "asin(", className: KEY_OP },
-    { type: "insert", label: "cos⁻¹", text: "acos(", className: KEY_OP },
-    { type: "insert", label: "tan⁻¹", text: "atan(", className: KEY_OP },
-    { type: "insert", label: "(", text: "(", className: KEY_OP },
-    { type: "insert", label: ")", text: ")", className: KEY_OP },
-  ],
-  [
-    { type: "insert", label: "log", text: "log(", className: KEY_OP },
-    { type: "insert", label: "ln", text: "ln(", className: KEY_OP },
-    { type: "insert", label: "√", text: "√", className: KEY_OP },
-    { type: "insert", label: "x^y", text: "^", className: KEY_OP },
-    { type: "insert", label: "x!", text: "!", className: KEY_OP },
-  ],
-  [
-    { type: "insert", label: "nPr", text: "nPr(", className: KEY_OP },
-    { type: "insert", label: "nCr", text: "nCr(", className: KEY_OP },
-    { type: "insert", label: ",", text: ",", className: KEY_OP },
-    { type: "insert", label: "π", text: "π", className: KEY_OP },
-    { type: "insert", label: "e", text: "e", className: KEY_OP },
-  ],
+// 関数モードの共通数字キー。低頻度の関数は2nd切替側にまとめる。
+const FUNCTION_NUMBER_KEYS: Key[][] = [
   [
     { type: "insert", label: "7", text: "7", className: KEY_NUM },
     { type: "insert", label: "8", text: "8", className: KEY_NUM },
@@ -118,20 +86,20 @@ const FUNCTION_KEYS: Key[][] = [
     { type: "insert", label: "5", text: "5", className: KEY_NUM },
     { type: "insert", label: "6", text: "6", className: KEY_NUM },
     { type: "insert", label: "×", text: "×", className: KEY_OP },
-    { type: "action", label: "←", action: "left", className: KEY_OP },
+    { type: "insert", label: "(", text: "(", className: KEY_OP },
   ],
   [
     { type: "insert", label: "1", text: "1", className: KEY_NUM },
     { type: "insert", label: "2", text: "2", className: KEY_NUM },
     { type: "insert", label: "3", text: "3", className: KEY_NUM },
     { type: "insert", label: "−", text: "-", className: KEY_OP },
-    { type: "action", label: "→", action: "right", className: KEY_OP },
+    { type: "insert", label: ")", text: ")", className: KEY_OP },
   ],
   [
-    { type: "insert", label: "0", text: "0", className: KEY_NUM },
+    { type: "insert", label: "0", text: "0", className: `${KEY_NUM} col-span-2` },
     { type: "insert", label: ".", text: ".", className: KEY_NUM },
     { type: "insert", label: "＋", text: "+", className: KEY_OP },
-    { type: "action", label: "=", action: "equals", className: `${KEY_ACCENT} col-span-2` },
+    { type: "action", label: "=", action: "equals", className: KEY_ACCENT },
   ],
 ];
 
@@ -152,6 +120,7 @@ export function CalculatorView() {
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [angleMode, setAngleMode] = useState<AngleMode>("DEG");
+  const [functionShift, setFunctionShift] = useState(false);
   const [memory, setMemory] = useState<number | null>(null);
   // =直後に数字を打ったら新しい式を始める（実機電卓と同じ挙動）
   const justEvaluated = useRef(false);
@@ -283,9 +252,15 @@ export function CalculatorView() {
 
   const display = (
     <div className={`rounded-xl border border-slate-200 bg-white shadow-sm ${isMobile ? "p-3" : "p-4"}`}>
-      <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold text-slate-400">
-        {subMode === "function" && <span>{angleMode}</span>}
-        {memory !== null && <span title={`メモリ: ${formatResult(memory)}`}>M</span>}
+      <div className="mb-1 flex min-h-8 items-center gap-2 text-[11px] font-semibold text-slate-400">
+        <div className="flex items-center gap-2">
+          {subMode === "function" && <span>{angleMode}</span>}
+          {memory !== null && <span title={`メモリ: ${formatResult(memory)}`}>M</span>}
+        </div>
+        <div className="ml-auto flex gap-1" aria-label="式のカーソル移動">
+          <button onClick={() => moveCursor(-1)} className="min-h-8 min-w-9 rounded-md bg-slate-100 text-sm text-slate-600 hover:bg-slate-200" aria-label="カーソルを左へ">←</button>
+          <button onClick={() => moveCursor(1)} className="min-h-8 min-w-9 rounded-md bg-slate-100 text-sm text-slate-600 hover:bg-slate-200" aria-label="カーソルを右へ">→</button>
+        </div>
       </div>
       {/* 式表示: カーソル位置を自前描画して途中編集に対応 */}
       <div className="min-h-[2rem] break-all text-right font-mono text-xl text-slate-800">
@@ -312,7 +287,7 @@ export function CalculatorView() {
         <button
           key={i}
           onClick={() => handleKey(key)}
-          className={`rounded-lg py-3 font-medium transition-colors ${
+          className={`min-h-11 rounded-lg px-1 py-2 font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${
             cols === 4 ? "text-lg" : "text-base"
           } ${key.className ?? KEY_NUM}`}
         >
@@ -322,9 +297,34 @@ export function CalculatorView() {
     </div>
   );
 
+  const functionKeys: Key[][] = [
+    [
+      { type: "insert", label: functionShift ? "sin⁻¹" : "sin", text: functionShift ? "asin(" : "sin(", className: KEY_OP },
+      { type: "insert", label: functionShift ? "cos⁻¹" : "cos", text: functionShift ? "acos(" : "cos(", className: KEY_OP },
+      { type: "insert", label: functionShift ? "tan⁻¹" : "tan", text: functionShift ? "atan(" : "tan(", className: KEY_OP },
+      { type: "action", label: "AC", action: "clear", className: "bg-rose-100 hover:bg-rose-200 text-rose-700" },
+      { type: "action", label: "⌫", action: "backspace", className: KEY_OP },
+    ],
+    [
+      { type: "insert", label: functionShift ? "nPr" : "log", text: functionShift ? "nPr(" : "log(", className: KEY_OP },
+      { type: "insert", label: functionShift ? "nCr" : "ln", text: functionShift ? "nCr(" : "ln(", className: KEY_OP },
+      { type: "insert", label: functionShift ? "," : "√", text: functionShift ? "," : "√", className: KEY_OP },
+      { type: "insert", label: functionShift ? "x!" : "xʸ", text: functionShift ? "!" : "^", className: KEY_OP },
+      { type: "insert", label: functionShift ? "e" : "π", text: functionShift ? "e" : "π", className: KEY_OP },
+    ],
+    ...FUNCTION_NUMBER_KEYS,
+  ];
+
   // 関数モード専用: DEG/RAD切替とメモリ操作のツールバー
   const functionToolbar = (
     <div className="flex items-center gap-2">
+      <button
+        onClick={() => setFunctionShift((v) => !v)}
+        className={`rounded-lg px-3 py-2 text-sm font-semibold ${functionShift ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-800 hover:bg-slate-300"}`}
+        aria-pressed={functionShift}
+      >
+        2nd
+      </button>
       <button
         onClick={() => setAngleMode((m) => (m === "DEG" ? "RAD" : "DEG"))}
         className="rounded-lg bg-slate-200 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-300"
@@ -432,7 +432,7 @@ export function CalculatorView() {
             ) : (
               <>
                 {functionToolbar}
-                {renderKeypad(FUNCTION_KEYS, 5)}
+                {renderKeypad(functionKeys, 5)}
               </>
             );
           return isMobile ? (
