@@ -26,13 +26,13 @@ import {
 } from "../api/folders";
 import { useIsMobile } from "../lib/useIsMobile";
 import { CollectionShell } from "../components/CollectionShell";
+import { TreeSearch } from "../components/TreeSearch";
 import {
-  TreeSearch,
   matchesQuery,
   normalizeQuery,
   renderTreeSearchResults,
   type TreeSearchResult,
-} from "../components/TreeSearch";
+} from "../components/treeSearchUtils";
 import {
   MEMO_SORT_OPTIONS,
   loadSortMode,
@@ -73,11 +73,8 @@ import {
   reorderIds,
   useTouchCardReorder,
 } from "../lib/cardReorder";
-import {
-  ContextMenu,
-  ContextMenuItem,
-  useContextMenu,
-} from "../components/ContextMenu";
+import { ContextMenu, ContextMenuItem } from "../components/ContextMenu";
+import { useContextMenu } from "../components/useContextMenu";
 
 const MEMO_DEFAULT_DOT_COLOR = "#cbd5e1"; // slate-300, 暫定色
 const FOLDER_EXPANDED_KEY = "goatask-folder-expanded";
@@ -106,8 +103,8 @@ export function MemoView() {
   const queryClient = useQueryClient();
   const memosQuery = useQuery({ queryKey: ["memos"], queryFn: listMemos });
   const foldersQuery = useQuery({ queryKey: ["folders"], queryFn: listFolders });
-  const memos = memosQuery.data ?? [];
-  const folders = foldersQuery.data ?? [];
+  const memos = useMemo(() => memosQuery.data ?? [], [memosQuery.data]);
+  const folders = useMemo(() => foldersQuery.data ?? [], [foldersQuery.data]);
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(() => {
     try {
       const saved = localStorage.getItem(CURRENT_FOLDER_KEY);
@@ -243,6 +240,8 @@ export function MemoView() {
 
   useEffect(() => {
     if (!foldersQuery.isSuccess) return;
+    // Prune the persisted selection if the folder was removed elsewhere.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentFolderId((cur) =>
       cur !== null && !folders.some((folder) => folder.id === cur) ? null : cur,
     );
@@ -295,15 +294,21 @@ export function MemoView() {
     folders.forEach((f) => calc(f.id));
     calc(null);
     return map;
-  }, [folders, memos, childFolders, memosByFolder]);
+  }, [folders, childFolders, memosByFolder]);
 
   const breadcrumb = useMemo(
     () => buildBreadcrumb(folders, currentFolderId),
     [currentFolderId, folders],
   );
 
-  const directFoldersRaw = childFolders.get(currentFolderId) ?? [];
-  const directMemosRaw = memosByFolder.get(currentFolderId) ?? [];
+  const directFoldersRaw = useMemo(
+    () => childFolders.get(currentFolderId) ?? [],
+    [childFolders, currentFolderId],
+  );
+  const directMemosRaw = useMemo(
+    () => memosByFolder.get(currentFolderId) ?? [],
+    [memosByFolder, currentFolderId],
+  );
   const directFolders = useMemo(
     () => sortByMode(directFoldersRaw, sortMode, (f) => f.name),
     [directFoldersRaw, sortMode],

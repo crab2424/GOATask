@@ -375,6 +375,7 @@ export function FlashcardView() {
 
   useEffect(() => {
     if (decksQuery.error) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setError(
         decksQuery.error instanceof Error
           ? decksQuery.error.message

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   listTasks,
@@ -173,16 +173,30 @@ export function HomeView({
   const todayStr = formatDate(new Date());
   const markedDates = useMemo(() => new Set(tasks.flatMap((t) => [t.start_date?.slice(0, 10), t.due_date?.slice(0, 10)].filter((d): d is string => Boolean(d)))), [tasks]);
 
-  const stickyIds = useRef<Set<number>>(new Set());
-  for (const t of tasks) {
-    if (
-      t.due_date != null &&
-      (t.due_date.startsWith(todayStr) || t.status === "doing")
-    ) {
-      stickyIds.current.add(t.id);
-    }
-  }
-  const allTodayTasks = tasks.filter((t) => stickyIds.current.has(t.id));
+  // Once a task appears on "今日やること" (due today or doing), keep it visible
+  // even after its state changes — so ticking it done doesn't make the row vanish.
+  const [stickyIds, setStickyIds] = useState<Set<number>>(new Set());
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStickyIds((prev) => {
+      let next: Set<number> | null = null;
+      for (const t of tasks) {
+        if (
+          t.due_date != null &&
+          (t.due_date.startsWith(todayStr) || t.status === "doing") &&
+          !prev.has(t.id)
+        ) {
+          if (!next) next = new Set(prev);
+          next.add(t.id);
+        }
+      }
+      return next ?? prev;
+    });
+  }, [tasks, todayStr]);
+  const allTodayTasks = useMemo(
+    () => tasks.filter((t) => stickyIds.has(t.id)),
+    [tasks, stickyIds],
+  );
   const doneCount = allTodayTasks.filter((t) => t.status === "done").length;
   const todayTasks = showDone
     ? allTodayTasks

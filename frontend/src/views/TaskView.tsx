@@ -29,13 +29,13 @@ import {
 } from "../api/projects";
 import { useIsMobile } from "../lib/useIsMobile";
 import { CollectionShell } from "../components/CollectionShell";
+import { TreeSearch } from "../components/TreeSearch";
 import {
-  TreeSearch,
   matchesQuery,
   normalizeQuery,
   renderTreeSearchResults,
   type TreeSearchResult,
-} from "../components/TreeSearch";
+} from "../components/treeSearchUtils";
 import {
   TASK_SORT_OPTIONS,
   loadSortMode,
@@ -59,11 +59,8 @@ import {
   isDescendant,
 } from "../lib/directoryTree";
 import { useHoverExpand } from "../lib/useHoverExpand";
-import {
-  ContextMenu,
-  ContextMenuItem,
-  useContextMenu,
-} from "../components/ContextMenu";
+import { ContextMenu, ContextMenuItem } from "../components/ContextMenu";
+import { useContextMenu } from "../components/useContextMenu";
 import { MdText } from "../lib/mdInline";
 import { stripBulletLines } from "../lib/taskText";
 import { TaskDescriptionEditor } from "../components/TaskDescriptionEditor";
@@ -194,8 +191,8 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
   const queryClient = useQueryClient();
   const tasksQuery = useQuery({ queryKey: ["tasks"], queryFn: listTasks });
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: listProjects });
-  const tasks = tasksQuery.data ?? [];
-  const projects = projectsQuery.data ?? [];
+  const tasks = useMemo(() => tasksQuery.data ?? [], [tasksQuery.data]);
+  const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data]);
   const [currentProjectId, setCurrentProjectId] = useState<number | null>(() => {
     try {
       const saved = localStorage.getItem(CURRENT_PROJECT_KEY);
@@ -323,6 +320,8 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
 
   useEffect(() => {
     if (!projectsQuery.isSuccess) return;
+    // Prune the persisted selection if the project was removed elsewhere.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentProjectId((cur) =>
       cur !== null && !projects.some((proj) => proj.id === cur) ? null : cur,
     );
@@ -349,11 +348,15 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     );
   }, [currentProjectId]);
 
-  const [hasNewDraftFlag, setHasNewDraftFlag] = useState(false);
-  useEffect(() => {
-    setHasNewDraftFlag(hasDraft(newDraftKey(currentProjectId)));
-  }, [currentProjectId, showNewTaskForm, title, description, startDate, dueDate]);
+  const hasNewDraftFlag = useMemo(
+    () => hasDraft(newDraftKey(currentProjectId)),
+    // Re-check whenever the fields the draft mirrors change, so the badge
+    // updates as the user types or opens/closes the form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentProjectId, showNewTaskForm, title, description, startDate, dueDate],
+  );
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!showNewTaskForm) return;
     const d = loadDraft(newDraftKey(currentProjectId));
@@ -365,6 +368,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showNewTaskForm]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!showNewTaskForm) return;
@@ -376,6 +380,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     });
   }, [showNewTaskForm, currentProjectId, title, description, startDate, dueDate]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (editingId === null) return;
     const d = loadDraft(editDraftKey(editingId));
@@ -385,8 +390,8 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
       setEditStartDate(d.start_date);
       setEditDueDate(d.due_date);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (editingId === null) return;
@@ -442,7 +447,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     projects.forEach((p) => calc(p.id));
     calc(null);
     return map;
-  }, [projects, tasks, childProjectsMap, tasksByProject]);
+  }, [projects, childProjectsMap, tasksByProject]);
 
   const recursiveDoneCount = useMemo(() => {
     const map = new Map<number | null, number>();
@@ -460,7 +465,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     projects.forEach((p) => calc(p.id));
     calc(null);
     return map;
-  }, [projects, tasks, childProjectsMap, tasksByProject]);
+  }, [projects, childProjectsMap, tasksByProject]);
 
   const earliestDueByProject = useMemo<Map<number, string>>(() => {
     const cache = new Map<number, string | null>();
@@ -485,10 +490,16 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
       if (v) out.set(k, v);
     });
     return out;
-  }, [projects, tasks, childProjectsMap, tasksByProject]);
+  }, [projects, childProjectsMap, tasksByProject]);
 
-  const directProjectsRaw = childProjectsMap.get(currentProjectId) ?? [];
-  const directTasksRaw = tasksByProject.get(currentProjectId) ?? [];
+  const directProjectsRaw = useMemo(
+    () => childProjectsMap.get(currentProjectId) ?? [],
+    [childProjectsMap, currentProjectId],
+  );
+  const directTasksRaw = useMemo(
+    () => tasksByProject.get(currentProjectId) ?? [],
+    [tasksByProject, currentProjectId],
+  );
   const directProjects = useMemo(() => {
     if (sortMode === "due") {
       return [...directProjectsRaw].sort((a, b) => {
@@ -1053,6 +1064,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     if (initialTaskId == null) return;
     const t = tasks.find((x) => x.id === initialTaskId);
     if (!t) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     openTaskForEdit(t);
     onInitialTaskHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps

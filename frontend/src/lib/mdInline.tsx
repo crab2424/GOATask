@@ -28,7 +28,7 @@ function tokenize(text: string): Token[] {
   return tokens;
 }
 
-export function renderMdInline(text: string): ReactNode[] {
+function renderMdInline(text: string): ReactNode[] {
   return tokenize(text).map((t, i) => {
     switch (t.type) {
       case "bold":

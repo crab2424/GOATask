@@ -20,7 +20,7 @@ export class CsvParseError extends Error {
 //   - タブ文字を含む行はエラー
 //   - 列数が2でない行はエラー
 export function parseCardsCsv(input: string): ParsedCard[] {
-  const text = input.replace(/^﻿/, "");
+  const text = input.replace(/^\uFEFF/, "");
   const rows: { fields: string[]; startLine: number }[] = [];
   let field = "";
   let fields: string[] = [];

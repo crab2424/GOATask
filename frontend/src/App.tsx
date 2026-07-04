@@ -10,7 +10,7 @@ import { CalculatorView } from "./views/CalculatorView";
 import { LoginView } from "./views/LoginView";
 import { SignupView } from "./views/SignupView";
 import { useIsMobile } from "./lib/useIsMobile";
-import { useAuth } from "./lib/AuthContext";
+import { useAuth } from "./lib/useAuth";
 
 type Mode = "home" | "tasks" | "calendar" | "memos" | "flashcards" | "calculator" | "backup";
 
