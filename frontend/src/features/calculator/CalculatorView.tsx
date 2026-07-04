@@ -1,9 +1,22 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { CalcError, evaluate, formatResult, tokenBoundaries, type AngleMode } from "./engine/calculatorEngine";
+import { CalcError, evaluate, formatResult, type AngleMode } from "./engine/calculatorEngine";
 import { evaluateAdvanced, isPlainNumeric } from "./engine/calcDispatch";
 import { tryEvaluateRational, formatFraction } from "./engine/rationalEngine";
+import { endCursor, treeIsEmpty } from "./engine/editTree";
+import { moveLeft, moveRight, moveVertical } from "./engine/editCursor";
+import {
+  type EditState,
+  backspace as backspaceEdit,
+  emptyState,
+  insertChars,
+  insertFraction,
+  insertSqrt,
+  insertSup,
+} from "./engine/editCommands";
+import { linearize, parseLinear } from "./engine/linearize";
 import { useIsMobile } from "../../shared/lib/useIsMobile";
 import { CalculatorEquationPanel } from "./components/CalculatorEquationPanel";
+import { MathEditor } from "./components/MathEditor";
 import { MathExpression } from "./components/MathExpression";
 
 // 解析パネルはnerdamer（約400KB）を含むため、開いたときだけ読み込む
@@ -27,10 +40,12 @@ interface HistoryEntry {
   result: string;
 }
 
-// キーパッド定義。insertは式に挿入する文字列。
-// caretShiftは挿入後にカーソルを末尾から何文字戻すか（分数 ()/() で最初の括弧内に置く等）。
+// キーパッド定義。insertは式に挿入する文字列、nodeは複数スロットを持つ構造ノード
+// （分数・√・上付き指数）を挿入して最初のスロットにカーソルを置く。
+type NodeKind = "frac" | "sqrt" | "sup";
 type Key =
-  | { type: "insert"; label: string; text: string; caretShift?: number; className?: string }
+  | { type: "insert"; label: string; text: string; className?: string }
+  | { type: "node"; label: string; node: NodeKind; className?: string }
   | { type: "action"; label: string; action: "clear" | "backspace" | "equals" | "left" | "right"; className?: string };
 
 const KEY_OP = "bg-slate-200 hover:bg-slate-300 text-slate-800";
@@ -68,11 +83,14 @@ const NUMBER_PAD: Key[][] = [
   ],
 ];
 
-// キー定義を短く書くためのヘルパー。opは記号キー（関数・演算子）、insはそのまま挿入するキー。
-const op = (label: string, text: string, caretShift?: number): Key =>
-  ({ type: "insert", label, text, caretShift, className: KEY_OP });
+// キー定義を短く書くためのヘルパー。opは記号キー（関数・演算子）、insはそのまま挿入するキー、
+// nodeKeyは構造ノード（分数・√・指数）を挿入するキー。
+const op = (label: string, text: string): Key =>
+  ({ type: "insert", label, text, className: KEY_OP });
 const ins = (label: string, text?: string): Key =>
   ({ type: "insert", label, text: text ?? label, className: KEY_NUM });
+const nodeKey = (label: string, node: NodeKind): Key =>
+  ({ type: "node", label, node, className: KEY_OP });
 
 // Photomath形式のキーページ。ページ切替でキーパッド全体（数字含む）を入れ替えて
 // スペースを確保する。新しい分類はこの配列に要素を追加するだけで対応できる。
@@ -91,9 +109,9 @@ const KEY_PAGES: KeyPage[] = [
     label: "基本",
     cols: 5,
     keys: [
-      [op("√", "√"), op("xʸ", "^"), op("π", "π"), op("e", "e"), op("x!", "!")],
-      // 分数は ()/() を挿入して最初の括弧内にカーソルを置く（線形入力での分数対応）
-      [op("a/b", "()/()", -4), op("x", "x"), op("y", "y"), op(",", ","), op("|a|", "abs(")],
+      // √・xʸ・a/bはスロットを持つ構造ノードとして挿入し、内側にカーソルを置く
+      [nodeKey("√", "sqrt"), nodeKey("xʸ", "sup"), op("π", "π"), op("e", "e"), op("x!", "!")],
+      [nodeKey("a/b", "frac"), op("x", "x"), op("y", "y"), op(",", ","), op("|a|", "abs(")],
       ...NUMBER_PAD,
     ],
   },
@@ -181,20 +199,20 @@ function loadFractionDisplayPref(): boolean {
   }
 }
 
-// 物理キーボード入力 → 挿入文字列の対応（PC向け）
+// 物理キーボード入力 → 挿入文字列の対応（PC向け）。^はsupノード挿入なので別扱い
 const KEYBOARD_INSERT: Record<string, string> = {
   "0": "0", "1": "1", "2": "2", "3": "3", "4": "4",
   "5": "5", "6": "6", "7": "7", "8": "8", "9": "9",
   ".": ".", "+": "+", "-": "-", "*": "×", "/": "÷",
-  "^": "^", "%": "%", "(": "(", ")": ")", "!": "!",
+  "%": "%", "(": "(", ")": ")", "!": "!",
 };
 
 export function CalculatorView() {
   const isMobile = useIsMobile();
   const [subMode, setSubMode] = useState<CalcSubMode>("calc");
   const [analysisOpened, setAnalysisOpened] = useState(false);
-  const [expression, setExpression] = useState("");
-  const [cursor, setCursor] = useState(0);
+  // 入力中の式は編集ツリー＋カーソルパスで保持する（評価時にlinearizeで文字列化）
+  const [edit, setEdit] = useState<EditState>(emptyState);
   const [result, setResult] = useState<string | null>(null);
   // 数値のみの式かつ厳密な有理数として計算できたときだけ入る（詳細はrationalEngine.ts）
   const [resultFraction, setResultFraction] = useState<string | null>(null);
@@ -223,63 +241,66 @@ export function CalculatorView() {
     });
   }, []);
 
-  const insertText = useCallback((text: string, caretShift = 0) => {
-    setError(null);
-    if (justEvaluated.current) {
-      justEvaluated.current = false;
-      // 演算子なら結果に続けて計算、それ以外は新規入力
-      if ("+-×÷^%!".includes(text) && result !== null) {
-        setExpression(result + text);
-        setCursor(result.length + text.length);
-        return;
-      }
-      setResult(null);
-      setResultFraction(null);
-      setExpression(text);
-      setCursor(text.length + caretShift);
-      return;
+  // =直後の入力開始処理。演算子（や指数）なら直前の結果に続けて計算し、
+  // それ以外は新しい式を始める（実機電卓と同じ挙動）。
+  const beginOrContinue = useCallback((continueFromResult: boolean): EditState => {
+    if (!justEvaluated.current) return edit;
+    justEvaluated.current = false;
+    if (continueFromResult && result !== null) {
+      const tree = parseLinear(result);
+      return { tree, cursor: endCursor(tree) };
     }
-    setExpression(expression.slice(0, cursor) + text + expression.slice(cursor));
-    setCursor(cursor + text.length + caretShift);
-  }, [expression, cursor, result]);
+    setResult(null);
+    setResultFraction(null);
+    return emptyState();
+  }, [edit, result]);
+
+  const insertText = useCallback((text: string) => {
+    setError(null);
+    const base = beginOrContinue(text.length === 1 && "+-×÷%!".includes(text));
+    setEdit(insertChars(base, text));
+  }, [beginOrContinue]);
+
+  // 分数・√・指数キー: 構造ノードを挿入して最初のスロットにカーソルを置く。
+  // 指数（xʸ・物理キーの^）だけは=直後なら結果に続けて累乗できるようにする。
+  const insertNode = useCallback((node: NodeKind) => {
+    setError(null);
+    const base = beginOrContinue(node === "sup");
+    setEdit(node === "frac" ? insertFraction(base) : node === "sqrt" ? insertSqrt(base) : insertSup(base));
+  }, [beginOrContinue]);
 
   const backspace = useCallback(() => {
     setError(null);
     justEvaluated.current = false;
-    if (cursor === 0) return;
-    setExpression((prev) => prev.slice(0, cursor - 1) + prev.slice(cursor));
-    setCursor((c) => c - 1);
-  }, [cursor]);
+    setEdit((s) => backspaceEdit(s));
+  }, []);
 
   const clearAll = useCallback(() => {
-    setExpression("");
-    setCursor(0);
+    setEdit(emptyState());
     setResult(null);
     setResultFraction(null);
     setError(null);
     justEvaluated.current = false;
   }, []);
 
-  // カーソルはトークン境界単位で移動する。sin( や asinh のような複数文字トークンを
-  // 1タップで飛び越えられるようにするため、tokenBoundariesで区切り位置を求めて
-  // 現在位置から±deltaで最も近い境界へジャンプする（境界外の位置なら方向側の最寄りへ）。
+  // カーソル移動はeditCursorに委譲する。Row内はトークン境界単位でジャンプし
+  // （sin( や asinh を1タップで飛び越える従来仕様）、分数・√・指数の境界では
+  // スロットに入る／出る。↑↓は分数の分子⇄分母。
   const moveCursor = useCallback((delta: number) => {
     justEvaluated.current = false;
-    setCursor((c) => {
-      const bounds = tokenBoundaries(expression);
-      const idx = bounds.indexOf(c);
-      if (idx === -1) {
-        if (delta > 0) return bounds.find((b) => b > c) ?? expression.length;
-        return [...bounds].reverse().find((b) => b < c) ?? 0;
-      }
-      const nextIdx = Math.max(0, Math.min(bounds.length - 1, idx + delta));
-      return bounds[nextIdx];
-    });
-  }, [expression]);
+    setEdit((s) => ({ tree: s.tree, cursor: delta > 0 ? moveRight(s.tree, s.cursor) : moveLeft(s.tree, s.cursor) }));
+  }, []);
+
+  const moveCursorVertical = useCallback((dir: "up" | "down") => {
+    justEvaluated.current = false;
+    setEdit((s) => ({ tree: s.tree, cursor: moveVertical(s.tree, s.cursor, dir) }));
+  }, []);
 
   // 数値のみの式は既存の同期エンジンで即座に評価する（従来通り、カーソル位置エラー表示も維持）。
   // 方程式(=)・微積分記法・文字式はcalcDispatchへ回し、必要な場合だけnerdamerを動的importする。
   const equals = useCallback(() => {
+    // 評価は編集ツリーを既存トークナイザ互換の文字列に線形化して既存パイプラインに渡す
+    const expression = linearize(edit.tree);
     if (expression.trim() === "" || isCalculating) return;
     if (isPlainNumeric(expression)) {
       try {
@@ -292,8 +313,8 @@ export function CalculatorView() {
         justEvaluated.current = true;
       } catch (e) {
         if (e instanceof CalcError) {
+          // エラー位置は線形化後の文字列上の位置でツリーへ逆写像できないため、メッセージのみ表示する
           setError(e.message);
-          if (e.position !== undefined) setCursor(Math.min(e.position, expression.length));
         } else {
           setError("計算に失敗しました");
         }
@@ -311,7 +332,7 @@ export function CalculatorView() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : "計算に失敗しました"))
       .finally(() => setIsCalculating(false));
-  }, [expression, angleMode, isCalculating]);
+  }, [edit, angleMode, isCalculating]);
 
   // M+/M-: 表示中の結果（なければ現在の式を評価した値）をメモリに加減算する
   const memoryAdd = useCallback((sign: 1 | -1) => {
@@ -320,18 +341,22 @@ export function CalculatorView() {
       value = parseFloat(result);
     } else {
       try {
-        value = evaluate(expression, { angleMode });
+        value = evaluate(linearize(edit.tree), { angleMode });
       } catch {
         setError("メモリに保存する値を計算できません");
         return;
       }
     }
     setMemory((m) => (m ?? 0) + sign * value);
-  }, [result, expression, angleMode]);
+  }, [result, edit, angleMode]);
 
   const handleKey = useCallback((key: Key) => {
     if (key.type === "insert") {
-      insertText(key.text, key.caretShift ?? 0);
+      insertText(key.text);
+      return;
+    }
+    if (key.type === "node") {
+      insertNode(key.node);
       return;
     }
     switch (key.action) {
@@ -341,7 +366,7 @@ export function CalculatorView() {
       case "left": moveCursor(-1); break;
       case "right": moveCursor(1); break;
     }
-  }, [insertText, clearAll, backspace, equals, moveCursor]);
+  }, [insertText, insertNode, clearAll, backspace, equals, moveCursor]);
 
   // PC: 物理キーボード対応。他の入力欄にフォーカスがあるときは奪わない。
   // 方程式・解析モードはフォーム入力主体なのでリスナー自体を外す。
@@ -354,6 +379,9 @@ export function CalculatorView() {
       if (e.key in KEYBOARD_INSERT) {
         e.preventDefault();
         insertText(KEYBOARD_INSERT[e.key]);
+      } else if (e.key === "^") {
+        e.preventDefault();
+        insertNode("sup");
       } else if (/^[a-zA-Z,]$/.test(e.key)) {
         // sin(30) のような関数名をそのままタイプできるようにする
         e.preventDefault();
@@ -373,11 +401,17 @@ export function CalculatorView() {
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         moveCursor(1);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        moveCursorVertical("up");
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        moveCursorVertical("down");
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [subMode, insertText, equals, backspace, clearAll, moveCursor]);
+  }, [subMode, insertText, insertNode, equals, backspace, clearAll, moveCursor, moveCursorVertical]);
 
   const display = (
     <div className={`rounded-xl border border-slate-200 bg-white shadow-sm ${isMobile ? "p-3" : "p-4"}`}>
@@ -391,21 +425,23 @@ export function CalculatorView() {
           <button onClick={() => moveCursor(1)} className="min-h-8 min-w-9 rounded-md bg-slate-100 text-sm text-slate-600 hover:bg-slate-200" aria-label="カーソルを右へ">→</button>
         </div>
       </div>
-      {/* 編集中の式もMathExpressionで組版する（× ÷ 上付き添字 √ 逆三角のsin⁻¹表記など）。
-          カーソルはトークン境界単位でしか止まらない（moveCursorがtokenBoundariesを使う）ため
-          "asin"の途中で分割される心配はなく、sin⁻¹⇄asinのちらつきは発生しない。 */}
+      {/* 編集中の式は編集ツリーをMathEditorで組版する（分数の縦組み・√のoverline・
+          上付き指数・sin⁻¹表記・カーソル描画・タップでのカーソル配置）。 */}
       <div className="min-h-[2rem] break-all text-right font-mono text-xl text-slate-800">
-        {expression === "" ? (
+        {treeIsEmpty(edit.tree) ? (
           <>
             <span className="text-slate-300">0</span>
             <span className="inline-block h-5 w-0.5 animate-pulse rounded bg-slate-900 align-middle" />
           </>
         ) : (
-          <>
-            <MathExpression expression={expression.slice(0, cursor)} />
-            <span className="inline-block h-5 w-0.5 animate-pulse rounded bg-slate-900 align-middle" />
-            <MathExpression expression={expression.slice(cursor)} />
-          </>
+          <MathEditor
+            tree={edit.tree}
+            cursor={edit.cursor}
+            onCursorChange={(c) => {
+              justEvaluated.current = false;
+              setEdit((s) => ({ tree: s.tree, cursor: c }));
+            }}
+          />
         )}
       </div>
       <div className={`${isMobile ? "mt-1 min-h-[2.25rem]" : "mt-2 min-h-[2.5rem]"} flex items-center justify-end gap-2`}>
@@ -560,8 +596,8 @@ export function CalculatorView() {
           <li key={i}>
             <button
               onClick={() => {
-                setExpression(entry.result);
-                setCursor(entry.result.length);
+                const tree = parseLinear(entry.result);
+                setEdit({ tree, cursor: endCursor(tree) });
                 setResult(null);
                 setResultFraction(null);
                 setError(null);
@@ -631,7 +667,7 @@ export function CalculatorView() {
                 {display}
                 {keypad}
                 <p className="text-center text-[11px] text-slate-400">
-                  キーボード入力対応: 数字・演算子・関数名(sinなど)・Enter(=)・Backspace・Esc(AC)・←→(カーソル移動)
+                  キーボード入力対応: 数字・演算子・関数名(sinなど)・Enter(=)・Backspace・Esc(AC)・←→↑↓(カーソル移動)
                 </p>
               </div>
               <div>{historyPanel}</div>
