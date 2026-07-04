@@ -169,6 +169,18 @@ function pickFractionDisplay(expression: string, value: number): string | null {
   return formatFraction(rational);
 }
 
+// 分数⇄小数の表示モードはユーザーの好みなので計算のたびにリセットせず、
+// localStorageに永続化して次回起動後も覚えておく。
+const FRACTION_DISPLAY_KEY = "goatask-calc-fraction-display";
+
+function loadFractionDisplayPref(): boolean {
+  try {
+    return localStorage.getItem(FRACTION_DISPLAY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 // 物理キーボード入力 → 挿入文字列の対応（PC向け）
 const KEYBOARD_INSERT: Record<string, string> = {
   "0": "0", "1": "1", "2": "2", "3": "3", "4": "4",
@@ -186,7 +198,9 @@ export function CalculatorView() {
   const [result, setResult] = useState<string | null>(null);
   // 数値のみの式かつ厳密な有理数として計算できたときだけ入る（詳細はrationalEngine.ts）
   const [resultFraction, setResultFraction] = useState<string | null>(null);
-  const [showFraction, setShowFraction] = useState(false);
+  // 分数⇄小数の表示モード。ユーザーの好みとして計算をまたいで維持し、localStorageに永続化する
+  // （直前の結果に分数が無いときは自然にresultFraction===nullで小数表示にフォールバックする）。
+  const [showFraction, setShowFraction] = useState(loadFractionDisplayPref);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [angleMode, setAngleMode] = useState<AngleMode>("DEG");
@@ -196,6 +210,18 @@ export function CalculatorView() {
   const [isCalculating, setIsCalculating] = useState(false);
   // =直後に数字を打ったら新しい式を始める（実機電卓と同じ挙動）
   const justEvaluated = useRef(false);
+
+  const toggleFractionDisplay = useCallback(() => {
+    setShowFraction((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem(FRACTION_DISPLAY_KEY, next ? "1" : "0");
+      } catch {
+        // プライベートブラウジング等でlocalStorageが使えない場合は今回だけの切替に留める
+      }
+      return next;
+    });
+  }, []);
 
   const insertText = useCallback((text: string, caretShift = 0) => {
     setError(null);
@@ -209,7 +235,6 @@ export function CalculatorView() {
       }
       setResult(null);
       setResultFraction(null);
-      setShowFraction(false);
       setExpression(text);
       setCursor(text.length + caretShift);
       return;
@@ -231,7 +256,6 @@ export function CalculatorView() {
     setCursor(0);
     setResult(null);
     setResultFraction(null);
-    setShowFraction(false);
     setError(null);
     justEvaluated.current = false;
   }, []);
@@ -263,7 +287,6 @@ export function CalculatorView() {
         const formatted = formatResult(value);
         setResult(formatted);
         setResultFraction(pickFractionDisplay(expression, value));
-        setShowFraction(false);
         setError(null);
         setHistory((prev) => [{ expression, result: formatted }, ...prev].slice(0, 20));
         justEvaluated.current = true;
@@ -280,7 +303,6 @@ export function CalculatorView() {
     setError(null);
     setIsCalculating(true);
     setResultFraction(null);
-    setShowFraction(false);
     evaluateAdvanced(expression)
       .then((formatted) => {
         setResult(formatted);
@@ -394,10 +416,11 @@ export function CalculatorView() {
         ) : (
           <>
             {/* 分数⇄小数の切替チップ。厳密な有理数として計算できたときだけ表示する（rationalEngine.ts）。
-                新しい行を作らず同じ行に収めてスマホでも詰まないようにする。 */}
+                新しい行を作らず同じ行に収めてスマホでも詰まないようにする。選んだ表示モードは
+                localStorageに永続化され、計算をまたいでも次回起動後も維持される。 */}
             {resultFraction && (
               <button
-                onClick={() => setShowFraction((v) => !v)}
+                onClick={toggleFractionDisplay}
                 className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-200"
                 title="分数⇄小数を切替"
               >
@@ -541,7 +564,6 @@ export function CalculatorView() {
                 setCursor(entry.result.length);
                 setResult(null);
                 setResultFraction(null);
-                setShowFraction(false);
                 setError(null);
                 justEvaluated.current = false;
               }}
