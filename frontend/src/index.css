@@ -6,3 +6,11 @@ body {
   margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
+
+/* MathEditor（電卓）がmath要素の中に描画するプレーンHTML（char run・sup指数など）向け。
+   MathML CoreのUAスタイルシートはmath配下の非MathML要素にdisplay:block mathを
+   強制するため、通常のインライン文字組みに戻すには明示的な上書きが要る。 */
+math span,
+math sup {
+  display: inline;
+}
