@@ -17,7 +17,7 @@ declare module "react" {
       msup: MathMLProps;
       mi: MathMLProps & { mathvariant?: "normal" | "italic" };
       mn: MathMLProps;
-      mo: MathMLProps & { stretchy?: "true" | "false" };
+      mo: MathMLProps & { stretchy?: "true" | "false"; lspace?: string; rspace?: string };
       mspace: MathMLProps & { width?: string; height?: string; depth?: string };
     }
   }

@@ -56,8 +56,15 @@ interface CaretRect {
 
 // 空スロットの枠・√の高さ確保・カーソルの高さ、3箇所がそれぞれ別の値を使っていると
 // 入力のたびに見た目のサイズがズレて見えるため、同じ「数字1行分」の基準を共有する。
-const LINE_ASCENT_EM = 1;
-const LINE_DESCENT_EM = 0;
+const LINE_ASCENT_EM = 0.75;
+const LINE_DESCENT_EM = 0.25;
+const SLOT_WIDTH_EM = 0.65;
+
+const isArithmetic = (node: Row[number] | undefined): node is CharNode =>
+  node?.kind === "char" && ["+", "-", "−", "*", "·", "×", "÷", "/"].includes(node.ch);
+
+const isOperand = (node: Row[number] | undefined): boolean =>
+  node != null && (node.kind !== "char" || /[0-9a-zA-Zπ)]/.test(node.ch));
 
 /** カーソル位置を測るための幅0マーカー。見た目は持たず、座標だけを提供する */
 const CaretMarker = forwardRef<MathMLElement>((_props, ref) => (
@@ -175,6 +182,33 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
     }
   };
 
+  const renderEmptyOperand = (key: string, steps: CursorStep[], offset: number) => (
+    <mspace
+      key={key}
+      width={`${SLOT_WIDTH_EM}em`}
+      height={`${LINE_ASCENT_EM}em`}
+      depth={`${LINE_DESCENT_EM}em`}
+      className="math-editor-slot"
+      onClick={placeCursor(steps, offset)}
+    />
+  );
+
+  const renderArithmetic = (row: Row, index: number, steps: CursorStep[]) => {
+    const raw = (row[index] as CharNode).ch;
+    const symbol = raw === "-" ? "−" : raw === "*" || raw === "·" ? "×" : raw;
+    const before = isOperand(row[index - 1]);
+    const after = isOperand(row[index + 1]);
+    return (
+      <mrow key={`op${index}`} onClick={placeCursor(steps, index + 1)}>
+        {editable && !before && renderEmptyOperand(`op-left-${index}`, steps, index)}
+        <mpadded width={`${SLOT_WIDTH_EM}em`} lspace="0.08em">
+          <mo lspace="0" rspace="0">{symbol}</mo>
+        </mpadded>
+        {editable && !after && renderEmptyOperand(`op-right-${index}`, steps, index + 1)}
+      </mrow>
+    );
+  };
+
   // rowの[start, end)範囲を描画する。対応する"(" ")"のペアを見つけたら伸縮ブラケットで
   // 包み、中身は同じ範囲内の絶対インデックスのまま再帰的に描画する（カーソルのoffsetは
   // スロット内で通し番号なので、部分範囲を切り出しても添字はそのまま使える）。
@@ -204,11 +238,18 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
         i++;
         continue;
       }
+      if (isArithmetic(node)) {
+        if (caretAt === i) out.push(<CaretMarker ref={markerRef} key={`c${i}`} />);
+        out.push(renderArithmetic(row, i, steps));
+        i++;
+        continue;
+      }
       // 連続するcharはまとめて共有フォーマッタで組版する（対応する閉じ括弧を持つ"("で区切る）
       let j = i;
       let text = "";
       while (j < end && row[j].kind === "char") {
         const ch = (row[j] as CharNode).ch;
+        if (isArithmetic(row[j])) break;
         if (ch === "(" && findMatchingParen(row, j) !== -1 && findMatchingParen(row, j) < end) break;
         text += ch;
         j++;
@@ -239,10 +280,10 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
       if (!editable) return null;
       const placeholder = (
         <mspace
-          width="0.75em"
+          width={`${SLOT_WIDTH_EM}em`}
           height={`${LINE_ASCENT_EM}em`}
           depth={`${LINE_DESCENT_EM}em`}
-          style={{ outline: "1px dashed rgb(203 213 225)", borderRadius: "2px" }}
+          className="math-editor-slot"
           onClick={placeCursor(steps, 0)}
         />
       );

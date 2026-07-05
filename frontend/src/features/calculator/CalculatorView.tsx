@@ -45,16 +45,13 @@ interface HistoryEntry {
 // （分数・√・上付き指数）を挿入して最初のスロットにカーソルを置く。
 type NodeKind = "frac" | "sqrt" | "sup" | "abs";
 type Key =
-  | { type: "insert"; label: string; text: string; className?: string; arith?: boolean }
+  | { type: "insert"; label: string; text: string; className?: string }
   | { type: "node"; label: string; node: NodeKind; className?: string }
   | { type: "action"; label: string; action: "clear" | "backspace" | "equals" | "left" | "right"; className?: string };
 
 const KEY_OP = "bg-slate-200 hover:bg-slate-300 text-slate-800";
 const KEY_NUM = "bg-white hover:bg-slate-100 text-slate-900 border border-slate-200";
 const KEY_ACCENT = "bg-slate-900 hover:bg-slate-700 text-white";
-// 数字と隣接しない記号・関数キー（√, sin, π, a-z等）は数字キーと同じ枠を付け、
-// 独立したキーだと分かるようにする（NUMBER_PAD内の四則演算子は数字と地続きなので対象外）。
-const KEY_OP_FRAMED = "border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700";
 
 // 数字＋四則演算＋括弧・%。全モード共通で常設するキーパッド。
 const NUMBER_PAD: Key[][] = [
@@ -62,39 +59,39 @@ const NUMBER_PAD: Key[][] = [
     { type: "insert", label: "7", text: "7", className: KEY_NUM },
     { type: "insert", label: "8", text: "8", className: KEY_NUM },
     { type: "insert", label: "9", text: "9", className: KEY_NUM },
-    { type: "insert", label: "÷", text: "÷", className: KEY_OP, arith: true },
+    { type: "insert", label: "÷", text: "÷", className: KEY_OP },
     { type: "insert", label: "%", text: "%", className: KEY_OP },
   ],
   [
     { type: "insert", label: "4", text: "4", className: KEY_NUM },
     { type: "insert", label: "5", text: "5", className: KEY_NUM },
     { type: "insert", label: "6", text: "6", className: KEY_NUM },
-    { type: "insert", label: "×", text: "×", className: KEY_OP, arith: true },
+    { type: "insert", label: "×", text: "×", className: KEY_OP },
     { type: "insert", label: "(", text: "(", className: KEY_OP },
   ],
   [
     { type: "insert", label: "1", text: "1", className: KEY_NUM },
     { type: "insert", label: "2", text: "2", className: KEY_NUM },
     { type: "insert", label: "3", text: "3", className: KEY_NUM },
-    { type: "insert", label: "−", text: "-", className: KEY_OP, arith: true },
+    { type: "insert", label: "−", text: "-", className: KEY_OP },
     { type: "insert", label: ")", text: ")", className: KEY_OP },
   ],
   [
     { type: "insert", label: "0", text: "0", className: `${KEY_NUM} col-span-2` },
     { type: "insert", label: ".", text: ".", className: KEY_NUM },
-    { type: "insert", label: "＋", text: "+", className: KEY_OP, arith: true },
+    { type: "insert", label: "＋", text: "+", className: KEY_OP },
     { type: "action", label: "=", action: "equals", className: KEY_ACCENT },
   ],
 ];
 
 // キー定義を短く書くためのヘルパー。opは記号キー（関数・演算子）、insはそのまま挿入するキー、
-// nodeKeyは構造ノード（分数・√・指数）を挿入するキー。数字と隣接しないので枠付きにする。
+// nodeKeyは構造ノード（分数・√・指数）を挿入するキー。
 const op = (label: string, text: string): Key =>
-  ({ type: "insert", label, text, className: KEY_OP_FRAMED });
+  ({ type: "insert", label, text, className: KEY_OP });
 const ins = (label: string, text?: string): Key =>
   ({ type: "insert", label, text: text ?? label, className: KEY_NUM });
 const nodeKey = (label: string, node: NodeKind): Key =>
-  ({ type: "node", label, node, className: KEY_OP_FRAMED });
+  ({ type: "node", label, node, className: KEY_OP });
 
 // Photomath形式のキーページ。ページ切替でキーパッド全体（数字含む）を入れ替えて
 // スペースを確保する。新しい分類はこの配列に要素を追加するだけで対応できる。
@@ -492,28 +489,15 @@ export function CalculatorView() {
             key={rowIdx}
             className={`grid gap-2 ${row === CONTROL_ROW ? "grid-cols-4" : PAGE_COLS_CLASS[page.cols]}`}
           >
-            {row.map((key, i) => {
-              // 四則演算子（＋−×÷）は数字キーと同じ枠の中で、見た目だけ数字の横幅くらいの
-              // 小さな角丸チップにする。タップ領域はセル全体のまま変えない。
-              const isArith = key.type === "insert" && key.arith;
-              return (
-                <button
-                  key={i}
-                  onClick={() => handleKey(key)}
-                  className={`min-h-11 flex items-center justify-center rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${
-                    isArith ? "" : `px-1 py-2 text-base font-medium ${key.className ?? KEY_NUM}`
-                  }`}
-                >
-                  {isArith ? (
-                    <span className={`flex h-8 w-8 items-center justify-center rounded-md text-base font-medium ${key.className ?? KEY_OP}`}>
-                      {key.label}
-                    </span>
-                  ) : (
-                    key.label
-                  )}
-                </button>
-              );
-            })}
+            {row.map((key, i) => (
+              <button
+                key={i}
+                onClick={() => handleKey(key)}
+                className={`min-h-11 rounded-lg px-1 py-2 text-base font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${key.className ?? KEY_NUM}`}
+              >
+                {key.label}
+              </button>
+            ))}
           </div>
         ))}
       </div>

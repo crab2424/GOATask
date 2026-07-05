@@ -12,6 +12,11 @@ body {
   font-family: math;
 }
 
+.math-editor-slot {
+  outline: 1px dashed rgb(203 213 225);
+  border-radius: 2px;
+}
+
 /* opacityを半透明までしか落とさないpulseより、入力位置が明確な点滅にする。 */
 @keyframes math-editor-caret-blink {
   0%, 45% { opacity: 1; }
