@@ -3,7 +3,19 @@
 // 関数呼び出し、`π`, `pi`, `e`, `∞` 等を受け付けるため、LaTeX からその形に落とせばよい。
 //
 // 目的は完全な LaTeX パーサではなく、MathLive が電卓 UI から出力しうる範囲だけ確実に
-// 変換すること。未知のコマンドはドロップし、意味不明な残骸を評価器に渡さない方針。
+// 変換すること。未知のコマンド（\int \sum \lim \prod 等、評価未対応の記法を含む）は
+// 黙ってドロップせず UnsupportedLatexError を投げる。一部だけ変換して残りを計算すると
+// 「エラーではなく、もっともらしい誤答」になるため。
+
+/** 未対応の LaTeX コマンドに出会ったときに投げる。呼び出し元でメッセージ化する。 */
+export class UnsupportedLatexError extends Error {
+  readonly command: string;
+  constructor(command: string) {
+    super(`未対応の記号です: \\${command}`);
+    this.name = "UnsupportedLatexError";
+    this.command = command;
+  }
+}
 
 const CMD_SYMBOL: Record<string, string> = {
   // ギリシャ文字と定数
@@ -148,7 +160,10 @@ class Converter {
         // \left. \right. は非表示区切り → 空
         return t.ch === "." ? "" : t.ch;
       }
-      if (t.kind === "cmd") return CMD_SYMBOL[t.name] ?? "";
+      if (t.kind === "cmd") {
+        if (t.name in CMD_SYMBOL) return CMD_SYMBOL[t.name];
+        throw new UnsupportedLatexError(t.name);
+      }
       return "";
     }
     if (name === "operatorname" || name === "mathrm" || name === "mathit" || name === "text") {
@@ -162,8 +177,8 @@ class Converter {
     }
     if (name in CMD_FUNC) return CMD_FUNC[name];
     if (name in CMD_SYMBOL) return CMD_SYMBOL[name];
-    // 未知コマンドはドロップ
-    return "";
+    // 未知コマンド（\int \sum \lim \prod 等）は残りをそのまま計算させず明示的にエラーにする
+    throw new UnsupportedLatexError(name);
   }
 
   private consumeUntil(stop: (tok: Token) => boolean): string {

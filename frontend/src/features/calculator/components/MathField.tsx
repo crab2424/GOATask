@@ -93,12 +93,19 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
     const el = elRef.current;
     if (!el) return;
     const handleInput = () => onChange?.(el.value);
-    const handleChange = () => onSubmit?.();
+    // MathLive の "change" は blur でも発火するため Enter 判定には使わない。
+    // keydown で明示的に Enter を検知し、IME確定中の Enter は計算に回さない。
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && !e.isComposing) {
+        e.preventDefault();
+        onSubmit?.();
+      }
+    };
     el.addEventListener("input", handleInput);
-    el.addEventListener("change", handleChange);
+    el.addEventListener("keydown", handleKeyDown);
     return () => {
       el.removeEventListener("input", handleInput);
-      el.removeEventListener("change", handleChange);
+      el.removeEventListener("keydown", handleKeyDown);
     };
   }, [onChange, onSubmit]);
 

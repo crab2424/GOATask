@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { CalcError, evaluate, formatResult, type AngleMode } from "./engine/calculatorEngine";
 import { evaluateAdvanced, isPlainNumeric } from "./engine/calcDispatch";
 import { tryEvaluateRational, formatFraction } from "./engine/rationalEngine";
-import { fractionToLatex, latexToLinear, numberToLatex } from "./engine/latexBridge";
+import { fractionToLatex, latexToLinear, numberToLatex, UnsupportedLatexError } from "./engine/latexBridge";
 import { useIsMobile } from "../../shared/lib/useIsMobile";
 import { CalculatorEquationPanel } from "./components/CalculatorEquationPanel";
 import { MathField, type MathFieldHandle } from "./components/MathField";
@@ -274,7 +274,13 @@ export function CalculatorView() {
   // 方程式(=)・微積分記法・文字式はcalcDispatchへ回し、必要な場合だけnerdamerを動的importする。
   const equals = useCallback(() => {
     const currentLatex = mathRef.current?.getLatex() ?? latex;
-    const linear = latexToLinear(currentLatex);
+    let linear: string;
+    try {
+      linear = latexToLinear(currentLatex);
+    } catch (e) {
+      setError(e instanceof UnsupportedLatexError ? e.message : "式を解釈できませんでした");
+      return;
+    }
     if (linear.trim() === "" || isCalculating) return;
     if (isPlainNumeric(linear)) {
       try {
@@ -349,6 +355,7 @@ export function CalculatorView() {
   useEffect(() => {
     if (subMode !== "calc") return;
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
       const target = e.target as HTMLElement | null;
       if (target && target.tagName === "MATH-FIELD") return;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
