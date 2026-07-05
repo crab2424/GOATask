@@ -215,6 +215,11 @@ export function CalculatorView() {
   // =直後に数字を打ったら新しい式を始める（実機電卓と同じ挙動）
   const justEvaluated = useRef(false);
   const mathRef = useRef<MathFieldHandle | null>(null);
+  // 電卓の描画領域本体（サイドメニューを含まない範囲の実測に使う）
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  // MathLive仮想キーボードのcontainer先。実際のレイアウトには関与しない
+  // position:fixedの専用ホスト（詳細は下のuseEffectのコメント参照）
+  const vkHostRef = useRef<HTMLDivElement | null>(null);
 
   const toggleDecimalDisplay = useCallback(() => {
     setShowDecimal((v) => {
@@ -359,6 +364,38 @@ export function CalculatorView() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [equals, clearAll]);
+
+  // MathLiveの仮想キーボードはdocument.bodyへ全幅で追加されるのが既定のため、
+  // PCレイアウトの左サイドメニューにまで被さって重なる不具合があった。
+  // containerをdocument.body以外に差し替えると、MathLive側のCSSは
+  // `.ML__keyboard { height: 100% }` をそのcontainerの実高さに依存して解決する。
+  // 電卓の描画領域自体（相対配置div）をcontainerにする案は試したところ、
+  // 祖先のflexレイアウトの都合でその領域の実高さが0扱いになり、キーボードが
+  // 内部的にvisible=trueでも画面上は高さ0で完全に不可視になる不具合を実機再現した。
+  // そのためcontainerは電卓の描画とは独立したposition:fixed（top/bottom:0で
+  // ビューポート高さが常に確定する）専用のdivとし、幅と左端だけをResizeObserverで
+  // 電卓の描画領域（サイドメニューを含まない範囲）に同期させる。
+  useEffect(() => {
+    const kb = window.mathVirtualKeyboard;
+    const content = contentRef.current;
+    const host = vkHostRef.current;
+    if (!kb || !content || !host) return;
+    kb.container = host;
+    const sync = () => {
+      const rect = content.getBoundingClientRect();
+      host.style.left = `${rect.left}px`;
+      host.style.width = `${rect.width}px`;
+    };
+    sync();
+    const resizeObserver = new ResizeObserver(sync);
+    resizeObserver.observe(content);
+    window.addEventListener("resize", sync);
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", sync);
+      kb.container = null;
+    };
+  }, []);
 
   const displayedResultLatex = useMemo(() => {
     if (showDecimal && resultDecimalLatex) return resultDecimalLatex;
@@ -588,7 +625,7 @@ export function CalculatorView() {
   );
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div ref={contentRef} className="mx-auto max-w-3xl">
       {isMobile ? (
         <div className="space-y-2">
           {display}
@@ -607,6 +644,11 @@ export function CalculatorView() {
           <div>{historyPanel}</div>
         </div>
       )}
+      {/* MathLive仮想キーボードの専用container。position:fixedでビューポート高さを
+          確定させつつ、幅・左端だけをcontentRef実測値に同期する（詳細は上のuseEffect参照）。
+          非表示中も含めpointer-events:noneなので他要素のクリックを妨げない
+          （MathLive側が.MLK__plateにpointer-events:allを個別指定して上書きする）。 */}
+      <div ref={vkHostRef} className="pointer-events-none fixed inset-y-0 z-40" />
     </div>
   );
 }

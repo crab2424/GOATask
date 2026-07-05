@@ -90,6 +90,13 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
     el.inlineShortcuts = {};
     // 括弧の暗黙補完（\left ... \right の自動追加）はさせず、素の () を保つ
     window.mathVirtualKeyboard?.hide();
+    // window.mathVirtualKeyboardはdocument直下に生きるグローバルシングルトンで、
+    // math-field自体がアンマウントされても連動して消えない。CalculatorViewから
+    // 他のモードへ遷移した後もキーボードが開いたまま残る不具合を防ぐため、
+    // アンマウント時に明示的にhideする。
+    return () => {
+      window.mathVirtualKeyboard?.hide();
+    };
   }, []);
 
   // 双方向同期: 外部 value を反映（差分があるときだけ）。
