@@ -54,6 +54,11 @@ interface CaretRect {
   height: number;
 }
 
+// 空スロットの枠・√の高さ確保・カーソルの高さ、3箇所がそれぞれ別の値を使っていると
+// 入力のたびに見た目のサイズがズレて見えるため、同じ「数字1行分」の基準を共有する。
+const LINE_ASCENT_EM = 1;
+const LINE_DESCENT_EM = 0;
+
 /** カーソル位置を測るための幅0マーカー。見た目は持たず、座標だけを提供する */
 const CaretMarker = forwardRef<MathMLElement>((_props, ref) => (
   <mspace ref={ref} width="0" height="0" depth="0" />
@@ -92,12 +97,13 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
     const markerBox = markerRef.current.getBoundingClientRect();
     const containerBox = containerRef.current.getBoundingClientRect();
     const fontSize = Number.parseFloat(window.getComputedStyle(markerRef.current).fontSize);
-    const caretHeight = fontSize * 0.9;
+    const caretHeight = fontSize * (LINE_ASCENT_EM + LINE_DESCENT_EM);
     const next: CaretRect = {
       left: markerBox.left - containerBox.left,
-      // 高さ0のマーカーはベースライン上にある。字面のascent/descentに相当する
-      // 固定比率でHTMLカーソルを描き、mspace自体はMathMLの組版寸法へ影響させない。
-      top: markerBox.top - containerBox.top - fontSize * 0.8,
+      // 高さ0のマーカーはベースライン上にある。空スロットの枠・√の高さ確保と同じ
+      // LINE_ASCENT_EM/LINE_DESCENT_EMでHTMLカーソルを描き、mspace自体はMathMLの
+      // 組版寸法へ影響させない。
+      top: markerBox.top - containerBox.top - fontSize * LINE_ASCENT_EM,
       height: caretHeight,
     };
     setCaretRect((prev) =>
@@ -145,8 +151,8 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
           <msqrt key={node.id}>
             <mrow>
               {/* 中身が空/浅い数字だけのときに√の高さが変わって見えないよう、
-                  空スロットのプレースホルダと同じ高さ・深さを幅0で常に確保する。 */}
-              <mspace width="0" height="1em" depth="0em" />
+                  空スロットのプレースホルダ・カーソルと同じ高さ・深さを幅0で常に確保する。 */}
+              <mspace width="0" height={`${LINE_ASCENT_EM}em`} depth={`${LINE_DESCENT_EM}em`} />
               {renderRow(node.radicand, stepTo("radicand"))}
             </mrow>
           </msqrt>
@@ -234,7 +240,8 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
       const placeholder = (
         <mspace
           width="0.75em"
-          height="1em"
+          height={`${LINE_ASCENT_EM}em`}
+          depth={`${LINE_DESCENT_EM}em`}
           style={{ outline: "1px dashed rgb(203 213 225)", borderRadius: "2px" }}
           onClick={placeCursor(steps, 0)}
         />
