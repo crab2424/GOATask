@@ -4,6 +4,7 @@ import { approximate, evaluateExpression, expandExpression, factorExpression } f
 import { useIsMobile } from "../../shared/lib/useIsMobile";
 import { MathField, type MathFieldHandle } from "./components/MathField";
 import { MathExpression } from "./components/MathExpression";
+import { CALCULATOR_KEYBOARD_LAYOUTS } from "./keyboardLayouts";
 
 interface HistoryEntry {
   /** 入力式の LaTeX（履歴クリックで復元できる） */
@@ -381,6 +382,10 @@ export function CalculatorView() {
     const host = vkHostRef.current;
     if (!kb || !content || !host) return;
     kb.container = host;
+    // 純正キーボードのタブ構成・キー配列だけをGOATask向けに差し替える
+    // （筐体・スタイル・操作系はMathLive純正のまま）。グローバルシングルトンの
+    // 設定なのでアンマウント時に既定へ戻す。
+    kb.layouts = CALCULATOR_KEYBOARD_LAYOUTS;
     const sync = () => {
       const rect = content.getBoundingClientRect();
       host.style.left = `${rect.left}px`;
@@ -394,6 +399,7 @@ export function CalculatorView() {
       resizeObserver.disconnect();
       window.removeEventListener("resize", sync);
       kb.container = null;
+      kb.layouts = "default";
     };
   }, []);
 
