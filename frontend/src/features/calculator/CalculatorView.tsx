@@ -433,7 +433,7 @@ export function CalculatorView() {
       </div>
       {/* 編集中の式は編集ツリーをMathEditorで組版する（分数の縦組み・√のoverline・
           上付き指数・sin⁻¹表記・カーソル描画・タップでのカーソル配置）。 */}
-      <div className="min-h-[2rem] break-all text-right font-mono text-xl text-slate-800">
+      <div className="min-h-[2rem] break-all text-left font-mono text-xl text-slate-800">
         {treeIsEmpty(edit.tree) ? (
           <>
             <span className="text-slate-300">0</span>
