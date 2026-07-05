@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { CalcError, evaluate, formatResult, type AngleMode } from "./engine/calculatorEngine";
 import { evaluateAdvanced, isPlainNumeric } from "./engine/calcDispatch";
 import { tryEvaluateRational, formatFraction } from "./engine/rationalEngine";
-import { endCursor, treeIsEmpty } from "./engine/editTree";
+import { endCursor } from "./engine/editTree";
 import { moveLeft, moveRight, moveVertical } from "./engine/editCursor";
 import {
   type EditState,
@@ -434,21 +434,14 @@ export function CalculatorView() {
       {/* 編集中の式は編集ツリーをMathEditorで組版する（分数の縦組み・√のoverline・
           上付き指数・sin⁻¹表記・カーソル描画・タップでのカーソル配置）。 */}
       <div className="min-h-[2rem] break-all text-left font-mono text-xl text-slate-800">
-        {treeIsEmpty(edit.tree) ? (
-          <>
-            <span className="text-slate-300">0</span>
-            <span className="math-editor-caret inline-block h-5 w-0.5 rounded bg-slate-900 align-middle" />
-          </>
-        ) : (
-          <MathEditor
-            tree={edit.tree}
-            cursor={edit.cursor}
-            onCursorChange={(c) => {
-              justEvaluated.current = false;
-              setEdit((s) => ({ tree: s.tree, cursor: c }));
-            }}
-          />
-        )}
+        <MathEditor
+          tree={edit.tree}
+          cursor={edit.cursor}
+          onCursorChange={(c) => {
+            justEvaluated.current = false;
+            setEdit((s) => ({ tree: s.tree, cursor: c }));
+          }}
+        />
       </div>
       <div className={`${isMobile ? "mt-1 min-h-[2.25rem]" : "mt-2 min-h-[2.5rem]"} flex items-center justify-end gap-2`}>
         {error ? (
