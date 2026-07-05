@@ -13,160 +13,9 @@ interface HistoryEntry {
   resultLatex: string;
 }
 
-// キーパッド定義。値は MathLive に渡す LaTeX スニペット。
-// #0 は挿入直後にカーソルを置く位置、#? はプレースホルダ空スロット。
-// たとえば a/b は `\frac{#0}{#?}` で挿入し、分子にカーソルが立って分母は空スロット表示。
-type Key =
-  | { type: "insert"; label: string; latex: string; className?: string }
-  | { type: "action"; label: string; action: CalcAction; className?: string };
-
-type CalcAction = "clear" | "backspace" | "equals" | "left" | "right" | "addRow";
-
-const KEY_OP = "bg-slate-200 hover:bg-slate-300 text-slate-800";
-const KEY_NUM = "bg-white hover:bg-slate-100 text-slate-900 border border-slate-200";
-const KEY_ACCENT = "bg-slate-900 hover:bg-slate-700 text-white";
-
-// 数字＋四則演算＋括弧・%。全モード共通で常設するキーパッド。
-const NUMBER_PAD: Key[][] = [
-  [
-    { type: "insert", label: "7", latex: "7", className: KEY_NUM },
-    { type: "insert", label: "8", latex: "8", className: KEY_NUM },
-    { type: "insert", label: "9", latex: "9", className: KEY_NUM },
-    { type: "insert", label: "÷", latex: "\\div", className: KEY_OP },
-    { type: "insert", label: "%", latex: "\\%", className: KEY_OP },
-  ],
-  [
-    { type: "insert", label: "4", latex: "4", className: KEY_NUM },
-    { type: "insert", label: "5", latex: "5", className: KEY_NUM },
-    { type: "insert", label: "6", latex: "6", className: KEY_NUM },
-    { type: "insert", label: "×", latex: "\\times", className: KEY_OP },
-    { type: "insert", label: "(", latex: "(", className: KEY_OP },
-  ],
-  [
-    { type: "insert", label: "1", latex: "1", className: KEY_NUM },
-    { type: "insert", label: "2", latex: "2", className: KEY_NUM },
-    { type: "insert", label: "3", latex: "3", className: KEY_NUM },
-    { type: "insert", label: "−", latex: "-", className: KEY_OP },
-    { type: "insert", label: ")", latex: ")", className: KEY_OP },
-  ],
-  [
-    { type: "insert", label: "0", latex: "0", className: `${KEY_NUM} col-span-2` },
-    { type: "insert", label: ".", latex: ".", className: KEY_NUM },
-    { type: "insert", label: "＋", latex: "+", className: KEY_OP },
-    { type: "action", label: "=", action: "equals", className: KEY_ACCENT },
-  ],
-];
-
-// キー定義ヘルパ。opは記号キー（関数・演算子）、insはそのまま挿入するキー。
-const op = (label: string, latex: string): Key => ({ type: "insert", label, latex, className: KEY_OP });
-const ins = (label: string, latex?: string): Key => ({ type: "insert", label, latex: latex ?? label, className: KEY_NUM });
-
-// Photomath形式のキーページ。ページ切替でキーパッド全体（数字含む）を入れ替えて
-// スペースを確保する。新しい分類はこの配列に要素を追加するだけで対応できる。
-interface KeyPage {
-  id: string;
-  label: string;
-  cols: 3 | 4 | 5 | 6;
-  keys: Key[][];
-}
-
-const KEY_PAGES: KeyPage[] = [
-  {
-    id: "main",
-    label: "基本",
-    cols: 5,
-    keys: [
-      // √・xʸ・a/bはLaTeXの構造ノードとして挿入し、#0の位置（第1スロット）にカーソルを置く
-      [op("√", "\\sqrt{#0}"), op("xʸ", "^{#0}"), op("π", "\\pi"), op("e", "e"), op("x!", "!")],
-      [op("a/b", "\\frac{#0}{#?}"), op("x", "x"), op("y", "y"), op(",", ","), op("|a|", "\\left|#0\\right|")],
-      ...NUMBER_PAD,
-    ],
-  },
-  {
-    id: "trig",
-    label: "三角",
-    cols: 3,
-    keys: [
-      [op("sin", "\\sin("), op("cos", "\\cos("), op("tan", "\\tan(")],
-      [op("sin⁻¹", "\\arcsin("), op("cos⁻¹", "\\arccos("), op("tan⁻¹", "\\arctan(")],
-      [op("sinh", "\\sinh("), op("cosh", "\\cosh("), op("tanh", "\\tanh(")],
-      [op("sinh⁻¹", "\\operatorname{asinh}("), op("cosh⁻¹", "\\operatorname{acosh}("), op("tanh⁻¹", "\\operatorname{atanh}(")],
-    ],
-  },
-  {
-    id: "log",
-    label: "log・組合せ",
-    cols: 5,
-    keys: [
-      [op("log", "\\log("), op("ln", "\\ln("), op("eˣ", "\\exp("), op("|a|", "\\left|#0\\right|"), op(",", ",")],
-      [op("nPr", "\\operatorname{nPr}("), op("nCr", "\\operatorname{nCr}("), op("nHr", "\\operatorname{nHr}("), op("nVr", "\\operatorname{nVr}("), op("i", "i")],
-    ],
-  },
-  {
-    id: "calculus",
-    label: "微積分",
-    cols: 4,
-    keys: [
-      // 積分・微分・極限・総和はテンプレート挿入（#0 に第1スロットのカーソル、#? は空スロット）。
-      // 定積分はサブ/スーパースクリプトを後から埋める形。Compute Engine（Phase 9-A）が
-      // これらを実際に評価してくれるようになったため、範囲が必要な形式（\sum_{n=1}^{10}n 等）
-      // まで一発で組めるようにする（9-A時点では \sum 単体挿入で範囲入力に難があった）。
-      [
-        op("∫", "\\int #0\\, d#?"),
-        op("d/dx", "\\frac{d}{dx} #0"),
-        op("lim", "\\lim_{#?\\to #?} #0"),
-        op("Σ", "\\sum_{#?=#?}^{#?} #0"),
-      ],
-      [op("Π", "\\prod_{#?=#?}^{#?} #0"), op("dx", "dx"), op("∞", "\\infty"), op("f'", "'")],
-    ],
-  },
-  {
-    id: "eq",
-    label: "方程式",
-    cols: 4,
-    keys: [
-      // 「=」文字挿入（旧方程式タブの入力に相当。Enter/=キーは計算実行アクションなので別）。
-      // 「連立」は\begin{cases}を空2行で挿入し1行目にカーソルを置く。中括弧は cases 環境が
-      // 行数に応じて自動伸縮する（可変ブレース）。+行は挿入した cases 内で行を追加する。
-      [
-        op("=", "="),
-        op("連立", "\\begin{cases}#0\\\\#?\\end{cases}"),
-        { type: "action", label: "+行", action: "addRow", className: KEY_OP },
-        op(">", ">"),
-      ],
-      [op("<", "<"), op("≥", "\\ge"), op("≤", "\\le"), op("≠", "\\ne")],
-    ],
-  },
-  {
-    id: "abc",
-    label: "abc",
-    cols: 6,
-    keys: [
-      ["a", "b", "c", "d", "e", "f"].map((c) => ins(c)),
-      ["g", "h", "i", "j", "k", "l"].map((c) => ins(c)),
-      ["m", "n", "o", "p", "q", "r"].map((c) => ins(c)),
-      ["s", "t", "u", "v", "w", "x"].map((c) => ins(c)),
-      ["y", "z", "α", "β", "γ", "δ"].map((c, i) => ins(c, ["y", "z", "\\alpha", "\\beta", "\\gamma", "\\delta"][i])),
-      ["ε", "θ", "λ", "μ", "σ", "ω"].map((c, i) => ins(c, ["\\epsilon", "\\theta", "\\lambda", "\\mu", "\\sigma", "\\omega"][i])),
-    ],
-  },
-];
-
-// 基本ページ以外にも = とカーソル移動・⌫を常設し、評価のたびにページを戻らなくて済むようにする。
-const CONTROL_ROW: Key[] = [
-  { type: "action", label: "←", action: "left", className: KEY_OP },
-  { type: "action", label: "→", action: "right", className: KEY_OP },
-  { type: "action", label: "⌫", action: "backspace", className: KEY_OP },
-  { type: "action", label: "=", action: "equals", className: KEY_ACCENT },
-];
-
-// ページごとに行列を尊重して描画するため、Tailwindが静的に拾えるようにマップで定義する。
-const PAGE_COLS_CLASS: Record<3 | 4 | 5 | 6, string> = {
-  3: "grid-cols-3",
-  4: "grid-cols-4",
-  5: "grid-cols-5",
-  6: "grid-cols-6",
-};
+// Step 2: 自前キーパッド（KEY_PAGES/NUMBER_PAD等）は撤去し、編集操作はMathLive純正の
+// 仮想キーボード（keyboardLayouts.tsのCALCULATOR_KEYBOARD_LAYOUTS）に一本化した。
+// ここに残すのはAC/DEG/展開/因数分解/メモリ等の非編集系ツールバーのみ。
 
 // 厳密値⇄小数近似の表示モードはユーザーの好みなので計算のたびにリセットせず、
 // localStorageに永続化して次回起動後も覚えておく。9-B以前は分数トグルと2種類の
@@ -209,7 +58,6 @@ export function CalculatorView() {
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [angleMode, setAngleMode] = useState<AngleMode>("DEG");
-  const [activePageId, setActivePageId] = useState(KEY_PAGES[0].id);
   const [memory, setMemory] = useState<number | null>(null);
   // Compute Engineの動的import待ちが発生しうるため、その間の表示用フラグ
   const [isCalculating, setIsCalculating] = useState(false);
@@ -277,14 +125,6 @@ export function CalculatorView() {
     mathRef.current?.executeCommand(dir === "left" ? "moveToPreviousChar" : "moveToNextChar");
   }, []);
 
-  // 連立方程式の追加行。MathLiveのaddRowAfterはcases/array/matrix等の表環境内でのみ機能する
-  // （範囲外で呼んでも無害＝false返却で無視される）ため、呼び出し側で環境判定は不要。
-  const addRow = useCallback(() => {
-    setError(null);
-    justEvaluated.current = false;
-    mathRef.current?.executeCommand("addRowAfter");
-  }, []);
-
   // 現在の式を評価する。9-Cで旧数値式の同期高速パスを廃止し、全式をCompute Engine（動的import）に
   // 一本化した。数値式でも初回だけ動的importの遅延（数百ms）が発生するが、以後はキャッシュされる。
   const equals = useCallback(() => {
@@ -334,21 +174,6 @@ export function CalculatorView() {
       setError(e instanceof Error ? e.message : "メモリに保存する値を計算できません");
     }
   }, [resultLatex, latex, angleMode]);
-
-  const handleKey = useCallback((key: Key) => {
-    if (key.type === "insert") {
-      insertKey(key.latex);
-      return;
-    }
-    switch (key.action) {
-      case "clear": clearAll(); break;
-      case "backspace": backspace(); break;
-      case "equals": equals(); break;
-      case "left": moveCursor("left"); break;
-      case "right": moveCursor("right"); break;
-      case "addRow": addRow(); break;
-    }
-  }, [insertKey, clearAll, backspace, equals, moveCursor, addRow]);
 
   // MathField が focus 中でないときだけ物理キーボードで補助入力を受ける
   // （focus 中は MathLive 本体が正しく処理してくれる）。
@@ -421,8 +246,9 @@ export function CalculatorView() {
         </div>
       </div>
       {/* 編集中の式は MathLive の math-field。分数・√・上付き指数・|·|・カーソル・空スロット
-          プレースホルダを全部組込みで扱う。 */}
-      <div className="min-h-[2rem] break-all text-left text-xl text-slate-800">
+          プレースホルダを全部組込みで扱う。Step 2で自前キーパッドを撤去した分、
+          表示領域を広めに確保する（Phase 9-Dの「mathfield領域拡大」を吸収）。 */}
+      <div className="min-h-[3.5rem] break-all text-left text-2xl text-slate-800 sm:min-h-[4.5rem] sm:text-3xl">
         <MathField
           ref={mathRef}
           value={latex}
@@ -466,32 +292,6 @@ export function CalculatorView() {
       </div>
     </div>
   );
-
-  const renderPage = (page: KeyPage) => {
-    const rows = page.id === "main" ? page.keys : [...page.keys, CONTROL_ROW];
-    return (
-      <div className="space-y-2">
-        {rows.map((row, rowIdx) => (
-          <div
-            key={rowIdx}
-            className={`grid gap-2 ${row === CONTROL_ROW ? "grid-cols-4" : PAGE_COLS_CLASS[page.cols]}`}
-          >
-            {row.map((key, i) => (
-              <button
-                key={i}
-                onClick={() => handleKey(key)}
-                className={`min-h-11 rounded-lg px-1 py-2 text-base font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${key.className ?? KEY_NUM}`}
-              >
-                {key.label}
-              </button>
-            ))}
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const activePage = KEY_PAGES.find((p) => p.id === activePageId) ?? KEY_PAGES[0];
 
   const calcToolbar = (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -559,25 +359,6 @@ export function CalculatorView() {
     </div>
   );
 
-  const pageTabs = (
-    <div className="flex items-center gap-1 overflow-x-auto">
-      {KEY_PAGES.map((page) => (
-        <button
-          key={page.id}
-          onClick={() => setActivePageId(page.id)}
-          aria-pressed={activePageId === page.id}
-          className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-            activePageId === page.id
-              ? "bg-slate-900 text-white"
-              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-          }`}
-        >
-          {page.label}
-        </button>
-      ))}
-    </div>
-  );
-
   const historyPanel = history.length > 0 && (
     <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
       <div className="mb-2 flex items-center justify-between">
@@ -622,27 +403,19 @@ export function CalculatorView() {
     </details>
   );
 
-  const keypad = (
-    <>
-      {calcToolbar}
-      {pageTabs}
-      {renderPage(activePage)}
-    </>
-  );
-
   return (
     <div ref={contentRef} className="mx-auto max-w-3xl">
       {isMobile ? (
         <div className="space-y-2">
           {display}
-          {keypad}
+          {calcToolbar}
           {mobileHistory}
         </div>
       ) : (
         <div className="grid grid-cols-[1fr_240px] gap-4">
           <div className="space-y-3">
             {display}
-            {keypad}
+            {calcToolbar}
             <p className="text-center text-[11px] text-slate-400">
               MathField 直接タイプ対応: 数字・演算子・関数名(sinなど)・Enter(=)・カーソル移動。フォーカスが外れているときは Enter/Esc のみ受け付け。
             </p>
