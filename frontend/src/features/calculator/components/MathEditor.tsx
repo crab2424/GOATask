@@ -142,14 +142,18 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
           // displaystyleにすることで、通常の数字と同じtextstyleで組版する。
           <mstyle key={node.id} displaystyle="true" scriptlevel="0">
             <mfrac>
-              {/* 分子・分母をmpaddedで左右に少し広げ、横棒を中身より長く出す
+              {/* 分子・分母の左右に実幅を持つ余白を置き、横棒を中身より長く出す
                   （連分数を入れ子にしたときに段の区切りが分かるように）。 */}
-              <mpadded width="+0.3em" lspace="0.15em">
+              <mrow>
+                <mspace width="0.15em" />
                 <mrow>{renderRow(node.num, stepTo("num"))}</mrow>
-              </mpadded>
-              <mpadded width="+0.3em" lspace="0.15em">
+                <mspace width="0.15em" />
+              </mrow>
+              <mrow>
+                <mspace width="0.15em" />
                 <mrow>{renderRow(node.den, stepTo("den"))}</mrow>
-              </mpadded>
+                <mspace width="0.15em" />
+              </mrow>
             </mfrac>
           </mstyle>
         );
@@ -201,9 +205,11 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
     return (
       <mrow key={`op${index}`} onClick={placeCursor(steps, index + 1)}>
         {editable && !before && renderEmptyOperand(`op-left-${index}`, steps, index)}
-        <mpadded width={`${SLOT_WIDTH_EM}em`} lspace="0.08em">
+        <mrow>
+          <mspace width="0.08em" />
           <mo lspace="0" rspace="0">{symbol}</mo>
-        </mpadded>
+          <mspace width="0.08em" />
+        </mrow>
         {editable && !after && renderEmptyOperand(`op-right-${index}`, steps, index + 1)}
       </mrow>
     );
