@@ -20,19 +20,22 @@ const LAYOUT_BASIC: VirtualKeyboardLayout = {
   tooltip: "数字と基本操作",
   rows: [
     [
-      "\\frac{#0}{#?}",
-      "\\sqrt{#0}",
-      { label: "x<sup>y</sup>", insert: "^{#0}" },
-      { label: "|a|", insert: "\\left|#0\\right|" },
-      "\\pi",
-      "e",
-      { label: "x!", insert: "!" },
-      "[backspace]",
+      { latex: "(", variants: [")", "()"], shift:")" },
+      { latex: ">", variants: ["<", "≥", "≤"], shift:"<" },
+      "[7]", "[8]", "[9]", "\\div"
     ],
-    ["[7]", "[8]", "[9]", "\\div", "x", "y", "(", ")"],
-    ["[4]", "[5]", "[6]", "\\times", { label: ",", insert: "," }, "i", "\\infty", "[separator]"],
-    ["[1]", "[2]", "[3]", "-", "[left]", "[right]", "[up]", "[down]"],
-    ["[0]", "[.]", "+", "[separator]", "[separator]", "[separator]", "[separator]", "[return]"],
+    [
+      "\\frac{#0}{#?}",
+      // 試験導入: \encloseで√の中身を破線ボーダーの箱として描画する（Photomath風の空白枠線）。
+      // labelは通常の√表記のまま、挿入時だけ中身をenclose{roundedbox}で包む。
+      { latex: "\\sqrt{#0}", insert: "\\sqrt{\\enclose{roundedbox}[1px dashed #999]{#0}}" },
+      "[4]", "[5]", "[6]", "\\times"
+    ],
+    [
+      { label: "{#0}<sup>2</sup>", insert: "^2"},
+      { label: "x", variants:["y", "z"], shift: "y"}, 
+      "[1]", "[2]", "[3]", "-"],
+    ["\\pi", "%", "[0]", "[.]", "=", "+"],
   ],
 };
 
@@ -111,6 +114,8 @@ export const CALCULATOR_KEYBOARD_LAYOUTS: (VirtualKeyboardName | VirtualKeyboard
   LAYOUT_BASIC,
   LAYOUT_FUNCTIONS,
   LAYOUT_CALCULUS_EQ,
+  "numeric",
+  "symbols",
   "alphabetic",
   "greek",
 ];
