@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { CalcError, evaluate, formatResult, type AngleMode } from "./engine/calculatorEngine";
 import { evaluateAdvanced, isPlainNumeric } from "./engine/calcDispatch";
 import { tryEvaluateRational, formatFraction } from "./engine/rationalEngine";
-import { fractionToLatex, latexToLinear, numberToLatex, UnsupportedLatexError } from "./engine/latexBridge";
+import { fractionToLatex, latexToLinear, numberToLatex } from "./engine/latexBridge";
 import { useIsMobile } from "../../shared/lib/useIsMobile";
 import { CalculatorEquationPanel } from "./components/CalculatorEquationPanel";
 import { MathField, type MathFieldHandle } from "./components/MathField";
@@ -271,18 +271,21 @@ export function CalculatorView() {
   }, []);
 
   // 数値のみの式は既存の同期エンジンで即座に評価する（従来通り、カーソル位置エラー表示も維持）。
-  // 方程式(=)・微積分記法・文字式はcalcDispatchへ回し、必要な場合だけnerdamerを動的importする。
+  // 方程式(=)・微積分記法・文字式はcalcDispatch経由でCompute Engineに回す。
+  // latexToLinearが解釈できないLaTeX（∫/Σ/Π/lim等）はUnsupportedLatexErrorとして即エラー表示せず、
+  // Compute Engineが直接LaTeXを解釈できるようそのまま渡す（linear=nullでadvanced分岐へフォールスルー）。
   const equals = useCallback(() => {
     const currentLatex = mathRef.current?.getLatex() ?? latex;
-    let linear: string;
+    if (currentLatex.trim() === "" || isCalculating) return;
+
+    let linear: string | null;
     try {
       linear = latexToLinear(currentLatex);
-    } catch (e) {
-      setError(e instanceof UnsupportedLatexError ? e.message : "式を解釈できませんでした");
-      return;
+    } catch {
+      linear = null;
     }
-    if (linear.trim() === "" || isCalculating) return;
-    if (isPlainNumeric(linear)) {
+
+    if (linear !== null && linear.trim() !== "" && isPlainNumeric(linear)) {
       try {
         const value = evaluate(linear, { angleMode });
         const formatted = formatResult(value);
@@ -308,12 +311,12 @@ export function CalculatorView() {
     setError(null);
     setIsCalculating(true);
     setResultFractionLatex(null);
-    evaluateAdvanced(linear)
-      .then((formatted) => {
-        const formattedLatex = numberToLatex(formatted);
-        setResult(formatted);
-        setResultLatex(formattedLatex);
-        setHistory((prev) => [{ latex: currentLatex, resultLatex: formattedLatex }, ...prev].slice(0, 20));
+    evaluateAdvanced(currentLatex, angleMode)
+      .then((resultLatexStr) => {
+        // Compute Engineの戻り値はすでにLaTeXなのでnumberToLatexは不要
+        setResult(resultLatexStr);
+        setResultLatex(resultLatexStr);
+        setHistory((prev) => [{ latex: currentLatex, resultLatex: resultLatexStr }, ...prev].slice(0, 20));
         justEvaluated.current = true;
       })
       .catch((e) => setError(e instanceof Error ? e.message : "計算に失敗しました"))
@@ -323,7 +326,9 @@ export function CalculatorView() {
   // M+/M-: 表示中の結果（なければ現在の式を評価した値）をメモリに加減算する
   const memoryAdd = useCallback((sign: 1 | -1) => {
     let value: number;
-    if (result !== null) {
+    // resultはCompute Engine経由の結果だとLaTeX文字列（例: "\frac{1}{2}"）のことがあり、
+    // parseFloatでは数値化できないためNaNチェックでガードする。
+    if (result !== null && !Number.isNaN(parseFloat(result))) {
       value = parseFloat(result);
     } else {
       try {
