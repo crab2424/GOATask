@@ -12,6 +12,7 @@ declare module "react" {
       mstyle: MathMLProps & { displaystyle?: "true" | "false"; scriptlevel?: string };
       mrow: MathMLProps;
       mfrac: MathMLProps;
+      mpadded: MathMLProps & { width?: string; height?: string; depth?: string; lspace?: string; voffset?: string };
       msqrt: MathMLProps;
       msup: MathMLProps;
       mi: MathMLProps & { mathvariant?: "normal" | "italic" };

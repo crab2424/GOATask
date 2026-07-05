@@ -129,8 +129,14 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
           // displaystyleにすることで、通常の数字と同じtextstyleで組版する。
           <mstyle key={node.id} displaystyle="true" scriptlevel="0">
             <mfrac>
-              <mrow>{renderRow(node.num, stepTo("num"))}</mrow>
-              <mrow>{renderRow(node.den, stepTo("den"))}</mrow>
+              {/* 分子・分母をmpaddedで左右に少し広げ、横棒を中身より長く出す
+                  （連分数を入れ子にしたときに段の区切りが分かるように）。 */}
+              <mpadded width="+0.3em" lspace="0.15em">
+                <mrow>{renderRow(node.num, stepTo("num"))}</mrow>
+              </mpadded>
+              <mpadded width="+0.3em" lspace="0.15em">
+                <mrow>{renderRow(node.den, stepTo("den"))}</mrow>
+              </mpadded>
             </mfrac>
           </mstyle>
         );
