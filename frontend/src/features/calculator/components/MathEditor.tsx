@@ -137,7 +137,12 @@ export function MathEditor({ tree, cursor, onCursorChange, className = "" }: Mat
       case "sqrt":
         return (
           <msqrt key={node.id}>
-            <mrow>{renderRow(node.radicand, stepTo("radicand"))}</mrow>
+            <mrow>
+              {/* 中身が空/浅い数字だけのときに√の高さが変わって見えないよう、
+                  空スロットのプレースホルダと同じ高さ・深さを幅0で常に確保する。 */}
+              <mspace width="0" height="1em" depth="0em" />
+              {renderRow(node.radicand, stepTo("radicand"))}
+            </mrow>
           </msqrt>
         );
       case "sup":
