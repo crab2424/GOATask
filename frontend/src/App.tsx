@@ -24,6 +24,7 @@ function App() {
   const [calendarDate, setCalendarDate] = useState<string | null>(null);
   const [openTaskId, setOpenTaskId] = useState<number | null>(null);
   const [showMore, setShowMore] = useState(false);
+  const [hideBottomNav, setHideBottomNav] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const isMobile = useIsMobile();
   const [navCollapsed, setNavCollapsed] = useState(() =>
@@ -69,7 +70,7 @@ function App() {
       {mode === "calendar" && <CalendarView key={calendarDate ?? "calendar"} initialDate={calendarDate} />}
       {mode === "memos" && <MemoView />}
       {mode === "flashcards" && <FlashcardView />}
-      {mode === "calculator" && <CalculatorView />}
+      {mode === "calculator" && <CalculatorView onKeyboardVisibleChange={setHideBottomNav} />}
       {mode === "backup" && <BackupView />}
     </Suspense>
   );
@@ -82,6 +83,7 @@ function App() {
       health={health}
       navCollapsed={navCollapsed}
       showMore={showMore}
+      hideBottomNav={hideBottomNav}
       onModeChange={changeMode}
       onToggleNavigation={() => setNavCollapsed((value) => !value)}
       onShowMoreChange={setShowMore}

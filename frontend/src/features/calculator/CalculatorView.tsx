@@ -90,7 +90,13 @@ function isOperatorLatex(s: string): boolean {
   return false;
 }
 
-export function CalculatorView() {
+interface CalculatorViewProps {
+  /** モバイルの下部タブバーと仮想キーボードが重なるのを避けるため、
+   *  MathLive仮想キーボードの表示状態が変わるたびに呼ばれる（App.tsx側でnav表示を切替）。 */
+  onKeyboardVisibleChange?: (visible: boolean) => void;
+}
+
+export function CalculatorView({ onKeyboardVisibleChange }: CalculatorViewProps = {}) {
   const isMobile = useIsMobile();
   // 入力中の式は LaTeX 文字列で保持する（そのままCompute Engineに渡せる）
   const [latex, setLatex] = useState("");
@@ -259,7 +265,15 @@ export function CalculatorView() {
     // （筐体・スタイル・操作系はMathLive純正のまま）。グローバルシングルトンの
     // 設定なのでアンマウント時に既定へ戻す。
     kb.layouts = CALCULATOR_KEYBOARD_LAYOUTS;
+    // PCはcontentRef（電卓の描画領域）の実測に幅・左端を同期させる。モバイルは
+    // ページ外側の余白込みのcontentRef実測に合わせると狭くなる（体感の「キーボードが
+    // 狭い」の原因）ため、ビューポート全幅に固定する。
     const sync = () => {
+      if (isMobile) {
+        host.style.left = "0px";
+        host.style.width = "100%";
+        return;
+      }
       const rect = content.getBoundingClientRect();
       host.style.left = `${rect.left}px`;
       host.style.width = `${rect.width}px`;
@@ -268,13 +282,21 @@ export function CalculatorView() {
     const resizeObserver = new ResizeObserver(sync);
     resizeObserver.observe(content);
     window.addEventListener("resize", sync);
+    // キーボードの実際の表示/非表示（フォーカスによる自動表示・手動⌨トグル・
+    // タブ離脱時のhideを含む）に同期してモバイル下部ナビの表示を切り替える。
+    // フォーカス/blurではなくこのイベントに紐付けることで、⌨トグルで手動的に
+    // 閉じたときにも正しくナビが復帰する（=ナビが消えたまま操作不能になる事故を防ぐ）。
+    const handleToggle = () => onKeyboardVisibleChange?.(kb.visible);
+    kb.addEventListener("virtual-keyboard-toggle", handleToggle);
     return () => {
       resizeObserver.disconnect();
       window.removeEventListener("resize", sync);
+      kb.removeEventListener("virtual-keyboard-toggle", handleToggle);
       kb.container = null;
       kb.layouts = "default";
+      onKeyboardVisibleChange?.(false);
     };
-  }, []);
+  }, [isMobile, onKeyboardVisibleChange]);
 
   const displayedResultLatex = useMemo(() => {
     if (showDecimal && resultDecimalLatex) return resultDecimalLatex;
@@ -296,7 +318,7 @@ export function CalculatorView() {
       {/* 編集中の式は MathLive の math-field。分数・√・上付き指数・|·|・カーソル・空スロット
           プレースホルダを全部組込みで扱う。Step 2で自前キーパッドを撤去した分、
           表示領域を広めに確保する（Phase 9-Dの「mathfield領域拡大」を吸収）。 */}
-      <div className="min-h-[3.5rem] break-all text-left text-2xl text-slate-800 sm:min-h-[4.5rem] sm:text-3xl">
+      <div className="min-h-[5rem] break-all text-left text-2xl text-slate-800 sm:min-h-[7rem] sm:text-3xl">
         <MathField
           ref={mathRef}
           value={latex}
@@ -452,7 +474,7 @@ export function CalculatorView() {
   );
 
   return (
-    <div ref={contentRef} className="mx-auto max-w-3xl">
+    <div ref={contentRef} className="mx-auto max-w-5xl">
       {isMobile ? (
         <div className="space-y-2">
           {display}

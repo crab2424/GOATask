@@ -9,6 +9,8 @@ interface AppShellProps {
   health: string;
   navCollapsed: boolean;
   showMore: boolean;
+  /** trueの間、モバイル下部タブバーを一時的に隠す（電卓の仮想キーボード表示中など）。 */
+  hideBottomNav: boolean;
   onModeChange: (mode: Mode) => void;
   onToggleNavigation: () => void;
   onShowMoreChange: (show: boolean) => void;
@@ -26,11 +28,13 @@ export function AppShell(props: AppShellProps) {
             <button onClick={props.onLogout} className="rounded border border-slate-300 px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-100">ログアウト</button>
           </div>
         </header>
-        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 pb-20">{props.children}</main>
-        <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-slate-200 bg-white" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-          {PRIMARY_MOBILE_ITEMS.map((item) => <button key={item.id} onClick={() => props.onModeChange(item.id)} className={`flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] transition-colors ${props.mode === item.id ? "font-bold text-slate-900" : "text-slate-500"}`}><span className="text-lg leading-none">{item.icon}</span><span>{item.label}</span></button>)}
-          <button onClick={() => props.onShowMoreChange(true)} className={`flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] transition-colors ${SECONDARY_MOBILE_ITEMS.some((item) => item.id === props.mode) ? "font-bold text-slate-900" : "text-slate-500"}`}><span className="text-lg leading-none">•••</span><span>その他</span></button>
-        </nav>
+        <main className={`min-h-0 min-w-0 flex-1 overflow-y-auto p-3 ${props.hideBottomNav ? "pb-3" : "pb-20"}`}>{props.children}</main>
+        {!props.hideBottomNav && (
+          <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-slate-200 bg-white" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+            {PRIMARY_MOBILE_ITEMS.map((item) => <button key={item.id} onClick={() => props.onModeChange(item.id)} className={`flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] transition-colors ${props.mode === item.id ? "font-bold text-slate-900" : "text-slate-500"}`}><span className="text-lg leading-none">{item.icon}</span><span>{item.label}</span></button>)}
+            <button onClick={() => props.onShowMoreChange(true)} className={`flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] transition-colors ${SECONDARY_MOBILE_ITEMS.some((item) => item.id === props.mode) ? "font-bold text-slate-900" : "text-slate-500"}`}><span className="text-lg leading-none">•••</span><span>その他</span></button>
+          </nav>
+        )}
         {props.showMore && <div className="fixed inset-0 z-50 flex items-end bg-black/30" onClick={() => props.onShowMoreChange(false)}><div className="w-full rounded-t-2xl bg-white p-4 pb-8 shadow-xl" style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" }} onClick={(event) => event.stopPropagation()}><div className="mx-auto mb-4 h-1 w-10 rounded bg-slate-300" />{SECONDARY_MOBILE_ITEMS.map((item) => <button key={item.id} onClick={() => { props.onModeChange(item.id); props.onShowMoreChange(false); }} className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left hover:bg-slate-100"><span>{item.icon}</span><span>{item.label}</span></button>)}<button onClick={() => { props.onShowMoreChange(false); props.onLogout(); }} className="mt-2 flex w-full items-center gap-3 border-t px-4 py-3 text-left text-rose-600"><span>⏻</span><span>ログアウト</span></button></div></div>}
       </div>
     );

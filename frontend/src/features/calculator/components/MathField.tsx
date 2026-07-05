@@ -99,6 +99,17 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
     };
   }, []);
 
+  // 編集中は常に純正仮想キーボードを開いておく。手動⌨トグルで閉じた後も
+  // 再フォーカスすれば開き直る。blurでは閉じない（ツールバーボタンが内部で
+  // focus()を呼び戻すため、blur連動にすると開閉のちらつきが起きるのを避ける）。
+  useEffect(() => {
+    const el = elRef.current;
+    if (!el) return;
+    const handleFocus = () => window.mathVirtualKeyboard?.show();
+    el.addEventListener("focus", handleFocus);
+    return () => el.removeEventListener("focus", handleFocus);
+  }, []);
+
   // 双方向同期: 外部 value を反映（差分があるときだけ）。
   useEffect(() => {
     const el = elRef.current;
