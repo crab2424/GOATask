@@ -40,6 +40,7 @@ declare module "react" {
         React.HTMLAttributes<HTMLElement> & {
           class?: string;
           readonly?: boolean | "";
+          "math-virtual-keyboard-policy"?: "auto" | "manual" | "sandboxed";
         },
         HTMLElement
       >;
@@ -71,6 +72,14 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
 
   // 初期化: 仮想キーボードは自前キーパッドに任せて完全に切る。
   // MathLive のインライン変換（"pi" → π 等）も電卓では邪魔になるのでオフにする。
+  //
+  // mathVirtualKeyboardPolicyはJSXのmath-virtual-keyboard-policy属性でも指定しているが、
+  // タッチデバイスではMathLive内部のdocument"focusin"リスナー（isTouchCapable()時のみ有効）が
+  // フォーカス後300msで`mf.mathVirtualKeyboardPolicy === "auto"`かどうかを見て仮想キーボードを
+  // 自動表示する。属性は要素生成と同時にDOMへ反映されるためこのuseEffect（コミット後に非同期実行）
+  // より確実に間に合うが、念のためプロパティでも重ねて設定し、既に表示されてしまっていた場合に
+  // 備えて明示的にhide()も呼ぶ（グローバルシングルトンなので他のmath-fieldの状態と競合しないよう
+  // 呼び出し自体は無害＝非表示化のみ）。
   useEffect(() => {
     const el = elRef.current;
     if (!el) return;
@@ -80,6 +89,7 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
     // MathLive の既定インライン省略記法は電卓の意図と衝突しやすいので絞る
     el.inlineShortcuts = {};
     // 括弧の暗黙補完（\left ... \right の自動追加）はさせず、素の () を保つ
+    window.mathVirtualKeyboard?.hide();
   }, []);
 
   // 双方向同期: 外部 value を反映（差分があるときだけ）。
@@ -93,19 +103,16 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
     const el = elRef.current;
     if (!el) return;
     const handleInput = () => onChange?.(el.value);
-    // MathLive の "change" は blur でも発火するため Enter 判定には使わない。
-    // keydown で明示的に Enter を検知し、IME確定中の Enter は計算に回さない。
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && !e.isComposing) {
-        e.preventDefault();
-        onSubmit?.();
-      }
+    // MathLive は物理 Enter と仮想キーボードの commit（↩︎）の両方で change を発火する。
+    // blur 時にも同じイベントが発火するため、フォーカスを保持した commit だけを計算に回す。
+    const handleChange = () => {
+      if (el.hasFocus()) onSubmit?.();
     };
     el.addEventListener("input", handleInput);
-    el.addEventListener("keydown", handleKeyDown);
+    el.addEventListener("change", handleChange);
     return () => {
       el.removeEventListener("input", handleInput);
-      el.removeEventListener("keydown", handleKeyDown);
+      el.removeEventListener("change", handleChange);
     };
   }, [onChange, onSubmit]);
 
@@ -115,6 +122,7 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
       class={className}
       readonly={readOnly ? "" : undefined}
       aria-label={ariaLabel}
+      math-virtual-keyboard-policy="manual"
     >
       {value}
     </math-field>
