@@ -4,6 +4,7 @@
 // Compute Engine（@cortex-js/compute-engine、約100〜200KB）は必要になった時だけ動的importし、
 // 電卓の基本操作（数値のみの式）の初期表示速度を守る。
 import { tokenize, isFunctionName, CONSTANT_NAMES, type AngleMode } from "./calculatorEngine";
+import type { ComputeResult } from "./computeEngineEvaluate";
 
 export class DispatchError extends Error {}
 
@@ -40,8 +41,9 @@ export function isPlainNumeric(expr: string): boolean {
 /**
  * 数値のみの式以外（方程式・微積分・複素数・文字式）を Compute Engine で評価する。
  * latexはMathFieldが出力する生のLaTeX（latexToLinearを経由しない）。
+ * 戻り値は厳密値(exact)と小数近似(decimal、無意味なら null)の組（表示フォーマット層）。
  */
-export async function evaluateAdvanced(latex: string, angleMode: AngleMode): Promise<string> {
+export async function evaluateAdvanced(latex: string, angleMode: AngleMode): Promise<ComputeResult> {
   if (latex.trim() === "") throw new DispatchError("式が空です");
   const { evaluateWithComputeEngine, ComputeEngineError } = await import("./computeEngineEvaluate");
   try {
@@ -49,5 +51,29 @@ export async function evaluateAdvanced(latex: string, angleMode: AngleMode): Pro
   } catch (e) {
     if (e instanceof ComputeEngineError) throw new DispatchError(e.message);
     throw new DispatchError("計算に失敗しました");
+  }
+}
+
+/** 現在の式を展開する（=ボタンとは別の明示的なアクション）。 */
+export async function expandExpression(latex: string): Promise<string> {
+  if (latex.trim() === "") throw new DispatchError("式が空です");
+  const { expandWithComputeEngine, ComputeEngineError } = await import("./computeEngineEvaluate");
+  try {
+    return expandWithComputeEngine(latex);
+  } catch (e) {
+    if (e instanceof ComputeEngineError) throw new DispatchError(e.message);
+    throw new DispatchError("展開に失敗しました");
+  }
+}
+
+/** 現在の式を因数分解する。 */
+export async function factorExpression(latex: string): Promise<string> {
+  if (latex.trim() === "") throw new DispatchError("式が空です");
+  const { factorWithComputeEngine, ComputeEngineError } = await import("./computeEngineEvaluate");
+  try {
+    return factorWithComputeEngine(latex);
+  } catch (e) {
+    if (e instanceof ComputeEngineError) throw new DispatchError(e.message);
+    throw new DispatchError("因数分解に失敗しました");
   }
 }

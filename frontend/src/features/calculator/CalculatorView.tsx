@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalcError, evaluate, formatResult, type AngleMode } from "./engine/calculatorEngine";
-import { evaluateAdvanced, isPlainNumeric } from "./engine/calcDispatch";
+import { evaluateAdvanced, expandExpression, factorExpression, isPlainNumeric } from "./engine/calcDispatch";
 import { tryEvaluateRational, formatFraction } from "./engine/rationalEngine";
 import { fractionToLatex, latexToLinear, numberToLatex } from "./engine/latexBridge";
 import { useIsMobile } from "../../shared/lib/useIsMobile";
@@ -187,6 +187,18 @@ function loadFractionDisplayPref(): boolean {
   }
 }
 
+// 方程式・微積分・複素数・文字式（Compute Engine経由）の結果は厳密値(π・√・分数を保持)と
+// 小数近似の両方を持ちうる。どちらを見せるかも分数トグルと同じくlocalStorageに永続化する。
+const DECIMAL_DISPLAY_KEY = "goatask-calc-decimal-display";
+
+function loadDecimalDisplayPref(): boolean {
+  try {
+    return localStorage.getItem(DECIMAL_DISPLAY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function CalculatorView() {
   const isMobile = useIsMobile();
   const [subMode, setSubMode] = useState<CalcSubMode>("calc");
@@ -200,12 +212,16 @@ export function CalculatorView() {
   // 分数⇄小数の表示モード。ユーザーの好みとして計算をまたいで維持し、localStorageに永続化する
   // （直前の結果に分数が無いときは自然にresultFraction===nullで小数表示にフォールバックする）。
   const [showFraction, setShowFraction] = useState(loadFractionDisplayPref);
+  // Compute Engine経由（方程式・微積分・複素数・文字式）の結果が厳密値と数値上異なるときだけ入る
+  const [resultDecimalLatex, setResultDecimalLatex] = useState<string | null>(null);
+  // 厳密値⇄小数近似の表示モード。上記と同じ理由でlocalStorageに永続化する。
+  const [showDecimal, setShowDecimal] = useState(loadDecimalDisplayPref);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [angleMode, setAngleMode] = useState<AngleMode>("DEG");
   const [activePageId, setActivePageId] = useState(KEY_PAGES[0].id);
   const [memory, setMemory] = useState<number | null>(null);
-  // 方程式・微積分・複素数はnerdamerの動的import待ちが発生しうるため、その間の表示用フラグ
+  // 方程式・微積分・複素数・展開・因数分解はCompute Engineの動的import待ちが発生しうるため、その間の表示用フラグ
   const [isCalculating, setIsCalculating] = useState(false);
   // =直後に数字を打ったら新しい式を始める（実機電卓と同じ挙動）
   const justEvaluated = useRef(false);
@@ -216,6 +232,18 @@ export function CalculatorView() {
       const next = !v;
       try {
         localStorage.setItem(FRACTION_DISPLAY_KEY, next ? "1" : "0");
+      } catch {
+        // プライベートブラウジング等でlocalStorageが使えない場合は今回だけの切替に留める
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleDecimalDisplay = useCallback(() => {
+    setShowDecimal((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem(DECIMAL_DISPLAY_KEY, next ? "1" : "0");
       } catch {
         // プライベートブラウジング等でlocalStorageが使えない場合は今回だけの切替に留める
       }
@@ -239,6 +267,7 @@ export function CalculatorView() {
     setResult(null);
     setResultLatex(null);
     setResultFractionLatex(null);
+    setResultDecimalLatex(null);
   }, [result]);
 
   const isOperatorLatex = (s: string) => s.length === 1 && "+-*/%!".includes(s) || s === "\\times" || s === "\\div" || s.startsWith("^");
@@ -261,6 +290,7 @@ export function CalculatorView() {
     setResult(null);
     setResultLatex(null);
     setResultFractionLatex(null);
+    setResultDecimalLatex(null);
     setError(null);
     justEvaluated.current = false;
   }, []);
@@ -295,6 +325,7 @@ export function CalculatorView() {
         setResult(formatted);
         setResultLatex(formattedLatex);
         setResultFractionLatex(fracLatex);
+        setResultDecimalLatex(null);
         setError(null);
         setHistory((prev) => [{ latex: currentLatex, resultLatex: fracLatex && showFraction ? fracLatex : formattedLatex }, ...prev].slice(0, 20));
         justEvaluated.current = true;
@@ -312,8 +343,30 @@ export function CalculatorView() {
     setIsCalculating(true);
     setResultFractionLatex(null);
     evaluateAdvanced(currentLatex, angleMode)
-      .then((resultLatexStr) => {
+      .then(({ exact, decimal }) => {
         // Compute Engineの戻り値はすでにLaTeXなのでnumberToLatexは不要
+        setResult(exact);
+        setResultLatex(exact);
+        setResultDecimalLatex(decimal);
+        setHistory((prev) => [{ latex: currentLatex, resultLatex: decimal && showDecimal ? decimal : exact }, ...prev].slice(0, 20));
+        justEvaluated.current = true;
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "計算に失敗しました"))
+      .finally(() => setIsCalculating(false));
+  }, [latex, angleMode, isCalculating, showFraction, showDecimal]);
+
+  // 現在の式を展開/因数分解する（=とは独立したアクション）。数値のみの式判定は行わず常にCompute Engineへ渡す
+  // （calculatorEngineに展開/因数分解の概念はないため）。非対応の式はCompute Engine側が無変化で返す。
+  const expandOrFactor = useCallback((kind: "expand" | "factor") => {
+    const currentLatex = mathRef.current?.getLatex() ?? latex;
+    if (currentLatex.trim() === "" || isCalculating) return;
+    setError(null);
+    setIsCalculating(true);
+    setResultFractionLatex(null);
+    setResultDecimalLatex(null);
+    const task = kind === "expand" ? expandExpression(currentLatex) : factorExpression(currentLatex);
+    task
+      .then((resultLatexStr) => {
         setResult(resultLatexStr);
         setResultLatex(resultLatexStr);
         setHistory((prev) => [{ latex: currentLatex, resultLatex: resultLatexStr }, ...prev].slice(0, 20));
@@ -321,7 +374,7 @@ export function CalculatorView() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : "計算に失敗しました"))
       .finally(() => setIsCalculating(false));
-  }, [latex, angleMode, isCalculating, showFraction]);
+  }, [latex, isCalculating]);
 
   // M+/M-: 表示中の結果（なければ現在の式を評価した値）をメモリに加減算する
   const memoryAdd = useCallback((sign: 1 | -1) => {
@@ -374,8 +427,9 @@ export function CalculatorView() {
 
   const displayedResultLatex = useMemo(() => {
     if (showFraction && resultFractionLatex) return resultFractionLatex;
+    if (showDecimal && resultDecimalLatex) return resultDecimalLatex;
     return resultLatex;
-  }, [showFraction, resultFractionLatex, resultLatex]);
+  }, [showFraction, resultFractionLatex, showDecimal, resultDecimalLatex, resultLatex]);
 
   const display = (
     <div className={`rounded-xl border border-slate-200 bg-white shadow-sm ${isMobile ? "p-3" : "p-4"}`}>
@@ -418,6 +472,15 @@ export function CalculatorView() {
                 title="分数⇄小数を切替"
               >
                 {showFraction ? "0.x" : "a/b"}
+              </button>
+            )}
+            {resultDecimalLatex && (
+              <button
+                onClick={toggleDecimalDisplay}
+                className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-200"
+                title="厳密値⇄小数近似を切替"
+              >
+                {showDecimal ? "exact" : "0.x"}
               </button>
             )}
             <p className={`break-all font-bold text-slate-900 ${isMobile ? "text-2xl" : "text-3xl"}`}>
@@ -482,6 +545,20 @@ export function CalculatorView() {
         title="角度モード切替"
       >
         {angleMode === "DEG" ? "DEG⇄" : "RAD⇄"}
+      </button>
+      <button
+        onClick={() => expandOrFactor("expand")}
+        className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-300"
+        title="式を展開する"
+      >
+        展開
+      </button>
+      <button
+        onClick={() => expandOrFactor("factor")}
+        className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-300"
+        title="式を因数分解する"
+      >
+        因数分解
       </button>
       <div className="ml-auto flex flex-wrap gap-1">
         <button
@@ -554,6 +631,7 @@ export function CalculatorView() {
                 setResult(null);
                 setResultLatex(null);
                 setResultFractionLatex(null);
+                setResultDecimalLatex(null);
                 setError(null);
                 justEvaluated.current = false;
               }}
