@@ -21,6 +21,9 @@ interface HistoryEntry {
 // localStorageに永続化して次回起動後も覚えておく。9-B以前は分数トグルと2種類の
 // スイッチがあったが、9-Cで有理数評価をCompute Engineに一本化したため単一トグルに集約。
 const DECIMAL_DISPLAY_KEY = "goatask-calc-decimal-display";
+const HISTORY_KEY = "goatask-calc-history";
+const ANGLE_MODE_KEY = "goatask-calc-angle-mode";
+const MEMORY_KEY = "goatask-calc-memory";
 
 function loadDecimalDisplayPref(): boolean {
   try {
@@ -28,6 +31,47 @@ function loadDecimalDisplayPref(): boolean {
   } catch {
     return false;
   }
+}
+
+function loadHistory(): HistoryEntry[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as HistoryEntry[]).filter((e) =>
+      typeof e === "object" && e !== null && typeof e.latex === "string" && typeof e.resultLatex === "string"
+    ).slice(0, 20);
+  } catch {
+    return [];
+  }
+}
+
+function loadAngleMode(): AngleMode {
+  try {
+    const v = localStorage.getItem(ANGLE_MODE_KEY);
+    return v === "RAD" ? "RAD" : "DEG";
+  } catch {
+    return "DEG";
+  }
+}
+
+function loadMemory(): number | null {
+  try {
+    const v = localStorage.getItem(MEMORY_KEY);
+    if (v === null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveToStorage(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch { /* ignore */ }
 }
 
 // メモリ表示・MR挿入用の軽量な数値整形（12桁精度、末尾ゼロ除去）。旧calculatorEngine.formatResult
@@ -56,9 +100,9 @@ export function CalculatorView() {
   const [resultDecimalLatex, setResultDecimalLatex] = useState<string | null>(null);
   const [showDecimal, setShowDecimal] = useState(loadDecimalDisplayPref);
   const [error, setError] = useState<string | null>(null);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [angleMode, setAngleMode] = useState<AngleMode>("DEG");
-  const [memory, setMemory] = useState<number | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
+  const [angleMode, setAngleMode] = useState<AngleMode>(loadAngleMode);
+  const [memory, setMemory] = useState<number | null>(loadMemory);
   // Compute Engineの動的import待ちが発生しうるため、その間の表示用フラグ
   const [isCalculating, setIsCalculating] = useState(false);
   // =直後に数字を打ったら新しい式を始める（実機電卓と同じ挙動）
@@ -69,6 +113,10 @@ export function CalculatorView() {
   // MathLive仮想キーボードのcontainer先。実際のレイアウトには関与しない
   // position:fixedの専用ホスト（詳細は下のuseEffectのコメント参照）
   const vkHostRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => { saveToStorage(HISTORY_KEY, JSON.stringify(history)); }, [history]);
+  useEffect(() => { saveToStorage(ANGLE_MODE_KEY, angleMode); }, [angleMode]);
+  useEffect(() => { saveToStorage(MEMORY_KEY, memory !== null ? String(memory) : null); }, [memory]);
 
   const toggleDecimalDisplay = useCallback(() => {
     setShowDecimal((v) => {
@@ -375,15 +423,15 @@ export function CalculatorView() {
           <li key={i}>
             <button
               onClick={() => {
-                mathRef.current?.setLatex(entry.resultLatex);
-                setLatex(entry.resultLatex);
-                setResultLatex(null);
+                mathRef.current?.setLatex(entry.latex);
+                setLatex(entry.latex);
+                setResultLatex(entry.resultLatex);
                 setResultDecimalLatex(null);
                 setError(null);
-                justEvaluated.current = false;
+                justEvaluated.current = true;
               }}
               className="w-full rounded px-2 py-1 text-right text-sm hover:bg-slate-100"
-              title="結果を式に読み込む"
+              title="式と結果を復元"
             >
               <span className="text-slate-400"><MathExpression expression={entry.latex} /> =</span>{" "}
               <span className="font-semibold text-slate-800"><MathExpression expression={entry.resultLatex} /></span>
