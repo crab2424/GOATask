@@ -1,28 +1,9 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalcError, evaluate, formatResult, type AngleMode } from "./engine/calculatorEngine";
-import { evaluateAdvanced, expandExpression, factorExpression, isPlainNumeric } from "./engine/calcDispatch";
-import { tryEvaluateRational, formatFraction } from "./engine/rationalEngine";
-import { fractionToLatex, latexToLinear, numberToLatex } from "./engine/latexBridge";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { AngleMode } from "./engine/computeEngineEvaluate";
+import { approximate, evaluateExpression, expandExpression, factorExpression } from "./engine/calcDispatch";
 import { useIsMobile } from "../../shared/lib/useIsMobile";
-import { CalculatorEquationPanel } from "./components/CalculatorEquationPanel";
 import { MathField, type MathFieldHandle } from "./components/MathField";
 import { MathExpression } from "./components/MathExpression";
-
-// 解析パネルはnerdamer（約400KB）を含むため、開いたときだけ読み込む
-const CalculatorAnalysisPanel = lazy(() =>
-  import("./components/CalculatorAnalysisPanel").then((m) => ({
-    default: m.CalculatorAnalysisPanel,
-  })),
-);
-
-// 電卓内のサブモード。1画面に詰め込まず、モードごとにキーパッドを切り替える。
-type CalcSubMode = "calc" | "equation" | "analysis";
-
-const SUB_MODES: { id: CalcSubMode; label: string }[] = [
-  { id: "calc", label: "計算" },
-  { id: "equation", label: "方程式" },
-  { id: "analysis", label: "解析" },
-];
 
 interface HistoryEntry {
   /** 入力式の LaTeX（履歴クリックで復元できる） */
@@ -38,7 +19,7 @@ type Key =
   | { type: "insert"; label: string; latex: string; className?: string }
   | { type: "action"; label: string; action: CalcAction; className?: string };
 
-type CalcAction = "clear" | "backspace" | "equals" | "left" | "right";
+type CalcAction = "clear" | "backspace" | "equals" | "left" | "right" | "addRow";
 
 const KEY_OP = "bg-slate-200 hover:bg-slate-300 text-slate-800";
 const KEY_NUM = "bg-white hover:bg-slate-100 text-slate-900 border border-slate-200";
@@ -81,8 +62,6 @@ const ins = (label: string, latex?: string): Key => ({ type: "insert", label, la
 
 // Photomath形式のキーページ。ページ切替でキーパッド全体（数字含む）を入れ替えて
 // スペースを確保する。新しい分類はこの配列に要素を追加するだけで対応できる。
-// 注: 微積分・文字（x,y,ギリシャ文字等）のキーは入力のみ対応で、評価は式判定統合
-// （方程式・解析モードの融合）で対応予定。現状は = でエラーメッセージになる。
 interface KeyPage {
   id: string;
   label: string;
@@ -127,9 +106,34 @@ const KEY_PAGES: KeyPage[] = [
     label: "微積分",
     cols: 4,
     keys: [
-      // 積分・微分・極限・総和は表示上の記号だけ入れる（評価は未対応、将来Phase Dで対応）
-      [op("∫", "\\int"), op("d/dx", "\\frac{d}{dx}"), op("lim", "\\lim"), op("Σ", "\\sum")],
-      [op("Π", "\\prod"), op("dx", "dx"), op("∞", "\\infty"), op("f'", "'")],
+      // 積分・微分・極限・総和はテンプレート挿入（#0 に第1スロットのカーソル、#? は空スロット）。
+      // 定積分はサブ/スーパースクリプトを後から埋める形。Compute Engine（Phase 9-A）が
+      // これらを実際に評価してくれるようになったため、範囲が必要な形式（\sum_{n=1}^{10}n 等）
+      // まで一発で組めるようにする（9-A時点では \sum 単体挿入で範囲入力に難があった）。
+      [
+        op("∫", "\\int #0\\, d#?"),
+        op("d/dx", "\\frac{d}{dx} #0"),
+        op("lim", "\\lim_{#?\\to #?} #0"),
+        op("Σ", "\\sum_{#?=#?}^{#?} #0"),
+      ],
+      [op("Π", "\\prod_{#?=#?}^{#?} #0"), op("dx", "dx"), op("∞", "\\infty"), op("f'", "'")],
+    ],
+  },
+  {
+    id: "eq",
+    label: "方程式",
+    cols: 4,
+    keys: [
+      // 「=」文字挿入（旧方程式タブの入力に相当。Enter/=キーは計算実行アクションなので別）。
+      // 「連立」は\begin{cases}を空2行で挿入し1行目にカーソルを置く。中括弧は cases 環境が
+      // 行数に応じて自動伸縮する（可変ブレース）。+行は挿入した cases 内で行を追加する。
+      [
+        op("=", "="),
+        op("連立", "\\begin{cases}#0\\\\#?\\end{cases}"),
+        { type: "action", label: "+行", action: "addRow", className: KEY_OP },
+        op(">", ">"),
+      ],
+      [op("<", "<"), op("≥", "\\ge"), op("≤", "\\le"), op("≠", "\\ne")],
     ],
   },
   {
@@ -163,32 +167,9 @@ const PAGE_COLS_CLASS: Record<3 | 4 | 5 | 6, string> = {
   6: "grid-cols-6",
 };
 
-// 結果の分数トグル表示を出すかどうかを判定する。
-// 整数（分数にする意味がない）・厳密評価不可（sin/log/piなど）・桁数が大きすぎて
-// スマホ画面でも読みにくくなる場合はnull（トグルボタン自体を出さない）。
-// float評価値とも突き合わせ、rationalEngine側にバグがあっても誤った分数を出さないようにする。
-function pickFractionDisplay(linearExpr: string, value: number): string | null {
-  const rational = tryEvaluateRational(linearExpr);
-  if (!rational || rational.isInt()) return null;
-  if (rational.num.toString().replace("-", "").length > 12 || rational.den.toString().length > 12) return null;
-  if (Math.abs(rational.toNumber() - value) > 1e-9 * Math.max(1, Math.abs(value))) return null;
-  return formatFraction(rational);
-}
-
-// 分数⇄小数の表示モードはユーザーの好みなので計算のたびにリセットせず、
-// localStorageに永続化して次回起動後も覚えておく。
-const FRACTION_DISPLAY_KEY = "goatask-calc-fraction-display";
-
-function loadFractionDisplayPref(): boolean {
-  try {
-    return localStorage.getItem(FRACTION_DISPLAY_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-// 方程式・微積分・複素数・文字式（Compute Engine経由）の結果は厳密値(π・√・分数を保持)と
-// 小数近似の両方を持ちうる。どちらを見せるかも分数トグルと同じくlocalStorageに永続化する。
+// 厳密値⇄小数近似の表示モードはユーザーの好みなので計算のたびにリセットせず、
+// localStorageに永続化して次回起動後も覚えておく。9-B以前は分数トグルと2種類の
+// スイッチがあったが、9-Cで有理数評価をCompute Engineに一本化したため単一トグルに集約。
 const DECIMAL_DISPLAY_KEY = "goatask-calc-decimal-display";
 
 function loadDecimalDisplayPref(): boolean {
@@ -199,45 +180,41 @@ function loadDecimalDisplayPref(): boolean {
   }
 }
 
+// メモリ表示・MR挿入用の軽量な数値整形（12桁精度、末尾ゼロ除去）。旧calculatorEngine.formatResult
+// を電卓の中で使い続けるためだけに残していたが、9-Cでその依存を切るためこちらに移した。
+function formatNumber(value: number): string {
+  if (Number.isInteger(value) && Math.abs(value) < 1e15) return value.toString();
+  return parseFloat(value.toPrecision(12)).toString();
+}
+
+// 演算子キーの直後入力を検知して「=直後に演算子を打ったら結果に続けて計算」を有効化する。
+// LaTeXスニペットで演算子相当のものだけをtrueにする（分数キー\frac{#0}{#?}などは対象外）。
+function isOperatorLatex(s: string): boolean {
+  if (s.length === 1 && "+-*/%!<>=,".includes(s)) return true;
+  if (s === "\\times" || s === "\\div" || s === "\\ge" || s === "\\le" || s === "\\ne") return true;
+  if (s.startsWith("^")) return true;
+  return false;
+}
+
 export function CalculatorView() {
   const isMobile = useIsMobile();
-  const [subMode, setSubMode] = useState<CalcSubMode>("calc");
-  const [analysisOpened, setAnalysisOpened] = useState(false);
-  // 入力中の式は LaTeX 文字列で保持する（評価時に latexToLinear で線形化して既存パイプに渡す）
+  // 入力中の式は LaTeX 文字列で保持する（そのままCompute Engineに渡せる）
   const [latex, setLatex] = useState("");
-  const [result, setResult] = useState<string | null>(null);
+  // 直近の結果（厳密値のLaTeX）。=直後の継続入力・メモリ加算・履歴表示で参照する。
   const [resultLatex, setResultLatex] = useState<string | null>(null);
-  // 数値のみの式かつ厳密な有理数として計算できたときだけ入る（詳細はrationalEngine.ts）
-  const [resultFractionLatex, setResultFractionLatex] = useState<string | null>(null);
-  // 分数⇄小数の表示モード。ユーザーの好みとして計算をまたいで維持し、localStorageに永続化する
-  // （直前の結果に分数が無いときは自然にresultFraction===nullで小数表示にフォールバックする）。
-  const [showFraction, setShowFraction] = useState(loadFractionDisplayPref);
-  // Compute Engine経由（方程式・微積分・複素数・文字式）の結果が厳密値と数値上異なるときだけ入る
+  // Compute Engineの.N()で得た小数近似のLaTeX（厳密値と数値上一致する場合はnull）
   const [resultDecimalLatex, setResultDecimalLatex] = useState<string | null>(null);
-  // 厳密値⇄小数近似の表示モード。上記と同じ理由でlocalStorageに永続化する。
   const [showDecimal, setShowDecimal] = useState(loadDecimalDisplayPref);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [angleMode, setAngleMode] = useState<AngleMode>("DEG");
   const [activePageId, setActivePageId] = useState(KEY_PAGES[0].id);
   const [memory, setMemory] = useState<number | null>(null);
-  // 方程式・微積分・複素数・展開・因数分解はCompute Engineの動的import待ちが発生しうるため、その間の表示用フラグ
+  // Compute Engineの動的import待ちが発生しうるため、その間の表示用フラグ
   const [isCalculating, setIsCalculating] = useState(false);
   // =直後に数字を打ったら新しい式を始める（実機電卓と同じ挙動）
   const justEvaluated = useRef(false);
   const mathRef = useRef<MathFieldHandle | null>(null);
-
-  const toggleFractionDisplay = useCallback(() => {
-    setShowFraction((v) => {
-      const next = !v;
-      try {
-        localStorage.setItem(FRACTION_DISPLAY_KEY, next ? "1" : "0");
-      } catch {
-        // プライベートブラウジング等でlocalStorageが使えない場合は今回だけの切替に留める
-      }
-      return next;
-    });
-  }, []);
 
   const toggleDecimalDisplay = useCallback(() => {
     setShowDecimal((v) => {
@@ -256,21 +233,17 @@ export function CalculatorView() {
   const beginOrContinue = useCallback((continueFromResult: boolean) => {
     if (!justEvaluated.current) return;
     justEvaluated.current = false;
-    if (continueFromResult && result !== null) {
-      const startLatex = numberToLatex(result);
-      mathRef.current?.setLatex(startLatex);
-      setLatex(startLatex);
+    if (continueFromResult && resultLatex !== null) {
+      // 継続入力は「見た目そのまま」で行うため厳密値LaTeXをそのままmathfieldに戻す
+      mathRef.current?.setLatex(resultLatex);
+      setLatex(resultLatex);
       return;
     }
     mathRef.current?.setLatex("");
     setLatex("");
-    setResult(null);
     setResultLatex(null);
-    setResultFractionLatex(null);
     setResultDecimalLatex(null);
-  }, [result]);
-
-  const isOperatorLatex = (s: string) => s.length === 1 && "+-*/%!".includes(s) || s === "\\times" || s === "\\div" || s.startsWith("^");
+  }, [resultLatex]);
 
   const insertKey = useCallback((latexSnippet: string) => {
     setError(null);
@@ -287,9 +260,7 @@ export function CalculatorView() {
   const clearAll = useCallback(() => {
     mathRef.current?.setLatex("");
     setLatex("");
-    setResult(null);
     setResultLatex(null);
-    setResultFractionLatex(null);
     setResultDecimalLatex(null);
     setError(null);
     justEvaluated.current = false;
@@ -300,52 +271,23 @@ export function CalculatorView() {
     mathRef.current?.executeCommand(dir === "left" ? "moveToPreviousChar" : "moveToNextChar");
   }, []);
 
-  // 数値のみの式は既存の同期エンジンで即座に評価する（従来通り、カーソル位置エラー表示も維持）。
-  // 方程式(=)・微積分記法・文字式はcalcDispatch経由でCompute Engineに回す。
-  // latexToLinearが解釈できないLaTeX（∫/Σ/Π/lim等）はUnsupportedLatexErrorとして即エラー表示せず、
-  // Compute Engineが直接LaTeXを解釈できるようそのまま渡す（linear=nullでadvanced分岐へフォールスルー）。
+  // 連立方程式の追加行。MathLiveのaddRowAfterはcases/array/matrix等の表環境内でのみ機能する
+  // （範囲外で呼んでも無害＝false返却で無視される）ため、呼び出し側で環境判定は不要。
+  const addRow = useCallback(() => {
+    setError(null);
+    justEvaluated.current = false;
+    mathRef.current?.executeCommand("addRowAfter");
+  }, []);
+
+  // 現在の式を評価する。9-Cで旧数値式の同期高速パスを廃止し、全式をCompute Engine（動的import）に
+  // 一本化した。数値式でも初回だけ動的importの遅延（数百ms）が発生するが、以後はキャッシュされる。
   const equals = useCallback(() => {
     const currentLatex = mathRef.current?.getLatex() ?? latex;
     if (currentLatex.trim() === "" || isCalculating) return;
-
-    let linear: string | null;
-    try {
-      linear = latexToLinear(currentLatex);
-    } catch {
-      linear = null;
-    }
-
-    if (linear !== null && linear.trim() !== "" && isPlainNumeric(linear)) {
-      try {
-        const value = evaluate(linear, { angleMode });
-        const formatted = formatResult(value);
-        const formattedLatex = numberToLatex(formatted);
-        const fracStr = pickFractionDisplay(linear, value);
-        const fracLatex = fracStr ? fractionToLatex(fracStr) : null;
-        setResult(formatted);
-        setResultLatex(formattedLatex);
-        setResultFractionLatex(fracLatex);
-        setResultDecimalLatex(null);
-        setError(null);
-        setHistory((prev) => [{ latex: currentLatex, resultLatex: fracLatex && showFraction ? fracLatex : formattedLatex }, ...prev].slice(0, 20));
-        justEvaluated.current = true;
-      } catch (e) {
-        if (e instanceof CalcError) {
-          // エラー位置は線形化後の文字列上の位置でMathFieldへ逆写像できないため、メッセージのみ表示する
-          setError(e.message);
-        } else {
-          setError("計算に失敗しました");
-        }
-      }
-      return;
-    }
     setError(null);
     setIsCalculating(true);
-    setResultFractionLatex(null);
-    evaluateAdvanced(currentLatex, angleMode)
+    evaluateExpression(currentLatex, angleMode)
       .then(({ exact, decimal }) => {
-        // Compute Engineの戻り値はすでにLaTeXなのでnumberToLatexは不要
-        setResult(exact);
         setResultLatex(exact);
         setResultDecimalLatex(decimal);
         setHistory((prev) => [{ latex: currentLatex, resultLatex: decimal && showDecimal ? decimal : exact }, ...prev].slice(0, 20));
@@ -353,21 +295,19 @@ export function CalculatorView() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : "計算に失敗しました"))
       .finally(() => setIsCalculating(false));
-  }, [latex, angleMode, isCalculating, showFraction, showDecimal]);
+  }, [latex, angleMode, isCalculating, showDecimal]);
 
-  // 現在の式を展開/因数分解する（=とは独立したアクション）。数値のみの式判定は行わず常にCompute Engineへ渡す
-  // （calculatorEngineに展開/因数分解の概念はないため）。非対応の式はCompute Engine側が無変化で返す。
+  // 現在の式を展開/因数分解する（=とは独立したアクション）。非対応の式はCompute Engine側が
+  // 無変化で返す（例外にはならない設計）。
   const expandOrFactor = useCallback((kind: "expand" | "factor") => {
     const currentLatex = mathRef.current?.getLatex() ?? latex;
     if (currentLatex.trim() === "" || isCalculating) return;
     setError(null);
     setIsCalculating(true);
-    setResultFractionLatex(null);
     setResultDecimalLatex(null);
     const task = kind === "expand" ? expandExpression(currentLatex) : factorExpression(currentLatex);
     task
       .then((resultLatexStr) => {
-        setResult(resultLatexStr);
         setResultLatex(resultLatexStr);
         setHistory((prev) => [{ latex: currentLatex, resultLatex: resultLatexStr }, ...prev].slice(0, 20));
         justEvaluated.current = true;
@@ -376,23 +316,18 @@ export function CalculatorView() {
       .finally(() => setIsCalculating(false));
   }, [latex, isCalculating]);
 
-  // M+/M-: 表示中の結果（なければ現在の式を評価した値）をメモリに加減算する
-  const memoryAdd = useCallback((sign: 1 | -1) => {
-    let value: number;
-    // resultはCompute Engine経由の結果だとLaTeX文字列（例: "\frac{1}{2}"）のことがあり、
-    // parseFloatでは数値化できないためNaNチェックでガードする。
-    if (result !== null && !Number.isNaN(parseFloat(result))) {
-      value = parseFloat(result);
-    } else {
-      try {
-        value = evaluate(latexToLinear(mathRef.current?.getLatex() ?? latex), { angleMode });
-      } catch {
-        setError("メモリに保存する値を計算できません");
-        return;
-      }
+  // M+/M-: 表示中の結果（なければ現在の式）をCompute Engineで数値化してメモリに加減算する。
+  // Compute Engineは分数・π・√を含む厳密値も.N()で数値化できるため、旧nerdamerフォールバックは不要。
+  const memoryAdd = useCallback(async (sign: 1 | -1) => {
+    const target = resultLatex ?? mathRef.current?.getLatex() ?? latex;
+    if (target.trim() === "") { setError("メモリに保存する値がありません"); return; }
+    try {
+      const value = await approximate(target, angleMode);
+      setMemory((m) => (m ?? 0) + sign * value);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "メモリに保存する値を計算できません");
     }
-    setMemory((m) => (m ?? 0) + sign * value);
-  }, [result, latex, angleMode]);
+  }, [resultLatex, latex, angleMode]);
 
   const handleKey = useCallback((key: Key) => {
     if (key.type === "insert") {
@@ -405,13 +340,13 @@ export function CalculatorView() {
       case "equals": equals(); break;
       case "left": moveCursor("left"); break;
       case "right": moveCursor("right"); break;
+      case "addRow": addRow(); break;
     }
-  }, [insertKey, clearAll, backspace, equals, moveCursor]);
+  }, [insertKey, clearAll, backspace, equals, moveCursor, addRow]);
 
   // MathField が focus 中でないときだけ物理キーボードで補助入力を受ける
   // （focus 中は MathLive 本体が正しく処理してくれる）。
   useEffect(() => {
-    if (subMode !== "calc") return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.isComposing) return;
       const target = e.target as HTMLElement | null;
@@ -423,20 +358,19 @@ export function CalculatorView() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [subMode, equals, clearAll]);
+  }, [equals, clearAll]);
 
   const displayedResultLatex = useMemo(() => {
-    if (showFraction && resultFractionLatex) return resultFractionLatex;
     if (showDecimal && resultDecimalLatex) return resultDecimalLatex;
     return resultLatex;
-  }, [showFraction, resultFractionLatex, showDecimal, resultDecimalLatex, resultLatex]);
+  }, [showDecimal, resultDecimalLatex, resultLatex]);
 
   const display = (
     <div className={`rounded-xl border border-slate-200 bg-white shadow-sm ${isMobile ? "p-3" : "p-4"}`}>
       <div className="mb-1 flex min-h-8 items-center gap-2 text-[11px] font-semibold text-slate-400">
         <div className="flex items-center gap-2">
           <span title="三角関数の角度モード">角度 {angleMode}</span>
-          {memory !== null && <span title={`メモリ: ${formatResult(memory)}`}>M</span>}
+          {memory !== null && <span title={`メモリ: ${formatNumber(memory)}`}>M</span>}
         </div>
         <div className="ml-auto flex gap-1" aria-label="式のカーソル移動">
           <button onClick={() => moveCursor("left")} className="min-h-8 min-w-9 rounded-md bg-slate-100 text-sm text-slate-600 hover:bg-slate-200" aria-label="カーソルを左へ">←</button>
@@ -465,15 +399,6 @@ export function CalculatorView() {
           <p className="text-sm text-slate-400">計算中…</p>
         ) : (
           <>
-            {resultFractionLatex && (
-              <button
-                onClick={toggleFractionDisplay}
-                className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-200"
-                title="分数⇄小数を切替"
-              >
-                {showFraction ? "0.x" : "a/b"}
-              </button>
-            )}
             {resultDecimalLatex && (
               <button
                 onClick={toggleDecimalDisplay}
@@ -569,20 +494,20 @@ export function CalculatorView() {
           MC
         </button>
         <button
-          onClick={() => { if (memory !== null) insertKey(formatResult(memory)); }}
+          onClick={() => { if (memory !== null) insertKey(formatNumber(memory)); }}
           disabled={memory === null}
           className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-300 disabled:opacity-40"
         >
           MR
         </button>
         <button
-          onClick={() => memoryAdd(1)}
+          onClick={() => void memoryAdd(1)}
           className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-300"
         >
           M+
         </button>
         <button
-          onClick={() => memoryAdd(-1)}
+          onClick={() => void memoryAdd(-1)}
           className="rounded-lg bg-slate-200 px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-300"
         >
           M−
@@ -628,9 +553,7 @@ export function CalculatorView() {
               onClick={() => {
                 mathRef.current?.setLatex(entry.resultLatex);
                 setLatex(entry.resultLatex);
-                setResult(null);
                 setResultLatex(null);
-                setResultFractionLatex(null);
                 setResultDecimalLatex(null);
                 setError(null);
                 justEvaluated.current = false;
@@ -656,73 +579,32 @@ export function CalculatorView() {
     </details>
   );
 
+  const keypad = (
+    <>
+      {calcToolbar}
+      {pageTabs}
+      {renderPage(activePage)}
+    </>
+  );
+
   return (
     <div className="mx-auto max-w-3xl">
-      <div className={`${isMobile ? "mb-2" : "mb-3"} flex items-center gap-1 overflow-x-auto`}>
-        {SUB_MODES.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => {
-              setSubMode(m.id);
-              if (m.id === "analysis") setAnalysisOpened(true);
-            }}
-            aria-pressed={subMode === m.id}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-sm transition-colors ${
-              subMode === m.id
-                ? "bg-slate-900 font-semibold text-white"
-                : "bg-white text-slate-600 hover:bg-slate-100"
-            }`}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-
-      <div hidden={subMode !== "calc"}>
-        {(() => {
-          const keypad = (
-            <>
-              {calcToolbar}
-              {pageTabs}
-              {renderPage(activePage)}
-            </>
-          );
-          return isMobile ? (
-            <div className="space-y-2">
-              {display}
-              {keypad}
-              {mobileHistory}
-            </div>
-          ) : (
-            <div className="grid grid-cols-[1fr_240px] gap-4">
-              <div className="space-y-3">
-                {display}
-                {keypad}
-                <p className="text-center text-[11px] text-slate-400">
-                  MathField 直接タイプ対応: 数字・演算子・関数名(sinなど)・Enter(=)・カーソル移動。フォーカスが外れているときは Enter/Esc のみ受け付け。
-                </p>
-              </div>
-              <div>{historyPanel}</div>
-            </div>
-          );
-        })()}
-      </div>
-
-      <div hidden={subMode !== "equation"}>
-        <CalculatorEquationPanel />
-      </div>
-
-      {analysisOpened && (
-        <div hidden={subMode !== "analysis"}>
-          <Suspense
-            fallback={
-              <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
-                読み込み中...
-              </div>
-            }
-          >
-            <CalculatorAnalysisPanel />
-          </Suspense>
+      {isMobile ? (
+        <div className="space-y-2">
+          {display}
+          {keypad}
+          {mobileHistory}
+        </div>
+      ) : (
+        <div className="grid grid-cols-[1fr_240px] gap-4">
+          <div className="space-y-3">
+            {display}
+            {keypad}
+            <p className="text-center text-[11px] text-slate-400">
+              MathField 直接タイプ対応: 数字・演算子・関数名(sinなど)・Enter(=)・カーソル移動。フォーカスが外れているときは Enter/Esc のみ受け付け。
+            </p>
+          </div>
+          <div>{historyPanel}</div>
         </div>
       )}
     </div>
