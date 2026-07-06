@@ -314,7 +314,7 @@ export function CalculatorView({ onKeyboardVisibleChange }: CalculatorViewProps 
           <span title="三角関数の角度モード">角度 {angleMode}</span>
           {memory !== null && <span title={`メモリ: ${formatNumber(memory)}`}>M</span>}
         </div>
-        <div className="ml-auto flex gap-1" aria-label="式のカーソル移動">
+        <div className="ml-auto flex gap-1" aria-label="式のカーソル移動" onMouseDown={(e) => e.preventDefault()}>
           <button onClick={() => moveCursor("left")} className="min-h-8 min-w-9 rounded-md bg-slate-100 text-sm text-slate-600 hover:bg-slate-200" aria-label="カーソルを左へ">←</button>
           <button onClick={() => moveCursor("right")} className="min-h-8 min-w-9 rounded-md bg-slate-100 text-sm text-slate-600 hover:bg-slate-200" aria-label="カーソルを右へ">→</button>
         </div>
@@ -345,6 +345,7 @@ export function CalculatorView({ onKeyboardVisibleChange }: CalculatorViewProps 
             {resultDecimalLatex && (
               <button
                 onClick={toggleDecimalDisplay}
+                onMouseDown={(e) => e.preventDefault()}
                 className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-200"
                 title="厳密値⇄小数近似を切替"
               >
@@ -367,8 +368,15 @@ export function CalculatorView({ onKeyboardVisibleChange }: CalculatorViewProps 
     </div>
   );
 
+  // ツールバー・履歴の各ボタンは、押してもmathfieldからフォーカスを奪わない
+  // （＝仮想キーボードの開閉に干渉しない）ようにする。mousedownの既定動作である
+  // フォーカス移動をpreventDefaultで止める（クリックのonClickは通常通り発火する）。
+  // 個々のボタンではなく親divに1回書けば配下の全ボタンに効く（バブリング後の
+  // デフォルトアクション抑止のため、祖先でのpreventDefaultでも有効）。
+  const suppressFocusSteal = (e: React.MouseEvent) => e.preventDefault();
+
   const calcToolbar = (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5" onMouseDown={suppressFocusSteal}>
       <button
         onClick={clearAll}
         className="rounded-lg bg-rose-100 px-3 py-1.5 text-sm font-semibold text-rose-700 hover:bg-rose-200"
@@ -434,7 +442,7 @@ export function CalculatorView({ onKeyboardVisibleChange }: CalculatorViewProps 
   );
 
   const historyPanel = history.length > 0 && (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm" onMouseDown={suppressFocusSteal}>
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-xs font-semibold text-slate-500">履歴</h3>
         <button
@@ -469,7 +477,7 @@ export function CalculatorView({ onKeyboardVisibleChange }: CalculatorViewProps 
   );
 
   const mobileHistory = history.length > 0 && (
-    <details className="rounded-xl border border-slate-200 bg-white shadow-sm">
+    <details className="rounded-xl border border-slate-200 bg-white shadow-sm" onMouseDown={suppressFocusSteal}>
       <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-500">
         履歴（{history.length}件）
       </summary>

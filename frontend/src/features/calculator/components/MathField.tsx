@@ -16,7 +16,6 @@ export interface MathFieldHandle {
   insert: (latex: string) => void;
   executeCommand: (command: string) => void;
   focus: () => void;
-  blur: () => void;
   clear: () => void;
   getLatex: () => string;
   setLatex: (latex: string) => void;
@@ -62,7 +61,6 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
       elRef.current?.focus();
     },
     focus: () => elRef.current?.focus(),
-    blur: () => elRef.current?.blur(),
     clear: () => {
       if (elRef.current) elRef.current.value = "";
     },
@@ -101,52 +99,40 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
     };
   }, []);
 
-  // キーボードの開閉と入力可否（フォーカス）を1:1に対応させる:
-  //   focus → show / blur → hide / ⌨トグルで閉じた → blur。
-  // 実装上の注意点2つ:
-  // - blur→hideは即時ではなく短い猶予付き。ツールバーボタン（AC/MR等）は内部で
-  //   focus()を呼び戻すため、即時hideだと一瞬の開閉ちらつきになる。猶予中に
-  //   フォーカスが戻ればhideをキャンセルする。
-  // - ⌨トグルで閉じた直後、MathLiveはmathfieldを再フォーカスする。そのまま
-  //   focus→showが走ると「一瞬閉じてまた開く」ループになるため、トグルによる
-  //   非表示化の直後だけshowを抑止し、代わりにblurして閉じた状態を保つ。
+  // キーボードの開閉と入力可否（フォーカス）を1:1に対応させる: focus→show / blur→hide。
+  // 遅延タイマーは使わない（ツールバー操作でのちらつき防止に200ms猶予を入れていたが、
+  // 素早い連続操作と衝突して「押しても閉じない/閉じたままになる」不具合を起こしたため撤廃）。
+  // ツールバー・履歴側のボタンは呼び出し元（CalculatorView）でmousedownのフォーカス
+  // 移動自体をpreventDefaultして止めており、そもそもここでblurが起きない前提。
+  //
+  // MathLive純正の⌨トグルボタン（shadow DOM内、part="virtual-keyboard-toggle"）は
+  // クリックされると自分でshow()/hide()を呼ぶので、こちらのfocus連動が重ねて反応すると
+  // 「一瞬閉じてまた開く」「連打すると閉じたままになる」といった競合を起こしうる。
+  // クリック対象がそのトグルボタン自身のときだけ、直後のfocusin 1回を無視する
+  // （時間ではなく実際のクリック対象で判定するため、連打しても誤動作しない）。
   useEffect(() => {
     const el = elRef.current;
     const kb = window.mathVirtualKeyboard;
     if (!el || !kb) return;
-    let hideTimer: number | undefined;
-    let suppressShowUntil = 0;
+    let ignoreNextFocus = false;
+    const handlePointerDown = (e: PointerEvent) => {
+      ignoreNextFocus = !!(e.target as Element | null)?.closest('[part="virtual-keyboard-toggle"]');
+    };
     const handleFocusIn = () => {
-      if (hideTimer !== undefined) {
-        clearTimeout(hideTimer);
-        hideTimer = undefined;
-      }
-      if (Date.now() < suppressShowUntil) {
-        el.blur();
+      if (ignoreNextFocus) {
+        ignoreNextFocus = false;
         return;
       }
       kb.show();
     };
-    const handleFocusOut = () => {
-      hideTimer = window.setTimeout(() => {
-        hideTimer = undefined;
-        if (!el.hasFocus()) kb.hide();
-      }, 200);
-    };
-    const handleToggle = () => {
-      if (!kb.visible && el.hasFocus()) {
-        suppressShowUntil = Date.now() + 400;
-        el.blur();
-      }
-    };
+    const handleFocusOut = () => kb.hide();
+    el.addEventListener("pointerdown", handlePointerDown, true);
     el.addEventListener("focusin", handleFocusIn);
     el.addEventListener("focusout", handleFocusOut);
-    kb.addEventListener("virtual-keyboard-toggle", handleToggle);
     return () => {
-      if (hideTimer !== undefined) clearTimeout(hideTimer);
+      el.removeEventListener("pointerdown", handlePointerDown, true);
       el.removeEventListener("focusin", handleFocusIn);
       el.removeEventListener("focusout", handleFocusOut);
-      kb.removeEventListener("virtual-keyboard-toggle", handleToggle);
     };
   }, []);
 
