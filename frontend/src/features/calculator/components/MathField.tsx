@@ -101,15 +101,53 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
     };
   }, []);
 
-  // 編集中は常に純正仮想キーボードを開いておく。手動⌨トグルで閉じた後も
-  // 再フォーカスすれば開き直る。blurでは閉じない（ツールバーボタンが内部で
-  // focus()を呼び戻すため、blur連動にすると開閉のちらつきが起きるのを避ける）。
+  // キーボードの開閉と入力可否（フォーカス）を1:1に対応させる:
+  //   focus → show / blur → hide / ⌨トグルで閉じた → blur。
+  // 実装上の注意点2つ:
+  // - blur→hideは即時ではなく短い猶予付き。ツールバーボタン（AC/MR等）は内部で
+  //   focus()を呼び戻すため、即時hideだと一瞬の開閉ちらつきになる。猶予中に
+  //   フォーカスが戻ればhideをキャンセルする。
+  // - ⌨トグルで閉じた直後、MathLiveはmathfieldを再フォーカスする。そのまま
+  //   focus→showが走ると「一瞬閉じてまた開く」ループになるため、トグルによる
+  //   非表示化の直後だけshowを抑止し、代わりにblurして閉じた状態を保つ。
   useEffect(() => {
     const el = elRef.current;
-    if (!el) return;
-    const handleFocus = () => window.mathVirtualKeyboard?.show();
-    el.addEventListener("focus", handleFocus);
-    return () => el.removeEventListener("focus", handleFocus);
+    const kb = window.mathVirtualKeyboard;
+    if (!el || !kb) return;
+    let hideTimer: number | undefined;
+    let suppressShowUntil = 0;
+    const handleFocusIn = () => {
+      if (hideTimer !== undefined) {
+        clearTimeout(hideTimer);
+        hideTimer = undefined;
+      }
+      if (Date.now() < suppressShowUntil) {
+        el.blur();
+        return;
+      }
+      kb.show();
+    };
+    const handleFocusOut = () => {
+      hideTimer = window.setTimeout(() => {
+        hideTimer = undefined;
+        if (!el.hasFocus()) kb.hide();
+      }, 200);
+    };
+    const handleToggle = () => {
+      if (!kb.visible && el.hasFocus()) {
+        suppressShowUntil = Date.now() + 400;
+        el.blur();
+      }
+    };
+    el.addEventListener("focusin", handleFocusIn);
+    el.addEventListener("focusout", handleFocusOut);
+    kb.addEventListener("virtual-keyboard-toggle", handleToggle);
+    return () => {
+      if (hideTimer !== undefined) clearTimeout(hideTimer);
+      el.removeEventListener("focusin", handleFocusIn);
+      el.removeEventListener("focusout", handleFocusOut);
+      kb.removeEventListener("virtual-keyboard-toggle", handleToggle);
+    };
   }, []);
 
   // 双方向同期: 外部 value を反映（差分があるときだけ）。

@@ -289,12 +289,8 @@ export function CalculatorView({ onKeyboardVisibleChange }: CalculatorViewProps 
     // タブ離脱時のhideを含む）に同期してモバイル下部ナビの表示を切り替える。
     // フォーカス/blurではなくこのイベントに紐付けることで、⌨トグルで手動的に
     // 閉じたときにも正しくナビが復帰する（=ナビが消えたまま操作不能になる事故を防ぐ）。
-    // 併せて、キーボードが閉じたらmathfieldもblurする。「編集中は常にキーボードが
-    // 開いている」（focus→show）の逆方向を保証し、キーボード開閉＝入力可否を1:1にする。
-    const handleToggle = () => {
-      onKeyboardVisibleChange?.(kb.visible);
-      if (!kb.visible) mathRef.current?.blur();
-    };
+    // キーボード開閉と入力可否（フォーカス）の1:1対応はMathField側が担う。
+    const handleToggle = () => onKeyboardVisibleChange?.(kb.visible);
     kb.addEventListener("virtual-keyboard-toggle", handleToggle);
     return () => {
       resizeObserver.disconnect();

@@ -3,6 +3,10 @@
 import { useMemo } from "react";
 import { convertLatexToMarkup } from "mathlive";
 import "mathlive/fonts.css";
+// convertLatexToMarkup が生成する ML__* クラスのスタイル定義。MathLive内部では
+// 仮想キーボードの表示中だけ同等のCSSをdocumentへ注入し非表示で解放するため、
+// これを読み込まないと「キーボードを閉じている間だけ履歴・結果の数式が崩れる」。
+import "mathlive/static.css";
 
 interface MathExpressionProps {
   /** LaTeX 文字列。単純な数字や式もそのまま LaTeX として組版可能 */
