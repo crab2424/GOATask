@@ -147,24 +147,60 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
   }, []);
 
   // 全角入力の半角強制変換。
-  // 主経路: keydown を capture で横取りし、event.key が全角1文字ならMathLiveへ渡さず
-  // 半角変換して insert する（<math-field> host のcaptureは内部 keyboardSink のリスナーより
-  // 先に発火するため、全角文字がEditorの値に混入しない）。IME合成中（event.key === "Process"
-  // や isComposing）は素通しする。
-  // 保険経路: macOSの「全角英数」等、単発の全角文字でもIME合成(compositionstart/end)を経由する
-  // 環境向け。MathLiveは合成確定時に1文字ずつ通常入力として解釈するため、未知の全角記号は
-  // 演算子ではなく別種のノード（テキスト扱い相当）として挿入されてしまう。そのため単純に
-  // LaTeX文字列上の見た目の文字だけを半角へ置換しても、ノードの種別（演算子かどうか）は
-  // 全角のまま挿入されたときのものが残り「見た目は半角なのに記号として認識されない」バグになる
-  // （実機確認で判明）。正しくは、MathLiveが挿入した分をいったん削除し、公開APIの insert() で
-  // 半角文字を正規のパスから打ち直す（insert()は"+"等を正しく演算子として解釈する）。
+  //
+  // 方式: MathLiveからIME合成(composition)処理を完全に奪う。<math-field> host に
+  // capture: true で composition系イベントを登録し stopImmediatePropagation することで、
+  // MathLive内部のkeyboardSinkのリスナーには一切届かせない（captureは祖先→子孫の順に
+  // 発火するため、hostで止めればsink側は実行されない）。これにより:
+  // - MathLiveのCompositionAtom（全角の未確定プレビュー。macOSでは合成がEnter確定まで
+  //   開きっぱなしになるため、これが「全角のまま表示され続ける」原因だった）が作られない
+  // - MathLive自身による合成確定文字列の挿入も起きない＝二重入力が構造的に不可能
+  // 代わりに compositionupdate のたびに ev.data を半角変換し、前回挿入分との差分だけを
+  // deleteBackward / insert() で反映する（合成中から半角の通常ノードとして表示され、
+  // 「打った瞬間に半角で出る」を実現。insert()経由なので演算子も正しく認識される）。
+  // バックスペースでの合成中削除・Escキャンセル（data空→全削除）も差分処理で吸収される。
+  //
+  // 合成中の生keydown（isComposing/Process）と合成由来のinput（insertCompositionText）も
+  // hostのcaptureで遮断する。前者はMathLiveが生キーとして誤処理する経路の遮断、後者は
+  // MathLiveのinputハンドラが合成中にsinkのtextContentをクリアしてIMEを乱す事故の予防
+  // （MathLive自身が発火するinputイベントはisComposing=falseなので素通りし、onChange同期
+  // には影響しない）。sinkに残る合成テキストはcompositionendでこちらがクリアする
+  // （shadow rootはopenなのでcomposedPath()[0]で実ターゲット＝sinkに届く）。
+  //
+  // 合成を経由しない全角1文字keydown（Windowsの直接入力等）は従来通りその場で半角insert。
   // リスナーは <math-field> 自身にのみ付けるため、他の入力欄（メモ等）には一切影響しない
   // ＝電卓Editor外では通常のIME入力のまま（「モード切り替え時には戻す」相当）。
+  //
+  // 注意: MathLive内部のイベント配線（sinkのcapture登録・compositionInProgressフラグ・
+  // inputハンドラのsinkクリア）を外から遮断する実装のため、MathLiveのバージョン更新時は
+  // この節の前提が変わっていないか要確認。
   useEffect(() => {
     const el = elRef.current;
     if (!el) return;
+    // この合成セッションで挿入済みの（半角変換後の）テキスト
+    let composedText = "";
+    const applyComposition = (data: string) => {
+      const next = toHalfWidth(data).replace(/ /g, "");
+      let prefix = 0;
+      while (
+        prefix < composedText.length &&
+        prefix < next.length &&
+        composedText[prefix] === next[prefix]
+      ) {
+        prefix++;
+      }
+      for (let i = prefix; i < composedText.length; i++) {
+        el.executeCommand("deleteBackward");
+      }
+      const suffix = next.slice(prefix);
+      if (suffix.length > 0) el.insert(suffix, { focus: true });
+      composedText = next;
+    };
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.isComposing || e.key === "Process") return;
+      if (e.isComposing || e.key === "Process") {
+        e.stopImmediatePropagation();
+        return;
+      }
       if (e.key.length === 1 && FULLWIDTH_RE.test(e.key)) {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -173,22 +209,40 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
         if (half !== " ") el.insert(half, { focus: true });
       }
     };
+    const handleCompositionStart = (ev: CompositionEvent) => {
+      ev.stopImmediatePropagation();
+      composedText = "";
+    };
+    const handleCompositionUpdate = (ev: CompositionEvent) => {
+      ev.stopImmediatePropagation();
+      applyComposition(ev.data ?? "");
+    };
     const handleCompositionEnd = (ev: CompositionEvent) => {
-      const composed = ev.data ?? "";
-      if (!FULLWIDTH_RE.test(composed)) return;
-      // MathLiveが合成確定時に挿入した文字数ぶんだけ削除して打ち消す
-      const insertedCount = Array.from(composed).length;
-      for (let i = 0; i < insertedCount; i++) el.executeCommand("deleteBackward");
-      const half = toHalfWidth(composed).replace(/ /g, "");
-      if (half.length > 0) el.insert(half, { focus: true });
+      ev.stopImmediatePropagation();
+      applyComposition(ev.data ?? "");
+      composedText = "";
+      const sink = ev.composedPath()[0];
+      if (sink instanceof HTMLElement && sink !== el) sink.textContent = "";
+    };
+    const handleInput = (ev: Event) => {
+      const ie = ev as InputEvent;
+      if (ie.isComposing || ie.inputType === "insertCompositionText") {
+        ev.stopImmediatePropagation();
+      }
     };
     el.addEventListener("keydown", handleKeyDown, true);
-    el.addEventListener("compositionend", handleCompositionEnd);
+    el.addEventListener("compositionstart", handleCompositionStart, true);
+    el.addEventListener("compositionupdate", handleCompositionUpdate, true);
+    el.addEventListener("compositionend", handleCompositionEnd, true);
+    el.addEventListener("input", handleInput, true);
     return () => {
       el.removeEventListener("keydown", handleKeyDown, true);
-      el.removeEventListener("compositionend", handleCompositionEnd);
+      el.removeEventListener("compositionstart", handleCompositionStart, true);
+      el.removeEventListener("compositionupdate", handleCompositionUpdate, true);
+      el.removeEventListener("compositionend", handleCompositionEnd, true);
+      el.removeEventListener("input", handleInput, true);
     };
-  }, [onChange]);
+  }, []);
 
   // 双方向同期: 外部 value を反映（差分があるときだけ）。
   useEffect(() => {
