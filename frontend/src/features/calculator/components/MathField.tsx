@@ -16,6 +16,7 @@ export interface MathFieldHandle {
   insert: (latex: string) => void;
   executeCommand: (command: string) => void;
   focus: () => void;
+  blur: () => void;
   clear: () => void;
   getLatex: () => string;
   setLatex: (latex: string) => void;
@@ -61,6 +62,7 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
       elRef.current?.focus();
     },
     focus: () => elRef.current?.focus(),
+    blur: () => elRef.current?.blur(),
     clear: () => {
       if (elRef.current) elRef.current.value = "";
     },

@@ -265,6 +265,9 @@ export function CalculatorView({ onKeyboardVisibleChange }: CalculatorViewProps 
     // （筐体・スタイル・操作系はMathLive純正のまま）。グローバルシングルトンの
     // 設定なのでアンマウント時に既定へ戻す。
     kb.layouts = CALCULATOR_KEYBOARD_LAYOUTS;
+    // キー1個分の縦の高さ（既定40px）を広げる。hostはこのuseEffectのスコープに
+    // 閉じたローカルなdivなのでアンマウント時の明示的なリセットは不要。
+    host.style.setProperty("--keycap-height", "52px");
     // PCはcontentRef（電卓の描画領域）の実測に幅・左端を同期させる。モバイルは
     // ページ外側の余白込みのcontentRef実測に合わせると狭くなる（体感の「キーボードが
     // 狭い」の原因）ため、ビューポート全幅に固定する。
@@ -286,7 +289,12 @@ export function CalculatorView({ onKeyboardVisibleChange }: CalculatorViewProps 
     // タブ離脱時のhideを含む）に同期してモバイル下部ナビの表示を切り替える。
     // フォーカス/blurではなくこのイベントに紐付けることで、⌨トグルで手動的に
     // 閉じたときにも正しくナビが復帰する（=ナビが消えたまま操作不能になる事故を防ぐ）。
-    const handleToggle = () => onKeyboardVisibleChange?.(kb.visible);
+    // 併せて、キーボードが閉じたらmathfieldもblurする。「編集中は常にキーボードが
+    // 開いている」（focus→show）の逆方向を保証し、キーボード開閉＝入力可否を1:1にする。
+    const handleToggle = () => {
+      onKeyboardVisibleChange?.(kb.visible);
+      if (!kb.visible) mathRef.current?.blur();
+    };
     kb.addEventListener("virtual-keyboard-toggle", handleToggle);
     return () => {
       resizeObserver.disconnect();

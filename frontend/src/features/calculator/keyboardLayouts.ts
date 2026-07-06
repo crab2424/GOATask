@@ -14,28 +14,36 @@ import type { VirtualKeyboardLayout, VirtualKeyboardName } from "mathlive";
 
 // 挿入テンプレートは自前キーパッド（CalculatorViewのKEY_PAGES）と同一のものを使う。
 // これらがCompute Engineで評価可能なことは9-A〜9-Cで検証済み。
+// 標準キー幅の倍率。自前レイアウトは6列構成で、既定(1.0)のままだと組込み
+// レイアウト(numeric等、9〜10列)と同じキー幅基準では横に余白が残ってしまう
+// ため、6列 x 1.5 = 9単位相当まで広げてビューポート幅を使い切るようにする。
+const W = 1.5;
+
 const LAYOUT_BASIC: VirtualKeyboardLayout = {
   id: "goatask-basic",
   label: "基本",
   tooltip: "数字と基本操作",
   rows: [
     [
-      { latex: "(", variants: [")", "()"], shift:")" },
-      { latex: ">", variants: ["<", "≥", "≤"], shift:"<" },
-      "[7]", "[8]", "[9]", "\\div"
+      { latex: "(", variants: [")", "()"], shift:")", width: W },
+      { latex: ">", variants: ["<", "≥", "≤"], shift:"<", width: W },
+      { latex: "7", width: W }, { latex: "8", width: W }, { latex: "9", width: W }, { latex: "\\div", width: W }
     ],
     [
-      "\\frac{#0}{#?}",
+      { latex: "\\frac{#0}{#?}", width: W },
       // 試験導入: \encloseで√の中身を破線ボーダーの箱として描画する（Photomath風の空白枠線）。
       // labelは通常の√表記のまま、挿入時だけ中身をenclose{roundedbox}で包む。
-      { latex: "\\sqrt{#0}", insert: "\\sqrt{\\enclose{roundedbox}[1px dashed #999]{#0}}" },
-      "[4]", "[5]", "[6]", "\\times"
+      { latex: "\\sqrt{#0}", insert: "\\sqrt{\\enclose{roundedbox}[1px dashed #999]{#0}}", width: W },
+      { latex: "4", width: W }, { latex: "5", width: W }, { latex: "6", width: W }, { latex: "\\times", width: W }
     ],
     [
-      { label: "{#0}<sup>2</sup>", insert: "^2"},
-      { label: "x", variants:["y", "z"], shift: "y"}, 
-      "[1]", "[2]", "[3]", "-"],
-    ["\\pi", "%", "[0]", "[.]", "=", "+"],
+      { label: "{#0}<sup>2</sup>", insert: "^2", width: W },
+      { label: "x", variants:["y", "z"], shift: "y", width: W },
+      { latex: "1", width: W }, { latex: "2", width: W }, { latex: "3", width: W }, { latex: "-", width: W }],
+    [
+      { latex: "\\pi", width: W }, { latex: "%", width: W }, { latex: "0", width: W },
+      { latex: ".", width: W }, { latex: "=", width: W }, { latex: "+", width: W },
+    ],
   ],
 };
 
@@ -45,36 +53,36 @@ const LAYOUT_FUNCTIONS: VirtualKeyboardLayout = {
   tooltip: "三角関数・対数・組合せ",
   rows: [
     [
-      { latex: "\\sin", insert: "\\sin(" },
-      { latex: "\\cos", insert: "\\cos(" },
-      { latex: "\\tan", insert: "\\tan(" },
-      { latex: "\\log", insert: "\\log(" },
-      { latex: "\\ln", insert: "\\ln(" },
-      { label: "e<sup>x</sup>", insert: "\\exp(" },
+      { latex: "\\sin", insert: "\\sin(", width: W },
+      { latex: "\\cos", insert: "\\cos(", width: W },
+      { latex: "\\tan", insert: "\\tan(", width: W },
+      { latex: "\\log", insert: "\\log(", width: W },
+      { latex: "\\ln", insert: "\\ln(", width: W },
+      { label: "e<sup>x</sup>", insert: "\\exp(", width: W },
     ],
     [
-      { latex: "\\sin^{-1}", insert: "\\arcsin(", class: "small" },
-      { latex: "\\cos^{-1}", insert: "\\arccos(", class: "small" },
-      { latex: "\\tan^{-1}", insert: "\\arctan(", class: "small" },
-      { label: "nPr", insert: "\\operatorname{nPr}(", class: "small" },
-      { label: "nCr", insert: "\\operatorname{nCr}(", class: "small" },
-      { label: "nHr", insert: "\\operatorname{nHr}(", class: "small" },
+      { latex: "\\sin^{-1}", insert: "\\arcsin(", class: "small", width: W },
+      { latex: "\\cos^{-1}", insert: "\\arccos(", class: "small", width: W },
+      { latex: "\\tan^{-1}", insert: "\\arctan(", class: "small", width: W },
+      { label: "nPr", insert: "\\operatorname{nPr}(", class: "small", width: W },
+      { label: "nCr", insert: "\\operatorname{nCr}(", class: "small", width: W },
+      { label: "nHr", insert: "\\operatorname{nHr}(", class: "small", width: W },
     ],
     [
-      { latex: "\\sinh", insert: "\\sinh(", class: "small" },
-      { latex: "\\cosh", insert: "\\cosh(", class: "small" },
-      { latex: "\\tanh", insert: "\\tanh(", class: "small" },
-      { label: "nVr", insert: "\\operatorname{nVr}(", class: "small" },
-      "(",
-      ")",
+      { latex: "\\sinh", insert: "\\sinh(", class: "small", width: W },
+      { latex: "\\cosh", insert: "\\cosh(", class: "small", width: W },
+      { latex: "\\tanh", insert: "\\tanh(", class: "small", width: W },
+      { label: "nVr", insert: "\\operatorname{nVr}(", class: "small", width: W },
+      { latex: "(", width: W },
+      { latex: ")", width: W },
     ],
     [
-      { latex: "\\sinh^{-1}", insert: "\\operatorname{asinh}(", class: "small" },
-      { latex: "\\cosh^{-1}", insert: "\\operatorname{acosh}(", class: "small" },
-      { latex: "\\tanh^{-1}", insert: "\\operatorname{atanh}(", class: "small" },
-      { label: ",", insert: "," },
-      "i",
-      { label: "|a|", insert: "\\left|#0\\right|" },
+      { latex: "\\sinh^{-1}", insert: "\\operatorname{asinh}(", class: "small", width: W },
+      { latex: "\\cosh^{-1}", insert: "\\operatorname{acosh}(", class: "small", width: W },
+      { latex: "\\tanh^{-1}", insert: "\\operatorname{atanh}(", class: "small", width: W },
+      { label: ",", insert: ",", width: W },
+      { latex: "i", width: W },
+      { label: "|a|", insert: "\\left|#0\\right|", width: W },
     ],
     ["[left]", "[right]", "[backspace]", "[return]"],
   ],
@@ -86,24 +94,27 @@ const LAYOUT_CALCULUS_EQ: VirtualKeyboardLayout = {
   tooltip: "微積分・方程式・比較演算子",
   rows: [
     [
-      { label: "∫", insert: "\\int #0\\, d#?" },
-      { latex: "\\frac{d}{dx}", insert: "\\frac{d}{dx} #0", class: "small" },
-      { label: "lim", insert: "\\lim_{#?\\to #?} #0" },
-      { label: "Σ", insert: "\\sum_{#?=#?}^{#?} #0" },
-      { label: "Π", insert: "\\prod_{#?=#?}^{#?} #0" },
-      { label: "f'", insert: "'" },
+      { label: "∫", insert: "\\int #0\\, d#?", width: W },
+      { latex: "\\frac{d}{dx}", insert: "\\frac{d}{dx} #0", class: "small", width: W },
+      { label: "lim", insert: "\\lim_{#?\\to #?} #0", width: W },
+      { label: "Σ", insert: "\\sum_{#?=#?}^{#?} #0", width: W },
+      { label: "Π", insert: "\\prod_{#?=#?}^{#?} #0", width: W },
+      { label: "f'", insert: "'", width: W },
     ],
     [
-      "=",
+      { latex: "=", width: W },
       // \begin{cases}は行数に応じて左中括弧が自動伸縮する。+行はcases内でのみ機能する
       // MathLive組み込みコマンド（範囲外では無害に無視される）。
-      { label: "連立", insert: "\\begin{cases}#0\\\\#?\\end{cases}", class: "small" },
-      { label: "+行", command: "addRowAfter", class: "small" },
-      { label: "dx", insert: "dx" },
-      "\\infty",
-      "x",
+      { label: "連立", insert: "\\begin{cases}#0\\\\#?\\end{cases}", class: "small", width: W },
+      { label: "+行", command: "addRowAfter", class: "small", width: W },
+      { label: "dx", insert: "dx", width: W },
+      { latex: "\\infty", width: W },
+      { latex: "x", width: W },
     ],
-    ["<", ">", "\\le", "\\ge", "\\ne", { label: ",", insert: "," }],
+    [
+      { latex: "<", width: W }, { latex: ">", width: W }, { latex: "\\le", width: W },
+      { latex: "\\ge", width: W }, { latex: "\\ne", width: W }, { label: ",", insert: ",", width: W },
+    ],
     ["[left]", "[right]", "[backspace]", "[return]"],
   ],
 };
