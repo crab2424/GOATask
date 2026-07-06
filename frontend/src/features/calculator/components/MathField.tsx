@@ -149,10 +149,15 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
   // 全角入力の半角強制変換。
   // 主経路: keydown を capture で横取りし、event.key が全角1文字ならMathLiveへ渡さず
   // 半角変換して insert する（<math-field> host のcaptureは内部 keyboardSink のリスナーより
-  // 先に発火するため、全角文字がEditorの値に混入しない）。
-  // IME合成中（event.key === "Process" や isComposing）は素通しし、確定文字列は保険経路の
-  // compositionend 側で el.value を走査してサニタイズする（MathLive内部も compositionend を
-  // 使うため、こちらは capture ではなく bubble で内部処理の後に走らせ、確定反映後の値を直す）。
+  // 先に発火するため、全角文字がEditorの値に混入しない）。IME合成中（event.key === "Process"
+  // や isComposing）は素通しする。
+  // 保険経路: macOSの「全角英数」等、単発の全角文字でもIME合成(compositionstart/end)を経由する
+  // 環境向け。MathLiveは合成確定時に1文字ずつ通常入力として解釈するため、未知の全角記号は
+  // 演算子ではなく別種のノード（テキスト扱い相当）として挿入されてしまう。そのため単純に
+  // LaTeX文字列上の見た目の文字だけを半角へ置換しても、ノードの種別（演算子かどうか）は
+  // 全角のまま挿入されたときのものが残り「見た目は半角なのに記号として認識されない」バグになる
+  // （実機確認で判明）。正しくは、MathLiveが挿入した分をいったん削除し、公開APIの insert() で
+  // 半角文字を正規のパスから打ち直す（insert()は"+"等を正しく演算子として解釈する）。
   // リスナーは <math-field> 自身にのみ付けるため、他の入力欄（メモ等）には一切影響しない
   // ＝電卓Editor外では通常のIME入力のまま（「モード切り替え時には戻す」相当）。
   useEffect(() => {
@@ -168,19 +173,14 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
         if (half !== " ") el.insert(half, { focus: true });
       }
     };
-    const handleCompositionEnd = () => {
-      // MathLive内部の確定処理（同じcompositionendのcaptureリスナー→rAF越しの反映）を
-      // 待ってからサニタイズする
-      requestAnimationFrame(() => {
-        const latex = el.getValue("latex");
-        if (FULLWIDTH_RE.test(latex)) {
-          const half = toHalfWidth(latex);
-          el.setValue(half);
-          // setValue はプログラム的変更のため input イベントを発火しない。
-          // CalculatorView 側の latex state と食い違わないよう明示的に通知する。
-          onChange?.(half);
-        }
-      });
+    const handleCompositionEnd = (ev: CompositionEvent) => {
+      const composed = ev.data ?? "";
+      if (!FULLWIDTH_RE.test(composed)) return;
+      // MathLiveが合成確定時に挿入した文字数ぶんだけ削除して打ち消す
+      const insertedCount = Array.from(composed).length;
+      for (let i = 0; i < insertedCount; i++) el.executeCommand("deleteBackward");
+      const half = toHalfWidth(composed).replace(/ /g, "");
+      if (half.length > 0) el.insert(half, { focus: true });
     };
     el.addEventListener("keydown", handleKeyDown, true);
     el.addEventListener("compositionend", handleCompositionEnd);
