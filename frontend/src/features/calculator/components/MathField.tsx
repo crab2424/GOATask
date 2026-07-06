@@ -31,6 +31,16 @@ interface MathFieldProps {
   ariaLabel?: string;
 }
 
+// 全角英数記号（U+FF01〜FF5E）は半角（U+0021〜007E）と +0xFEE0 のオフセットで1対1対応する。
+// 全角スペース（U+3000）のみ例外で半角スペースへ。ひらがな・漢字等はレンジ外なので変換しない。
+const FULLWIDTH_RE = /[\uFF01-\uFF5E\u3000]/;
+const FULLWIDTH_RE_G = /[\uFF01-\uFF5E\u3000]/g;
+function toHalfWidth(text: string): string {
+  return text.replace(FULLWIDTH_RE_G, (ch) =>
+    ch === "\u3000" ? " " : String.fromCharCode(ch.charCodeAt(0) - 0xfee0),
+  );
+}
+
 // React 19 は未宣言のカスタム要素を JSX で使うと型エラーになるため、
 // mathfield 用の最小プロパティ宣言を追加する。
 declare module "react" {
@@ -135,6 +145,50 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
       el.removeEventListener("focusout", handleFocusOut);
     };
   }, []);
+
+  // 全角入力の半角強制変換。
+  // 主経路: keydown を capture で横取りし、event.key が全角1文字ならMathLiveへ渡さず
+  // 半角変換して insert する（<math-field> host のcaptureは内部 keyboardSink のリスナーより
+  // 先に発火するため、全角文字がEditorの値に混入しない）。
+  // IME合成中（event.key === "Process" や isComposing）は素通しし、確定文字列は保険経路の
+  // compositionend 側で el.value を走査してサニタイズする（MathLive内部も compositionend を
+  // 使うため、こちらは capture ではなく bubble で内部処理の後に走らせ、確定反映後の値を直す）。
+  // リスナーは <math-field> 自身にのみ付けるため、他の入力欄（メモ等）には一切影響しない
+  // ＝電卓Editor外では通常のIME入力のまま（「モード切り替え時には戻す」相当）。
+  useEffect(() => {
+    const el = elRef.current;
+    if (!el) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing || e.key === "Process") return;
+      if (e.key.length === 1 && FULLWIDTH_RE.test(e.key)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const half = toHalfWidth(e.key);
+        // 半角スペースはMathLiveでは意味を持たないので挿入しない
+        if (half !== " ") el.insert(half, { focus: true });
+      }
+    };
+    const handleCompositionEnd = () => {
+      // MathLive内部の確定処理（同じcompositionendのcaptureリスナー→rAF越しの反映）を
+      // 待ってからサニタイズする
+      requestAnimationFrame(() => {
+        const latex = el.getValue("latex");
+        if (FULLWIDTH_RE.test(latex)) {
+          const half = toHalfWidth(latex);
+          el.setValue(half);
+          // setValue はプログラム的変更のため input イベントを発火しない。
+          // CalculatorView 側の latex state と食い違わないよう明示的に通知する。
+          onChange?.(half);
+        }
+      });
+    };
+    el.addEventListener("keydown", handleKeyDown, true);
+    el.addEventListener("compositionend", handleCompositionEnd);
+    return () => {
+      el.removeEventListener("keydown", handleKeyDown, true);
+      el.removeEventListener("compositionend", handleCompositionEnd);
+    };
+  }, [onChange]);
 
   // 双方向同期: 外部 value を反映（差分があるときだけ）。
   useEffect(() => {
