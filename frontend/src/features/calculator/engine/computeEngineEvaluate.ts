@@ -2,7 +2,8 @@
 // 数値式・方程式・連立方程式・微積分・複素数・文字式すべてを一本化して評価する。
 // 9-Cで旧自作エンジン（calculatorEngine/rationalEngine/equationSolver/latexBridge）とnerdamerを廃止し、
 // Compute Engineがフロント計算の唯一の入口になった。数値式の場合も同じパスを通る。
-import { ComputeEngine, expand as ceExpand, factor as ceFactor } from "@cortex-js/compute-engine";
+import { CancellationError, ComputeEngine, expand as ceExpand, factor as ceFactor } from "@cortex-js/compute-engine";
+import type { ExpressionInput } from "@cortex-js/compute-engine";
 
 /** 三角関数の角度モード。旧calculatorEngineから移設。 */
 export type AngleMode = "DEG" | "RAD";
@@ -14,6 +15,9 @@ let engine: ComputeEngine | null = null;
 function getEngine(): ComputeEngine {
   if (!engine) {
     engine = new ComputeEngine();
+    // 重い式で UI が長時間固まるのを避ける。Compute Engine 既定値も 2000ms だが、
+    // GOATask 側の計算ポリシーとして明示し、CancellationError を下で専用メッセージへ変換する。
+    engine.timeLimit = 2000;
     // 桁区切りは電卓表示には不要（旧formatResultの慣習を維持）
     engine.latexOptions.digitGroupSeparator = "";
     // 積の記号は既存キーパッド（×キー = \times）と揃え、暗黙の積は自然表記（2x）のまま
@@ -31,6 +35,260 @@ function getEngine(): ComputeEngine {
 // ComputeEngine.parseはlatexにnullを渡すオーバーロードがExpression | nullを返すため、
 // NonNullableで確実に非null版のBoxedExpression型を取る。
 type BoxedExpression = NonNullable<ReturnType<ComputeEngine["parse"]>>;
+type JsonValue = string | number | boolean | null | readonly JsonValue[];
+
+function isJsonArray(value: JsonValue): value is readonly JsonValue[] {
+  return Array.isArray(value);
+}
+
+function asOperator(value: JsonValue): string | null {
+  return isJsonArray(value) && typeof value[0] === "string" ? value[0] : null;
+}
+
+function isStructurallyZero(value: JsonValue): boolean {
+  if (value === 0) return true;
+  if (!isJsonArray(value)) return false;
+  const operator = asOperator(value);
+  if (operator === "Negate") return isStructurallyZero(value[1]);
+  if (operator === "Divide") return isStructurallyZero(value[1]);
+  if (operator === "Multiply") return value.slice(1).some(isStructurallyZero);
+  if (operator === "Power") return value[1] === 0;
+  return false;
+}
+
+function normalizeAdditiveZeros(json: JsonValue): JsonValue {
+  if (!isJsonArray(json)) return json;
+
+  const operator = asOperator(json);
+  const normalized = json.map(normalizeAdditiveZeros);
+  if (operator !== "Add") return normalized;
+
+  const terms = normalized.slice(1).filter((term) => !isStructurallyZero(term));
+  if (terms.length === 0) return 0;
+  if (terms.length === 1) return terms[0];
+  return ["Add", ...terms];
+}
+
+function normalizeEvaluatedExpression(ce: ComputeEngine, expr: BoxedExpression): BoxedExpression {
+  const normalizedJson = normalizeAdditiveZeros(expr.json as JsonValue);
+  return ce.box(normalizedJson as ExpressionInput);
+}
+
+function withComputeEngineErrors<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (e) {
+    if (e instanceof CancellationError) {
+      throw new ComputeEngineError("計算がタイムアウトしました。式を分けるか、少し単純な形で入力してください");
+    }
+    throw e;
+  }
+}
+
+function negateJson(value: JsonValue): JsonValue {
+  return ["Negate", value];
+}
+
+function multiplyJson(...values: JsonValue[]): JsonValue {
+  return ["Multiply", ...values];
+}
+
+function addJson(...values: JsonValue[]): JsonValue {
+  return ["Add", ...values];
+}
+
+function powerJson(base: JsonValue, exponent: number): JsonValue {
+  return ["Power", base, exponent];
+}
+
+function splitLeadingNegate(value: JsonValue): { sign: 1 | -1; value: JsonValue } {
+  if (isJsonArray(value) && asOperator(value) === "Negate") return { sign: -1, value: value[1] };
+  return { sign: 1, value };
+}
+
+function numericInteger(value: JsonValue): number | null {
+  return typeof value === "number" && Number.isInteger(value) ? value : null;
+}
+
+function matchCube(value: JsonValue): JsonValue | null {
+  const n = numericInteger(value);
+  if (n !== null) {
+    const root = Math.cbrt(n);
+    return Number.isInteger(root) ? root : null;
+  }
+  if (isJsonArray(value) && asOperator(value) === "Power" && value[2] === 3) return value[1];
+  return null;
+}
+
+function factorCubePairJson(json: JsonValue): JsonValue | null {
+  if (!isJsonArray(json) || asOperator(json) !== "Add" || json.length !== 3) return null;
+
+  const left = splitLeadingNegate(json[1]);
+  const right = splitLeadingNegate(json[2]);
+  const a = matchCube(left.value);
+  const b = matchCube(right.value);
+  if (!a || !b || left.sign !== 1) return null;
+
+  if (right.sign === 1) {
+    // a^3 + b^3 = (a+b)(a^2-ab+b^2)
+    return multiplyJson(addJson(a, b), addJson(powerJson(a, 2), negateJson(multiplyJson(a, b)), powerJson(b, 2)));
+  }
+
+  // a^3 - b^3 = (a-b)(a^2+ab+b^2)
+  return multiplyJson(addJson(a, negateJson(b)), addJson(powerJson(a, 2), multiplyJson(a, b), powerJson(b, 2)));
+}
+
+function matchFourthPowerTerm(value: JsonValue): { coefficient: number; base: JsonValue } | null {
+  const n = numericInteger(value);
+  if (n !== null) {
+    if (n === 4) return { coefficient: 4, base: 1 };
+    const root = Math.pow(n, 1 / 4);
+    return Number.isInteger(root) ? { coefficient: 1, base: root } : null;
+  }
+
+  if (!isJsonArray(value)) return null;
+  const operator = asOperator(value);
+  if (operator === "Power" && value[2] === 4) return { coefficient: 1, base: value[1] };
+  if (operator !== "Multiply") return null;
+
+  let coefficient = 1;
+  let base: JsonValue | null = null;
+  for (const factor of value.slice(1)) {
+    const nFactor = numericInteger(factor);
+    if (nFactor !== null) {
+      coefficient *= nFactor;
+      continue;
+    }
+    if (isJsonArray(factor) && asOperator(factor) === "Power" && factor[2] === 4 && base === null) {
+      base = factor[1];
+      continue;
+    }
+    return null;
+  }
+
+  return base === null ? null : { coefficient, base };
+}
+
+function factorSophieGermainJson(json: JsonValue): JsonValue | null {
+  if (!isJsonArray(json) || asOperator(json) !== "Add" || json.length !== 3) return null;
+
+  const first = matchFourthPowerTerm(json[1]);
+  const second = matchFourthPowerTerm(json[2]);
+  if (!first || !second) return null;
+
+  const pair =
+    first.coefficient === 1 && second.coefficient === 4
+      ? { u: first.base, v: second.base }
+      : second.coefficient === 1 && first.coefficient === 4
+        ? { u: second.base, v: first.base }
+        : null;
+  if (!pair) return null;
+
+  const u2 = powerJson(pair.u, 2);
+  const twoUv = multiplyJson(2, pair.u, pair.v);
+  const twoV2 = multiplyJson(2, powerJson(pair.v, 2));
+  // u^4 + 4v^4 = (u^2 - 2uv + 2v^2)(u^2 + 2uv + 2v^2)
+  return multiplyJson(addJson(u2, negateJson(twoUv), twoV2), addJson(u2, twoUv, twoV2));
+}
+
+interface PolynomialTerm {
+  degree: 0 | 1 | 2;
+  coefficient: number;
+}
+
+function parsePolynomialTerm(value: JsonValue, variable: string): PolynomialTerm | null {
+  const negated = splitLeadingNegate(value);
+  const sign = negated.sign;
+  const term = negated.value;
+
+  const constant = numericInteger(term);
+  if (constant !== null) return { degree: 0, coefficient: sign * constant };
+  if (term === variable) return { degree: 1, coefficient: sign };
+
+  if (isJsonArray(term) && asOperator(term) === "Power" && term[1] === variable && term[2] === 2) {
+    return { degree: 2, coefficient: sign };
+  }
+
+  if (!isJsonArray(term) || asOperator(term) !== "Multiply") return null;
+
+  let coefficient = sign;
+  let degree: 0 | 1 | 2 = 0;
+  for (const factor of term.slice(1)) {
+    const n = numericInteger(factor);
+    if (n !== null) {
+      coefficient *= n;
+      continue;
+    }
+    if (factor === variable && degree === 0) {
+      degree = 1;
+      continue;
+    }
+    if (isJsonArray(factor) && asOperator(factor) === "Power" && factor[1] === variable && factor[2] === 2 && degree === 0) {
+      degree = 2;
+      continue;
+    }
+    return null;
+  }
+
+  return { degree, coefficient };
+}
+
+function divisors(value: number): number[] {
+  const abs = Math.abs(value);
+  const result: number[] = [];
+  for (let i = 1; i <= abs; i += 1) {
+    if (abs % i === 0) result.push(i, -i);
+  }
+  return result;
+}
+
+function factorIntegerQuadraticJson(json: JsonValue, variable: string | null): JsonValue | null {
+  if (!variable || !isJsonArray(json) || asOperator(json) !== "Add") return null;
+
+  const coefficients = [0, 0, 0];
+  for (const rawTerm of json.slice(1)) {
+    const term = parsePolynomialTerm(rawTerm, variable);
+    if (!term) return null;
+    coefficients[term.degree] += term.coefficient;
+  }
+
+  const [c, b, a] = coefficients;
+  if (a === 0 || b === 0 || c === 0) return null;
+
+  for (const m of divisors(a)) {
+    const p = a / m;
+    for (const n of divisors(c)) {
+      const q = c / n;
+      if (m * q + n * p === b) {
+        return multiplyJson(addJson(multiplyJson(m, variable), n), addJson(multiplyJson(p, variable), q));
+      }
+    }
+  }
+
+  return null;
+}
+
+function factorTemplateJson(json: JsonValue, variable: string | null): JsonValue | null {
+  if (!isJsonArray(json)) return null;
+
+  if (asOperator(json) === "Multiply") {
+    let changed = false;
+    const operands = json.slice(1).map((operand) => {
+      const factored = factorTemplateJson(operand, variable);
+      if (factored) changed = true;
+      return factored ?? operand;
+    });
+    return changed ? multiplyJson(...operands) : null;
+  }
+
+  return factorIntegerQuadraticJson(json, variable) ?? factorCubePairJson(json) ?? factorSophieGermainJson(json);
+}
+
+function factorWithTemplates(ce: ComputeEngine, expr: BoxedExpression): BoxedExpression | null {
+  const variable = expr.unknowns.length === 1 ? expr.unknowns[0] : null;
+  const factoredJson = factorTemplateJson(expr.json as JsonValue, variable);
+  return factoredJson ? ce.box(factoredJson as ExpressionInput) : null;
+}
 
 function describeErrors(expr: BoxedExpression): string {
   return expr.errors.map((e) => e.toString()).join(", ");
@@ -139,28 +397,31 @@ function solveSystem(expr: BoxedExpression, ce: ComputeEngine): ComputeResult {
 /**
  * LaTeX を評価し、厳密値と小数近似の両方をLaTeX文字列で返す（すでに組版済みの形なのでそのまま表示に使える）。
  * 連立方程式（List）は solveSystem、単一方程式（Equal）は solveEquation、それ以外は evaluate
- * （厳密評価）し、まだ変数が残っていれば simplify も試みる（sin²+cos²=1 のような恒等式は
- * evaluateだけでは畳み込まれないため）。
+ * （厳密評価）後に simplify も試みる。数値式にも通すことで二重根号外しを拾い、記号式では
+ * sin²+cos²=1 のような恒等式を畳み込みやすくする。
  */
 export function evaluateWithComputeEngine(latex: string, angleMode: AngleMode): ComputeResult {
-  const ce = getEngine();
-  ce.angularUnit = angleMode === "DEG" ? "deg" : "rad";
+  return withComputeEngineErrors(() => {
+    const ce = getEngine();
+    ce.angularUnit = angleMode === "DEG" ? "deg" : "rad";
 
-  const expr = ce.parse(latex);
-  assertValid(expr, "式を解釈できませんでした");
+    const expr = ce.parse(latex);
+    assertValid(expr, "式を解釈できませんでした");
 
-  if (expr.operator === "Equal") return solveEquation(expr);
-  // \begin{cases}x+y=5\\x-y=1\end{cases} は Compute Engine 上で List のEqual群としてパースされる
-  if (expr.operator === "List") {
-    const items = "ops" in expr && Array.isArray(expr.ops) ? expr.ops : [];
-    if (items.length > 0 && items.every((op) => op?.operator === "Equal")) return solveSystem(expr, ce);
-  }
+    if (expr.operator === "Equal") return solveEquation(expr);
+    // \begin{cases}x+y=5\\x-y=1\end{cases} は Compute Engine 上で List のEqual群としてパースされる
+    if (expr.operator === "List") {
+      const items = "ops" in expr && Array.isArray(expr.ops) ? expr.ops : [];
+      if (items.length > 0 && items.every((op) => op?.operator === "Equal")) return solveSystem(expr, ce);
+    }
 
-  const evaluated = expr.evaluate();
-  assertValid(evaluated, "計算できませんでした");
-  const result = evaluated.unknowns.length > 0 ? evaluated.simplify() : evaluated;
-  assertValid(result, "計算できませんでした");
-  return withDecimal(result.latex, result);
+    const evaluated = normalizeEvaluatedExpression(ce, expr.evaluate());
+    assertValid(evaluated, "計算できませんでした");
+    // 数値式にも simplify を通す。これにより \sqrt{5+2\sqrt6} のような二重根号外しが効く。
+    const result = evaluated.simplify();
+    assertValid(result, "計算できませんでした");
+    return withDecimal(result.latex, result);
+  });
 }
 
 /**
@@ -170,38 +431,46 @@ export function evaluateWithComputeEngine(latex: string, angleMode: AngleMode): 
  * 式を渡すとその式が属するエンジン（=getEngine()）の設定（桁区切り等）がそのまま使われる。
  */
 export function expandWithComputeEngine(latex: string): string {
-  const ce = getEngine();
-  const expr = ce.parse(latex);
-  assertValid(expr, "式を解釈できませんでした");
-  const result = ceExpand(expr);
-  assertValid(result, "展開できませんでした");
-  return result.latex;
+  return withComputeEngineErrors(() => {
+    const ce = getEngine();
+    const expr = ce.parse(latex);
+    assertValid(expr, "式を解釈できませんでした");
+    const result = ceExpand(expr).simplify();
+    assertValid(result, "展開できませんでした");
+    return result.latex;
+  });
 }
 
 /** 式を因数分解する（x^2-1 → (x-1)(x+1) 等）。展開できない式と同様、非対応の式は無変化で返る。 */
 export function factorWithComputeEngine(latex: string): string {
-  const ce = getEngine();
-  const expr = ce.parse(latex);
-  assertValid(expr, "式を解釈できませんでした");
-  const result = ceFactor(expr);
-  assertValid(result, "因数分解できませんでした");
-  return result.latex;
+  return withComputeEngineErrors(() => {
+    const ce = getEngine();
+    const expr = ce.parse(latex);
+    assertValid(expr, "式を解釈できませんでした");
+    const builtIn = ceFactor(expr);
+    assertValid(builtIn, "因数分解できませんでした");
+    const result = factorWithTemplates(ce, builtIn) ?? factorWithTemplates(ce, expr) ?? builtIn;
+    assertValid(result, "因数分解できませんでした");
+    return result.latex;
+  });
 }
 
 /** メモリ加算のために式を数値として近似評価する。N()の結果をJS数値へ落として返す。 */
 export function approximateAsNumber(latex: string, angleMode: AngleMode): number {
-  const ce = getEngine();
-  ce.angularUnit = angleMode === "DEG" ? "deg" : "rad";
-  const expr = ce.parse(latex);
-  assertValid(expr, "式を解釈できませんでした");
-  const value = expr.N();
-  assertValid(value, "数値化できませんでした");
-  // BoxedExpressionから数値を取り出す一番安全な経路: .re は複素数の実部（実数ならその値そのまま）
-  const numeric = value.re;
-  if (typeof numeric !== "number" || !Number.isFinite(numeric)) {
-    throw new ComputeEngineError("数値として評価できませんでした");
-  }
-  return numeric;
+  return withComputeEngineErrors(() => {
+    const ce = getEngine();
+    ce.angularUnit = angleMode === "DEG" ? "deg" : "rad";
+    const expr = ce.parse(latex);
+    assertValid(expr, "式を解釈できませんでした");
+    const value = expr.N();
+    assertValid(value, "数値化できませんでした");
+    // BoxedExpressionから数値を取り出す一番安全な経路: .re は複素数の実部（実数ならその値そのまま）
+    const numeric = value.re;
+    if (typeof numeric !== "number" || !Number.isFinite(numeric)) {
+      throw new ComputeEngineError("数値として評価できませんでした");
+    }
+    return numeric;
+  });
 }
 
 /** 数値をLaTeX文字列へ変換する（旧latexBridge.numberToLatexの代替）。指数表記は\times10^{}に整形。 */
