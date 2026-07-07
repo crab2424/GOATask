@@ -6,6 +6,7 @@ import { LoginView } from "./features/auth/LoginView";
 import { SignupView } from "./features/auth/SignupView";
 import { useAuth } from "./shared/lib/useAuth";
 import { useIsMobile } from "./shared/lib/useIsMobile";
+import { useTheme } from "./shared/lib/useTheme";
 
 const HomeView = lazy(() => import("./features/home/HomeView").then((module) => ({ default: module.HomeView })));
 const TaskView = lazy(() => import("./features/tasks/TaskView").then((module) => ({ default: module.TaskView })));
@@ -27,6 +28,7 @@ function App() {
   const [hideBottomNav, setHideBottomNav] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const isMobile = useIsMobile();
+  const { theme, setTheme } = useTheme();
   const [navCollapsed, setNavCollapsed] = useState(() =>
     typeof window !== "undefined" && window.localStorage.getItem(NAV_COLLAPSED_KEY) === "1",
   );
@@ -71,7 +73,7 @@ function App() {
       {mode === "memos" && <MemoView />}
       {mode === "flashcards" && <FlashcardView />}
       {mode === "calculator" && <CalculatorView onKeyboardVisibleChange={setHideBottomNav} />}
-      {mode === "settings" && <SettingsView username={authState.user.username} health={health} onLogout={handleLogout} />}
+      {mode === "settings" && <SettingsView username={authState.user.username} health={health} theme={theme} onThemeChange={setTheme} onLogout={handleLogout} />}
     </Suspense>
   );
 

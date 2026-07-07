@@ -2,6 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ライトテーマの基準値（Tailwind標準のslateパレット） */
+:root {
+  --c-white: 255 255 255;
+  --c-slate-50: 248 250 252;
+  --c-slate-100: 241 245 249;
+  --c-slate-200: 226 232 240;
+  --c-slate-300: 203 213 225;
+  --c-slate-400: 148 163 184;
+  --c-slate-500: 100 116 139;
+  --c-slate-600: 71 85 105;
+  --c-slate-700: 51 65 85;
+  --c-slate-800: 30 41 59;
+  --c-slate-900: 15 23 42;
+  --c-slate-950: 2 6 23;
+}
+
+/* ダークテーマ: スケールを反転（50↔900など）。whiteは面(surface)としてslate-800相当に落とす。 */
+.dark {
+  --c-white: 30 41 59;
+  --c-slate-50: 15 23 42;
+  --c-slate-100: 30 41 59;
+  --c-slate-200: 51 65 85;
+  --c-slate-300: 71 85 105;
+  --c-slate-400: 100 116 139;
+  --c-slate-500: 148 163 184;
+  --c-slate-600: 203 213 225;
+  --c-slate-700: 226 232 240;
+  --c-slate-800: 241 245 249;
+  --c-slate-900: 248 250 252;
+  --c-slate-950: 255 255 255;
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;

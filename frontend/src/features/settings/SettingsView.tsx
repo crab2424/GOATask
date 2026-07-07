@@ -1,8 +1,17 @@
 import { BackupView } from "../backup/BackupView";
+import type { Theme } from "../../shared/lib/useTheme";
+
+const THEME_OPTIONS: { id: Theme; label: string; desc: string }[] = [
+  { id: "light", label: "ライト", desc: "常に明るいテーマ" },
+  { id: "dark", label: "ダーク", desc: "常に暗いテーマ" },
+  { id: "system", label: "システム", desc: "OSの設定に追従" },
+];
 
 interface SettingsViewProps {
   username: string;
   health: string;
+  theme: Theme;
+  onThemeChange: (theme: Theme) => void;
   onLogout: () => void;
 }
 
@@ -32,6 +41,29 @@ export function SettingsView(props: SettingsViewProps) {
           >
             ログアウト
           </button>
+        </div>
+      </section>
+
+      <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-semibold text-slate-700">外観</h3>
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-slate-600">テーマ（この端末のみ）</p>
+          <div className="flex gap-2">
+            {THEME_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                onClick={() => props.onThemeChange(option.id)}
+                title={option.desc}
+                className={`rounded border px-3 py-1.5 text-xs transition-colors ${
+                  props.theme === option.id
+                    ? "border-slate-900 bg-slate-900 font-semibold text-white"
+                    : "border-slate-300 text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
