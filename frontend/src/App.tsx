@@ -7,6 +7,7 @@ import { SignupView } from "./features/auth/SignupView";
 import { useAuth } from "./shared/lib/useAuth";
 import { useIsMobile } from "./shared/lib/useIsMobile";
 import { useTheme } from "./shared/lib/useTheme";
+import { LoadingIndicator } from "./shared/components/LoadingIndicator";
 
 const HomeView = lazy(() => import("./features/home/HomeView").then((module) => ({ default: module.HomeView })));
 const TaskView = lazy(() => import("./features/tasks/TaskView").then((module) => ({ default: module.TaskView })));
@@ -52,7 +53,7 @@ function App() {
   }, [navCollapsed]);
 
   if (authState.status === "loading") {
-    return <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">読み込み中...</div>;
+    return <LoadingIndicator fullscreen />;
   }
   if (authState.status === "anonymous") {
     return authMode === "login"
@@ -80,7 +81,7 @@ function App() {
   };
 
   const content = (
-    <Suspense fallback={<div className="py-10 text-center text-sm text-slate-500">読み込み中...</div>}>
+    <Suspense fallback={<LoadingIndicator />}>
       {mode === "home" && <HomeView onOpenCalendar={(date) => { setCalendarDate(date); setMode("calendar"); }} onOpenTask={(taskId) => { setOpenTaskId(taskId); setMode("tasks"); }} />}
       {mode === "tasks" && <TaskView initialTaskId={openTaskId} onInitialTaskHandled={() => setOpenTaskId(null)} />}
       {mode === "calendar" && <CalendarView key={calendarDate ?? "calendar"} initialDate={calendarDate} />}

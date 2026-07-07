@@ -25,6 +25,7 @@ import {
   type Folder,
 } from "../../api/folders";
 import { useIsMobile } from "../../shared/lib/useIsMobile";
+import { LoadingIndicator } from "../../shared/components/LoadingIndicator";
 import { CollectionShell } from "../../shared/components/CollectionShell";
 import { TreeSearch } from "../../shared/components/TreeSearch";
 import {
@@ -1091,6 +1092,10 @@ export function MemoView() {
       )}
     </div>
   );
+
+  if (memosQuery.isLoading || foldersQuery.isLoading) {
+    return <LoadingIndicator />;
+  }
 
   return (
     <CollectionShell

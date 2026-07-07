@@ -28,6 +28,7 @@ import {
   type Project,
 } from "../../api/projects";
 import { useIsMobile } from "../../shared/lib/useIsMobile";
+import { LoadingIndicator } from "../../shared/components/LoadingIndicator";
 import { CollectionShell } from "../../shared/components/CollectionShell";
 import { TreeSearch } from "../../shared/components/TreeSearch";
 import {
@@ -1475,6 +1476,10 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
       )}
     </div>
   );
+
+  if (tasksQuery.isLoading || projectsQuery.isLoading) {
+    return <LoadingIndicator />;
+  }
 
   return (
     <CollectionShell

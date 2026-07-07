@@ -8,6 +8,7 @@ import {
   type Keybindings,
   type UserSettings,
 } from "../../api/settings";
+import { LoadingIndicator } from "../../shared/components/LoadingIndicator";
 
 const ACTIONS: { id: KeyAction; label: string; desc: string }[] = [
   { id: "addChecklistMarker", label: "チェック項目記号追加", desc: "編集中の行にチェック記号を挿入" },
@@ -59,7 +60,7 @@ export function KeybindingsSection() {
   };
 
   if (settingsQuery.isLoading) {
-    return <p className="text-xs text-slate-400">読み込み中...</p>;
+    return <LoadingIndicator />;
   }
   if (settingsQuery.isError) {
     return <p className="text-xs text-red-600">キー設定の取得に失敗しました</p>;
