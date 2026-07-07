@@ -1,4 +1,4 @@
-export type Mode = "home" | "tasks" | "calendar" | "memos" | "flashcards" | "calculator" | "backup";
+export type Mode = "home" | "tasks" | "calendar" | "memos" | "flashcards" | "calculator" | "backup" | "settings";
 
 export interface NavigationItem {
   id: Mode;
