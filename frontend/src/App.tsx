@@ -17,10 +17,19 @@ const CalendarView = lazy(() => import("./features/calendar/CalendarView").then(
 const CalculatorView = lazy(() => import("./features/calculator/CalculatorView").then((module) => ({ default: module.CalculatorView })));
 
 const NAV_COLLAPSED_KEY = "goatask:navCollapsed";
+const STARTUP_MODE_KEY = "goatask:startupMode";
+
+const STARTUP_MODES: Mode[] = ["home", "tasks", "calendar", "memos", "flashcards", "calculator"];
+
+function loadStartupMode(): Mode {
+  const value = window.localStorage.getItem(STARTUP_MODE_KEY);
+  return STARTUP_MODES.includes(value as Mode) ? (value as Mode) : "home";
+}
 
 function App() {
   const { state: authState, logout } = useAuth();
-  const [mode, setMode] = useState<Mode>("home");
+  const [mode, setMode] = useState<Mode>(loadStartupMode);
+  const [startupMode, setStartupMode] = useState<Mode>(loadStartupMode);
   const [health, setHealth] = useState("確認中...");
   const [calendarDate, setCalendarDate] = useState<string | null>(null);
   const [openTaskId, setOpenTaskId] = useState<number | null>(null);
@@ -60,6 +69,11 @@ function App() {
     }
   };
 
+  const changeStartupMode = (nextMode: Mode) => {
+    setStartupMode(nextMode);
+    window.localStorage.setItem(STARTUP_MODE_KEY, nextMode);
+  };
+
   const changeMode = (nextMode: Mode) => {
     setMode(nextMode);
     setCalendarDate(null);
@@ -73,7 +87,7 @@ function App() {
       {mode === "memos" && <MemoView />}
       {mode === "flashcards" && <FlashcardView />}
       {mode === "calculator" && <CalculatorView onKeyboardVisibleChange={setHideBottomNav} />}
-      {mode === "settings" && <SettingsView username={authState.user.username} health={health} theme={theme} onThemeChange={setTheme} onLogout={handleLogout} />}
+      {mode === "settings" && <SettingsView username={authState.user.username} health={health} theme={theme} onThemeChange={setTheme} startupMode={startupMode} onStartupModeChange={changeStartupMode} onLogout={handleLogout} />}
     </Suspense>
   );
 

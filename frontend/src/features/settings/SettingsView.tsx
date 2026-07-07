@@ -1,4 +1,5 @@
 import { BackupView } from "../backup/BackupView";
+import { NAV_ITEMS, type Mode } from "../../app/navigation";
 import type { Theme } from "../../shared/lib/useTheme";
 
 const THEME_OPTIONS: { id: Theme; label: string; desc: string }[] = [
@@ -12,6 +13,8 @@ interface SettingsViewProps {
   health: string;
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
+  startupMode: Mode;
+  onStartupModeChange: (mode: Mode) => void;
   onLogout: () => void;
 }
 
@@ -64,6 +67,18 @@ export function SettingsView(props: SettingsViewProps) {
               </button>
             ))}
           </div>
+        </div>
+        <div className="space-y-1 border-t border-slate-200 pt-3">
+          <label className="block text-xs font-medium text-slate-600">起動時に開くモード（この端末のみ）</label>
+          <select
+            value={props.startupMode}
+            onChange={(event) => props.onStartupModeChange(event.target.value as Mode)}
+            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
+          >
+            {NAV_ITEMS.map((item) => (
+              <option key={item.id} value={item.id}>{item.label}</option>
+            ))}
+          </select>
         </div>
       </section>
 
