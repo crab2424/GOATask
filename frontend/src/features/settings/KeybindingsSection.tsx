@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DEFAULT_KEYBINDINGS,
@@ -32,30 +32,30 @@ function keyEventToBinding(event: React.KeyboardEvent): string | null {
 export function KeybindingsSection() {
   const queryClient = useQueryClient();
   const settingsQuery = useQuery({ queryKey: ["userSettings"], queryFn: fetchUserSettings });
-  const [draft, setDraft] = useState<Keybindings>({});
+  // サーバー保存値の上に未保存の編集を重ねる。表示値 = 上書き ?? サーバー値 ?? デフォルト
+  const [overrides, setOverrides] = useState<Keybindings>({});
   const [capturing, setCapturing] = useState<KeyAction | null>(null);
   const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    if (settingsQuery.data) setDraft(settingsQuery.data.keybindings ?? {});
-  }, [settingsQuery.data]);
 
   const mutation = useMutation({
     mutationFn: (settings: UserSettings) => saveUserSettings(settings),
     onSuccess: (data) => {
       queryClient.setQueryData(["userSettings"], data);
+      setOverrides({});
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2000);
     },
   });
 
-  const bindingOf = (action: KeyAction) => draft[action] ?? DEFAULT_KEYBINDINGS[action];
+  const serverBindings = settingsQuery.data?.keybindings ?? {};
+  const bindingOf = (action: KeyAction) =>
+    overrides[action] ?? serverBindings[action] ?? DEFAULT_KEYBINDINGS[action];
   const isDirty = ACTIONS.some(
-    (a) => bindingOf(a.id) !== ((settingsQuery.data?.keybindings ?? {})[a.id] ?? DEFAULT_KEYBINDINGS[a.id]),
+    (a) => bindingOf(a.id) !== (serverBindings[a.id] ?? DEFAULT_KEYBINDINGS[a.id]),
   );
 
   const onSave = () => {
-    mutation.mutate({ ...settingsQuery.data, keybindings: draft });
+    mutation.mutate({ ...settingsQuery.data, keybindings: { ...serverBindings, ...overrides } });
   };
 
   if (settingsQuery.isLoading) {
@@ -87,7 +87,7 @@ export function KeybindingsSection() {
                   event.stopPropagation();
                   const binding = keyEventToBinding(event);
                   if (!binding) return;
-                  setDraft((prev) => ({ ...prev, [action.id]: binding }));
+                  setOverrides((prev) => ({ ...prev, [action.id]: binding }));
                   setCapturing(null);
                 }}
                 onBlur={() => { if (capturing === action.id) setCapturing(null); }}
@@ -99,9 +99,9 @@ export function KeybindingsSection() {
               >
                 {capturing === action.id ? "キーを入力..." : bindingOf(action.id)}
               </button>
-              {draft[action.id] && draft[action.id] !== DEFAULT_KEYBINDINGS[action.id] && (
+              {bindingOf(action.id) !== DEFAULT_KEYBINDINGS[action.id] && (
                 <button
-                  onClick={() => setDraft((prev) => ({ ...prev, [action.id]: undefined }))}
+                  onClick={() => setOverrides((prev) => ({ ...prev, [action.id]: DEFAULT_KEYBINDINGS[action.id] }))}
                   title="デフォルトに戻す"
                   className="rounded px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                 >
