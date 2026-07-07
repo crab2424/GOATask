@@ -31,15 +31,9 @@ interface MathFieldProps {
   ariaLabel?: string;
 }
 
-// 全角英数記号（U+FF01〜FF5E）は半角（U+0021〜007E）と +0xFEE0 のオフセットで1対1対応する。
-// 全角スペース（U+3000）のみ例外で半角スペースへ。ひらがな・漢字等はレンジ外なので変換しない。
-const FULLWIDTH_RE = /[\uFF01-\uFF5E\u3000]/;
-const FULLWIDTH_RE_G = /[\uFF01-\uFF5E\u3000]/g;
-function toHalfWidth(text: string): string {
-  return text.replace(FULLWIDTH_RE_G, (ch) =>
-    ch === "\u3000" ? " " : String.fromCharCode(ch.charCodeAt(0) - 0xfee0),
-  );
-}
+// 電卓Editorの物理入力は半角ASCIIのみ許可する。
+// 全角英数・全角記号・かな等のIME入力は MathLive に渡す前に破棄する。
+const NON_ASCII_RE = /[^\x00-\x7F]/;
 
 // React 19 は未宣言のカスタム要素を JSX で使うと型エラーになるため、
 // mathfield 用の最小プロパティ宣言を追加する。
@@ -146,7 +140,7 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
     };
   }, []);
 
-  // 全角入力の半角強制変換。
+  // 全角入力の拒否。
   //
   // 方式: MathLiveからIME合成(composition)処理を完全に奪う。<math-field> host に
   // capture: true で composition系イベントを登録し stopImmediatePropagation することで、
@@ -155,19 +149,16 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
   // - MathLiveのCompositionAtom（全角の未確定プレビュー。macOSでは合成がEnter確定まで
   //   開きっぱなしになるため、これが「全角のまま表示され続ける」原因だった）が作られない
   // - MathLive自身による合成確定文字列の挿入も起きない＝二重入力が構造的に不可能
-  // 代わりに compositionupdate のたびに ev.data を半角変換し、前回挿入分との差分だけを
-  // deleteBackward / insert() で反映する（合成中から半角の通常ノードとして表示され、
-  // 「打った瞬間に半角で出る」を実現。insert()経由なので演算子も正しく認識される）。
-  // バックスペースでの合成中削除・Escキャンセル（data空→全削除）も差分処理で吸収される。
+  // 変換挿入はせず、sinkに残った未確定テキストも即クリアする。
   //
-  // 合成中の生keydown（isComposing/Process）と合成由来のinput（insertCompositionText）も
+  // 合成中の生keydown（isComposing/Process）と合成由来のbeforeinput/inputも
   // hostのcaptureで遮断する。前者はMathLiveが生キーとして誤処理する経路の遮断、後者は
   // MathLiveのinputハンドラが合成中にsinkのtextContentをクリアしてIMEを乱す事故の予防
   // （MathLive自身が発火するinputイベントはisComposing=falseなので素通りし、onChange同期
-  // には影響しない）。sinkに残る合成テキストはcompositionendでこちらがクリアする
-  // （shadow rootはopenなのでcomposedPath()[0]で実ターゲット＝sinkに届く）。
+  // には影響しない）。sinkに残る合成テキストはこちらでクリアする（shadow rootはopenなので
+  // composedPath()[0]で実ターゲット＝sinkに届く）。
   //
-  // 合成を経由しない全角1文字keydown（Windowsの直接入力等）は従来通りその場で半角insert。
+  // 合成を経由しない非ASCIIの1文字keydown（Windowsの直接入力等）やペーストも拒否する。
   // リスナーは <math-field> 自身にのみ付けるため、他の入力欄（メモ等）には一切影響しない
   // ＝電卓Editor外では通常のIME入力のまま（「モード切り替え時には戻す」相当）。
   //
@@ -177,70 +168,70 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
   useEffect(() => {
     const el = elRef.current;
     if (!el) return;
-    // この合成セッションで挿入済みの（半角変換後の）テキスト
-    let composedText = "";
-    const applyComposition = (data: string) => {
-      const next = toHalfWidth(data).replace(/ /g, "");
-      let prefix = 0;
-      while (
-        prefix < composedText.length &&
-        prefix < next.length &&
-        composedText[prefix] === next[prefix]
-      ) {
-        prefix++;
-      }
-      for (let i = prefix; i < composedText.length; i++) {
-        el.executeCommand("deleteBackward");
-      }
-      const suffix = next.slice(prefix);
-      if (suffix.length > 0) el.insert(suffix, { focus: true });
-      composedText = next;
-    };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.isComposing || e.key === "Process") {
-        e.stopImmediatePropagation();
-        return;
-      }
-      if (e.key.length === 1 && FULLWIDTH_RE.test(e.key)) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        const half = toHalfWidth(e.key);
-        // 半角スペースはMathLiveでは意味を持たないので挿入しない
-        if (half !== " ") el.insert(half, { focus: true });
-      }
-    };
-    const handleCompositionStart = (ev: CompositionEvent) => {
-      ev.stopImmediatePropagation();
-      composedText = "";
-    };
-    const handleCompositionUpdate = (ev: CompositionEvent) => {
-      ev.stopImmediatePropagation();
-      applyComposition(ev.data ?? "");
-    };
-    const handleCompositionEnd = (ev: CompositionEvent) => {
-      ev.stopImmediatePropagation();
-      applyComposition(ev.data ?? "");
-      composedText = "";
+    const clearSink = (ev: Event) => {
       const sink = ev.composedPath()[0];
       if (sink instanceof HTMLElement && sink !== el) sink.textContent = "";
     };
+    const rejectEvent = (ev: Event) => {
+      if (ev.cancelable) ev.preventDefault();
+      ev.stopImmediatePropagation();
+      clearSink(ev);
+    };
+    const hasDisallowedText = (text: string | null | undefined) => {
+      return text ? NON_ASCII_RE.test(text) : false;
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing || e.key === "Process") {
+        rejectEvent(e);
+        return;
+      }
+      if (e.key.length === 1 && hasDisallowedText(e.key)) {
+        rejectEvent(e);
+      }
+    };
+    const handleComposition = (ev: CompositionEvent) => {
+      rejectEvent(ev);
+    };
+    const handleBeforeInput = (ev: Event) => {
+      const ie = ev as InputEvent;
+      if (
+        ie.isComposing ||
+        ie.inputType === "insertCompositionText" ||
+        hasDisallowedText(ie.data)
+      ) {
+        rejectEvent(ev);
+      }
+    };
     const handleInput = (ev: Event) => {
       const ie = ev as InputEvent;
-      if (ie.isComposing || ie.inputType === "insertCompositionText") {
-        ev.stopImmediatePropagation();
+      if (
+        ie.isComposing ||
+        ie.inputType === "insertCompositionText" ||
+        hasDisallowedText(ie.data)
+      ) {
+        rejectEvent(ev);
+      }
+    };
+    const handlePaste = (ev: ClipboardEvent) => {
+      if (hasDisallowedText(ev.clipboardData?.getData("text"))) {
+        rejectEvent(ev);
       }
     };
     el.addEventListener("keydown", handleKeyDown, true);
-    el.addEventListener("compositionstart", handleCompositionStart, true);
-    el.addEventListener("compositionupdate", handleCompositionUpdate, true);
-    el.addEventListener("compositionend", handleCompositionEnd, true);
+    el.addEventListener("compositionstart", handleComposition, true);
+    el.addEventListener("compositionupdate", handleComposition, true);
+    el.addEventListener("compositionend", handleComposition, true);
+    el.addEventListener("beforeinput", handleBeforeInput, true);
     el.addEventListener("input", handleInput, true);
+    el.addEventListener("paste", handlePaste, true);
     return () => {
       el.removeEventListener("keydown", handleKeyDown, true);
-      el.removeEventListener("compositionstart", handleCompositionStart, true);
-      el.removeEventListener("compositionupdate", handleCompositionUpdate, true);
-      el.removeEventListener("compositionend", handleCompositionEnd, true);
+      el.removeEventListener("compositionstart", handleComposition, true);
+      el.removeEventListener("compositionupdate", handleComposition, true);
+      el.removeEventListener("compositionend", handleComposition, true);
+      el.removeEventListener("beforeinput", handleBeforeInput, true);
       el.removeEventListener("input", handleInput, true);
+      el.removeEventListener("paste", handlePaste, true);
     };
   }, []);
 
