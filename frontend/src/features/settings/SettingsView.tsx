@@ -1,5 +1,6 @@
 import { BackupView } from "../backup/BackupView";
 import { KeybindingsSection } from "./KeybindingsSection";
+import { PasswordChangeForm } from "./PasswordChangeForm";
 import { NAV_ITEMS, type Mode } from "../../app/navigation";
 import type { Theme } from "../../shared/lib/useTheme";
 
@@ -38,6 +39,9 @@ export function SettingsView(props: SettingsViewProps) {
             <dd className="font-mono text-slate-800">{props.health}</dd>
           </div>
         </dl>
+        <div className="border-t border-slate-200 pt-3">
+          <PasswordChangeForm />
+        </div>
         <div className="border-t border-slate-200 pt-3">
           <button
             onClick={props.onLogout}

@@ -47,6 +47,17 @@ export async function register(
   throw new Error(msg);
 }
 
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const res = await apiFetch(`/api/auth/password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+  if (res.status === 401) throw new Error("現在のパスワードが違います");
+  if (res.status === 400) throw new Error("新しいパスワードは8〜72文字にしてください");
+  if (!res.ok && res.status !== 204) throw new Error(`パスワード変更に失敗しました (${res.status})`);
+}
+
 export async function logout(): Promise<void> {
   const res = await apiFetch(`/api/auth/logout`, { method: "POST" });
   if (!res.ok && res.status !== 204) throw new Error(`logout failed: ${res.status}`);

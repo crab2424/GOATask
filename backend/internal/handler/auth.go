@@ -27,6 +27,7 @@ func (h *AuthHandler) Register(g *echo.Group) {
 	g.POST("/auth/logout", h.logout)
 	g.POST("/auth/register", h.register)
 	g.GET("/auth/me", h.me, auth.RequireAuth(h.DB))
+	g.POST("/auth/password", h.changePassword, auth.RequireAuth(h.DB))
 }
 
 var usernameRe = regexp.MustCompile(`^[A-Za-z0-9_]{3,32}$`)
@@ -127,6 +128,44 @@ func (h *AuthHandler) logout(c echo.Context) error {
 		h.DB.Where("id = ?", cookie.Value).Delete(&model.Session{})
 	}
 	auth.ClearSessionCookie(c)
+	return c.NoContent(http.StatusNoContent)
+}
+
+type changePasswordReq struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+func (h *AuthHandler) changePassword(c echo.Context) error {
+	uid := auth.UserID(c)
+	var req changePasswordReq
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if len(req.NewPassword) < 8 || len(req.NewPassword) > 72 {
+		return echo.NewHTTPError(http.StatusBadRequest, "password must be 8-72 characters")
+	}
+
+	var user model.User
+	if err := h.DB.First(&user, uid).Error; err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "current password is incorrect")
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	if err := h.DB.Model(&user).Update("password_hash", string(hash)).Error; err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	// 現在のセッションは維持し、他デバイスのセッションを無効化する
+	if cookie, err := c.Cookie(auth.CookieName); err == nil && cookie.Value != "" {
+		h.DB.Where("user_id = ? AND id <> ?", uid, cookie.Value).Delete(&model.Session{})
+	}
 	return c.NoContent(http.StatusNoContent)
 }
 
