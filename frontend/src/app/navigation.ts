@@ -1,4 +1,4 @@
-export type Mode = "home" | "tasks" | "calendar" | "memos" | "flashcards" | "calculator" | "backup" | "settings";
+export type Mode = "home" | "tasks" | "calendar" | "memos" | "flashcards" | "calculator" | "settings";
 
 export interface NavigationItem {
   id: Mode;
@@ -13,7 +13,6 @@ export const NAV_ITEMS: NavigationItem[] = [
   { id: "memos", label: "メモ", icon: "📝" },
   { id: "flashcards", label: "単語帳", icon: "🃏" },
   { id: "calculator", label: "電卓", icon: "🧮" },
-  { id: "backup", label: "バックアップ", icon: "💾" },
 ];
 
 export const PRIMARY_MOBILE_ITEMS = NAV_ITEMS.slice(0, 4);

@@ -1,3 +1,5 @@
+import { BackupView } from "../backup/BackupView";
+
 interface SettingsViewProps {
   username: string;
   health: string;
@@ -31,6 +33,11 @@ export function SettingsView(props: SettingsViewProps) {
             ログアウト
           </button>
         </div>
+      </section>
+
+      <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-semibold text-slate-700">バックアップ</h3>
+        <BackupView embedded />
       </section>
 
       <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">

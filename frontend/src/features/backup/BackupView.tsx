@@ -19,7 +19,12 @@ const SCOPES: { id: BackupScope; label: string; desc: string }[] = [
 
 const TOKEN_KEY = "goatask:backupToken";
 
-export function BackupView() {
+interface BackupViewProps {
+  /** 設定画面に埋め込む場合true。見出しを省き、外側のセクション幅に合わせる。 */
+  embedded?: boolean;
+}
+
+export function BackupView({ embedded = false }: BackupViewProps) {
   const queryClient = useQueryClient();
   const [busyScope, setBusyScope] = useState<BackupScope | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -122,13 +127,15 @@ export function BackupView() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <header>
-        <h2 className="text-xl font-bold text-slate-900">バックアップ</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          ローカルと本番(Render)のデータをJSONファイルで往復させるためのページ。
-        </p>
-      </header>
+    <div className={embedded ? "space-y-4" : "mx-auto max-w-2xl space-y-6"}>
+      {!embedded && (
+        <header>
+          <h2 className="text-xl font-bold text-slate-900">バックアップ</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            ローカルと本番(Render)のデータをJSONファイルで往復させるためのページ。
+          </p>
+        </header>
+      )}
 
       <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-slate-700">エクスポート</h3>

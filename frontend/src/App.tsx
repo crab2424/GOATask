@@ -11,7 +11,6 @@ const HomeView = lazy(() => import("./features/home/HomeView").then((module) => 
 const TaskView = lazy(() => import("./features/tasks/TaskView").then((module) => ({ default: module.TaskView })));
 const MemoView = lazy(() => import("./features/memos/MemoView").then((module) => ({ default: module.MemoView })));
 const FlashcardView = lazy(() => import("./features/flashcards/FlashcardView").then((module) => ({ default: module.FlashcardView })));
-const BackupView = lazy(() => import("./features/backup/BackupView").then((module) => ({ default: module.BackupView })));
 const SettingsView = lazy(() => import("./features/settings/SettingsView").then((module) => ({ default: module.SettingsView })));
 const CalendarView = lazy(() => import("./features/calendar/CalendarView").then((module) => ({ default: module.CalendarView })));
 const CalculatorView = lazy(() => import("./features/calculator/CalculatorView").then((module) => ({ default: module.CalculatorView })));
@@ -72,7 +71,6 @@ function App() {
       {mode === "memos" && <MemoView />}
       {mode === "flashcards" && <FlashcardView />}
       {mode === "calculator" && <CalculatorView onKeyboardVisibleChange={setHideBottomNav} />}
-      {mode === "backup" && <BackupView />}
       {mode === "settings" && <SettingsView username={authState.user.username} health={health} onLogout={handleLogout} />}
     </Suspense>
   );
