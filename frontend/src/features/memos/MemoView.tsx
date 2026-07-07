@@ -917,7 +917,7 @@ export function MemoView() {
           else memoRefs.current.delete(m.id);
         }}
         data-reorder-card={m.id}
-        className={`group relative rounded-lg border bg-white p-3 shadow-sm transition-[transform,opacity,border-color,box-shadow,background-color] ease-out hover:bg-slate-50 ${
+        className={`group relative rounded-lg border bg-white p-3 shadow-sm transition-[transform,opacity,border-color,box-shadow,background-color] ease-out hover:bg-slate-50 hover:shadow-md ${
           focusMemoId === m.id
             ? "border-blue-400 ring-2 ring-blue-300"
             : "border-slate-200 hover:border-slate-300"
@@ -1054,7 +1054,7 @@ export function MemoView() {
       <TreeSearch
         query={treeQuery}
         onQueryChange={setTreeQuery}
-        placeholder="フォルダ・メモを検索"
+        placeholder="メモを検索"
       />
       {treeQuery ? (
         renderTreeSearchResults(searchResults)

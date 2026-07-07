@@ -1137,10 +1137,10 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
           else taskRefs.current.delete(t.id);
         }}
         data-reorder-card={t.id}
-        className={`relative flex items-start justify-between rounded-lg border bg-white p-3 shadow-sm transition-[transform,opacity,border-color,box-shadow] ease-out ${
+        className={`relative flex items-start justify-between rounded-lg border bg-white p-3 shadow-sm transition-[transform,opacity,border-color,box-shadow,background-color] ease-out hover:bg-slate-50 hover:shadow-md ${
           isFocused
             ? "border-blue-400 ring-2 ring-blue-300"
-            : "border-slate-200"
+            : "border-slate-200 hover:border-slate-300"
         } ${dragItem?.type === "task" || touchTaskReorder.activeId !== null ? "duration-200" : "duration-75"} ${
           indicator === "before"
             ? "translate-y-1.5"
@@ -1438,7 +1438,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
       <TreeSearch
         query={treeQuery}
         onQueryChange={setTreeQuery}
-        placeholder="プロジェクト・タスクを検索"
+        placeholder="タスクを検索"
       />
       {treeQuery ? (
         renderTreeSearchResults(searchResults)
