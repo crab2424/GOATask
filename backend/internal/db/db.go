@@ -28,5 +28,6 @@ func MigrateAll(conn *gorm.DB) error {
 		&model.Card{},
 		&model.Project{},
 		&model.CalendarNote{},
+		&model.UserSetting{},
 	)
 }

@@ -52,6 +52,7 @@ func main() {
 	handler.NewProjectHandler(conn).Register(protected)
 	handler.NewCalendarHandler(conn).Register(protected)
 	handler.NewBackupHandler(conn).Register(protected)
+	handler.NewSettingsHandler(conn).Register(protected)
 
 	if cfg.StaticDir != "" {
 		e.Use(middleware.StaticWithConfig(middleware.StaticConfig{

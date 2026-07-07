@@ -1,4 +1,5 @@
 import { BackupView } from "../backup/BackupView";
+import { KeybindingsSection } from "./KeybindingsSection";
 import { NAV_ITEMS, type Mode } from "../../app/navigation";
 import type { Theme } from "../../shared/lib/useTheme";
 
@@ -80,6 +81,11 @@ export function SettingsView(props: SettingsViewProps) {
             ))}
           </select>
         </div>
+      </section>
+
+      <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-semibold text-slate-700">キー設定（タスクモード）</h3>
+        <KeybindingsSection />
       </section>
 
       <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
