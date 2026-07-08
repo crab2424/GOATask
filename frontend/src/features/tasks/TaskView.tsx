@@ -29,6 +29,7 @@ import {
 } from "../../api/projects";
 import { useIsMobile } from "../../shared/lib/useIsMobile";
 import { LoadingIndicator } from "../../shared/components/LoadingIndicator";
+import { useDialogs } from "../../shared/components/DialogProvider";
 import { CollectionShell } from "../../shared/components/CollectionShell";
 import { TreeSearch } from "../../shared/components/TreeSearch";
 import {
@@ -190,6 +191,7 @@ interface TaskViewProps {
 
 export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps = {}) {
   const queryClient = useQueryClient();
+  const { confirmDialog, promptDialog } = useDialogs();
   const tasksQuery = useQuery({ queryKey: ["tasks"], queryFn: listTasks });
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const tasks = useMemo(() => tasksQuery.data ?? [], [tasksQuery.data]);
@@ -918,7 +920,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     e?: React.MouseEvent,
   ) => {
     e?.stopPropagation();
-    const name = prompt("プロジェクト名");
+    const name = await promptDialog({ title: "新しいプロジェクト", placeholder: "プロジェクト名", confirmLabel: "作成" });
     if (!name?.trim()) return;
     try {
       const p = await createProject({
@@ -937,7 +939,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
 
   const onRenameProject = async (p: Project, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    const name = prompt("新しいプロジェクト名", p.name);
+    const name = await promptDialog({ title: "プロジェクト名を変更", defaultValue: p.name, confirmLabel: "変更" });
     if (!name?.trim() || name.trim() === p.name) return;
     try {
       await updateProject(p.id, {
@@ -958,8 +960,6 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     const totalDescendant = recursiveTaskCount.get(p.id) ?? 0;
     const parentLabel = p.parent_id ? "親プロジェクト" : "ルート";
     const msg = [
-      `プロジェクト「${p.name}」を削除しますか？`,
-      "",
       "【影響範囲】",
       subProjects.length > 0
         ? `・サブプロジェクト ${subProjects.length}件 → ${parentLabel}に繰り上がり`
@@ -976,7 +976,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     ]
       .filter(Boolean)
       .join("\n");
-    if (!confirm(msg)) return;
+    if (!(await confirmDialog({ title: `プロジェクト「${p.name}」を削除しますか？`, message: msg, confirmLabel: "削除", danger: true }))) return;
     try {
       if (currentProjectId === p.id) {
         setCurrentProjectId(p.parent_id ?? null);

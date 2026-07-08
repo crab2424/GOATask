@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { parseCardsCsv, CsvParseError } from "./study/parseCardsCsv";
+import { useDialogs } from "../../shared/components/DialogProvider";
 import { CardFiltersPanel } from "./components/CardFiltersPanel";
 import { StudyScreen } from "./screens/StudyScreen";
 import { StudyResultScreen } from "./screens/StudyResultScreen";
@@ -39,6 +40,7 @@ import {
 
 export function FlashcardView() {
   const queryClient = useQueryClient();
+  const { confirmDialog, promptDialog } = useDialogs();
   const decksQuery = useQuery({ queryKey: ["decks"], queryFn: listDecks });
   const decks = decksQuery.data ?? [];
   const [screen, setScreen] = useState<Screen>("decks");
@@ -135,7 +137,7 @@ export function FlashcardView() {
   };
 
   const onRenameDeck = async (d: Deck) => {
-    const name = prompt("新しいデッキ名", d.name);
+    const name = await promptDialog({ title: "デッキ名を変更", defaultValue: d.name, confirmLabel: "変更" });
     if (!name?.trim() || name.trim() === d.name) return;
     try {
       await updateDeck(d.id, name.trim());
@@ -146,7 +148,7 @@ export function FlashcardView() {
   };
 
   const onDeleteDeck = async (d: Deck) => {
-    if (!confirm(`デッキ「${d.name}」を削除しますか？カードもすべて削除されます。`))
+    if (!(await confirmDialog({ title: `デッキ「${d.name}」を削除しますか？`, message: "カードもすべて削除されます。", confirmLabel: "削除", danger: true })))
       return;
     try {
       await deleteDeck(d.id);
@@ -263,7 +265,7 @@ export function FlashcardView() {
 
   const onResetStatsFromEdit = async (c: Card) => {
     if (!selectedDeck) return;
-    if (!confirm("このカードの統計をリセットします。よろしいですか？")) return;
+    if (!(await confirmDialog({ title: "このカードの統計をリセットします", message: "正答率・不正解数の記録が消えます。", confirmLabel: "リセット", danger: true }))) return;
     try {
       await resetCardStats(selectedDeck.id, c.id);
       await reloadDeck(selectedDeck.id);
@@ -274,7 +276,7 @@ export function FlashcardView() {
 
   const onDeleteCard = async (c: Card) => {
     if (!selectedDeck) return;
-    if (!confirm("このカードを削除しますか？")) return;
+    if (!(await confirmDialog({ title: "このカードを削除しますか？", confirmLabel: "削除", danger: true }))) return;
     try {
       await deleteCard(selectedDeck.id, c.id);
       await reloadDeck(selectedDeck.id);
@@ -295,9 +297,12 @@ export function FlashcardView() {
   const onBulkDelete = async (ids: number[]) => {
     if (!selectedDeck || ids.length === 0) return;
     if (
-      !confirm(
-        `選択した ${ids.length} 枚のカードを削除します。元に戻せません。よろしいですか？`,
-      )
+      !(await confirmDialog({
+        title: `選択した ${ids.length} 枚のカードを削除します`,
+        message: "元に戻せません。よろしいですか？",
+        confirmLabel: "削除",
+        danger: true,
+      }))
     )
       return;
     setBulkDeleting(true);
@@ -452,8 +457,8 @@ export function FlashcardView() {
         total={studyCards.length}
         showBack={showBack}
         direction={studyDirection}
-        onStop={() => {
-          if (!confirm("学習を中断しますか？ここまでの回答は記録されます。")) return;
+        onStop={async () => {
+          if (!(await confirmDialog({ title: "学習を中断しますか？", message: "ここまでの回答は記録されます。", confirmLabel: "中断" }))) return;
           flushResults(studyResults);
           setScreen("cards");
         }}
@@ -489,8 +494,8 @@ export function FlashcardView() {
         onCountChange={setSetupCount}
         onOrderChange={setSetupOrder}
         onDirectionChange={setSetupDirection}
-        onReset={() => {
-          if (confirm("学習設定を初期値に戻しますか？")) resetSetup();
+        onReset={async () => {
+          if (await confirmDialog({ title: "学習設定を初期値に戻しますか？", confirmLabel: "戻す" })) resetSetup();
         }}
         onCancel={() => setScreen("cards")}
         onStart={onStartFromSetup}

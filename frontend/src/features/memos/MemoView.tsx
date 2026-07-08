@@ -26,6 +26,7 @@ import {
 } from "../../api/folders";
 import { useIsMobile } from "../../shared/lib/useIsMobile";
 import { LoadingIndicator } from "../../shared/components/LoadingIndicator";
+import { useDialogs } from "../../shared/components/DialogProvider";
 import { CollectionShell } from "../../shared/components/CollectionShell";
 import { TreeSearch } from "../../shared/components/TreeSearch";
 import {
@@ -100,6 +101,7 @@ type DropTarget =
 
 export function MemoView() {
   const queryClient = useQueryClient();
+  const { confirmDialog, promptDialog } = useDialogs();
   const memosQuery = useQuery({ queryKey: ["memos"], queryFn: listMemos });
   const foldersQuery = useQuery({ queryKey: ["folders"], queryFn: listFolders });
   const memos = useMemo(() => memosQuery.data ?? [], [memosQuery.data]);
@@ -161,13 +163,13 @@ export function MemoView() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  const savedTimerRef = useRef<number | null>(null);
 
-  const flashSaved = () => {
-    setJustSaved(true);
-    if (savedTimerRef.current !== null) window.clearTimeout(savedTimerRef.current);
-    savedTimerRef.current = window.setTimeout(() => setJustSaved(false), 2000);
-  };
+  // 保存完了表示は2秒で自動的に消す
+  useEffect(() => {
+    if (!justSaved) return;
+    const timer = window.setTimeout(() => setJustSaved(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [justSaved]);
 
   const [dragItem, setDragItem] = useState<DragItem>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget>(null);
@@ -688,7 +690,7 @@ export function MemoView() {
         setColor(created.color ?? "");
         setFontSize(normalizeFontSize(created.font_size));
       }
-      flashSaved();
+      setJustSaved(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -739,7 +741,7 @@ export function MemoView() {
     e?: React.MouseEvent,
   ) => {
     e?.stopPropagation();
-    const name = prompt("フォルダ名");
+    const name = await promptDialog({ title: "新しいフォルダ", placeholder: "フォルダ名", confirmLabel: "作成" });
     if (!name?.trim()) return;
     try {
       const f = await createFolder({ name: name.trim(), parent_id: parent });
@@ -755,7 +757,7 @@ export function MemoView() {
 
   const onRenameFolder = async (f: Folder, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    const name = prompt("新しいフォルダ名", f.name);
+    const name = await promptDialog({ title: "フォルダ名を変更", defaultValue: f.name, confirmLabel: "変更" });
     if (!name?.trim() || name.trim() === f.name) return;
     try {
       await updateFolder(f.id, {
@@ -774,8 +776,6 @@ export function MemoView() {
     const subMemos = memosByFolder.get(f.id) ?? [];
     const parentLabel = f.parent_id ? "親フォルダ" : "ルート";
     const msg = [
-      `フォルダ「${f.name}」を削除しますか？`,
-      "",
       "【影響範囲】",
       subFolders.length > 0
         ? `・サブフォルダ ${subFolders.length}件 → ${parentLabel}に繰り上がり`
@@ -789,7 +789,7 @@ export function MemoView() {
     ]
       .filter(Boolean)
       .join("\n");
-    if (!confirm(msg)) return;
+    if (!(await confirmDialog({ title: `フォルダ「${f.name}」を削除しますか？`, message: msg, confirmLabel: "削除", danger: true }))) return;
     try {
       if (currentFolderId === f.id) setCurrentFolderId(f.parent_id ?? null);
       await deleteFolder(f.id);

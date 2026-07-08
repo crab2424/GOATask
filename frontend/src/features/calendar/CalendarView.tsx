@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createTask, type Task } from "../../api/tasks";
 import { createCalendarNote, deleteCalendarNote, getCalendar, updateCalendarNote, type CalendarNote } from "../../api/calendar";
 import { useIsMobile } from "../../shared/lib/useIsMobile";
+import { useDialogs } from "../../shared/components/DialogProvider";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 const COLORS = { violet: "bg-violet-100 text-violet-800", sky: "bg-sky-100 text-sky-800", amber: "bg-amber-100 text-amber-800", rose: "bg-rose-100 text-rose-800" } as const;
@@ -44,6 +45,7 @@ function segmentsForWeek(weekDays: string[], tasks: Task[]): TaskSegment[] {
 }
 
 export function CalendarView({ initialDate }: { initialDate?: string | null }) {
+  const { confirmDialog } = useDialogs();
   const initial = initialDate ? new Date(`${initialDate}T00:00:00`) : new Date();
   const [cursor, setCursor] = useState(new Date(initial.getFullYear(), initial.getMonth(), 1));
   const [selected, setSelected] = useState(dateString(initial));
@@ -88,7 +90,7 @@ export function CalendarView({ initialDate }: { initialDate?: string | null }) {
     } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
   };
   const editNote = (note: CalendarNote) => { setKind("note"); setEditingNote(note); setTitle(note.title); setColor((note.color in COLORS ? note.color : "violet") as keyof typeof COLORS); };
-  const removeNote = async (note: CalendarNote) => { if (!window.confirm(`「${note.title}」を削除しますか？`)) return; await deleteCalendarNote(note.id); if (editingNote?.id === note.id) { setEditingNote(null); setTitle(""); } await refresh(); };
+  const removeNote = async (note: CalendarNote) => { if (!(await confirmDialog({ title: `「${note.title}」を削除しますか？`, confirmLabel: "削除", danger: true }))) return; await deleteCalendarNote(note.id); if (editingNote?.id === note.id) { setEditingNote(null); setTitle(""); } await refresh(); };
   const selectedTasks = tasksOn(selected); const selectedNotes = notesOn(selected);
   const monthControls = <div className="flex items-center gap-2">
     <button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="rounded border px-3 py-1.5">‹</button>

@@ -8,6 +8,7 @@ import { useAuth } from "./shared/lib/useAuth";
 import { useIsMobile } from "./shared/lib/useIsMobile";
 import { useTheme } from "./shared/lib/useTheme";
 import { LoadingIndicator } from "./shared/components/LoadingIndicator";
+import { useDialogs } from "./shared/components/DialogProvider";
 
 const HomeView = lazy(() => import("./features/home/HomeView").then((module) => ({ default: module.HomeView })));
 const TaskView = lazy(() => import("./features/tasks/TaskView").then((module) => ({ default: module.TaskView })));
@@ -39,6 +40,7 @@ function App() {
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const isMobile = useIsMobile();
   const { theme, setTheme } = useTheme();
+  const { confirmDialog } = useDialogs();
   const [navCollapsed, setNavCollapsed] = useState(() =>
     typeof window !== "undefined" && window.localStorage.getItem(NAV_COLLAPSED_KEY) === "1",
   );
@@ -62,11 +64,11 @@ function App() {
   }
 
   const handleLogout = async () => {
-    if (!window.confirm("ログアウトしますか？")) return;
+    if (!(await confirmDialog({ title: "ログアウトしますか？", confirmLabel: "ログアウト" }))) return;
     try {
       await logout();
     } catch {
-      window.alert("ログアウトに失敗しました");
+      await confirmDialog({ title: "ログアウトに失敗しました", cancelLabel: "閉じる", confirmLabel: "OK" });
     }
   };
 
