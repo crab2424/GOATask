@@ -35,6 +35,16 @@
   color-scheme: dark;
 }
 
+/* 保存完了表示: ふわっと出現して静止（消えるのはReact側のタイマーで要素ごと除去） */
+@keyframes save-flash-in {
+  from { opacity: 0; transform: translateY(2px) scale(0.9); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.save-flash {
+  animation: save-flash-in 0.25s ease-out;
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;

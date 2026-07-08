@@ -17,6 +17,10 @@ interface EditorState {
   colorRef: RefObject<HTMLDivElement | null>;
   flatFolderOptions: { id: number; label: string }[];
   selected: Memo | null;
+  /** 保存API呼び出し中。ボタン・入力を無効化して処理中を示す */
+  saving: boolean;
+  /** 保存直後の完了表示（一定時間で消える） */
+  justSaved: boolean;
 }
 
 interface EditorActions {
@@ -36,7 +40,8 @@ export function renderMemoEditor(s: EditorState, a: EditorActions) {
   return (
     <form
       onSubmit={a.onSubmit}
-      className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+      className={`rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-opacity ${s.saving ? "pointer-events-none opacity-60" : ""}`}
+      aria-busy={s.saving}
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <label className="text-sm text-slate-600">フォルダ:</label>
@@ -170,10 +175,15 @@ export function renderMemoEditor(s: EditorState, a: EditorActions) {
         <button
           type="submit"
           className="rounded bg-slate-900 px-4 py-2 text-white hover:bg-slate-700 disabled:bg-slate-400"
-          disabled={!s.title.trim()}
+          disabled={!s.title.trim() || s.saving}
         >
-          {s.selected ? "更新" : "作成"}
+          {s.saving ? (s.selected ? "更新中..." : "作成中...") : s.selected ? "更新" : "作成"}
         </button>
+        {s.justSaved && (
+          <span className="save-flash flex items-center gap-1 text-sm font-medium text-green-600">
+            ✓ 保存しました
+          </span>
+        )}
         {s.selected && (
           <button
             type="button"

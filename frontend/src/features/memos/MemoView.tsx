@@ -159,6 +159,15 @@ export function MemoView() {
   const exportRef = useRef<HTMLDivElement | null>(null);
   const colorRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const savedTimerRef = useRef<number | null>(null);
+
+  const flashSaved = () => {
+    setJustSaved(true);
+    if (savedTimerRef.current !== null) window.clearTimeout(savedTimerRef.current);
+    savedTimerRef.current = window.setTimeout(() => setJustSaved(false), 2000);
+  };
 
   const [dragItem, setDragItem] = useState<DragItem>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget>(null);
@@ -652,7 +661,8 @@ export function MemoView() {
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || saving) return;
+    setSaving(true);
     try {
       if (selected) {
         const updated = await updateMemo(selected.id, {
@@ -678,8 +688,11 @@ export function MemoView() {
         setColor(created.color ?? "");
         setFontSize(normalizeFontSize(created.font_size));
       }
+      flashSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1183,6 +1196,8 @@ export function MemoView() {
                 colorRef,
                 flatFolderOptions,
                 selected,
+                saving,
+                justSaved,
               },
               {
                 setTitle,
