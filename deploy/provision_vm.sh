@@ -17,8 +17,15 @@ SSH_KEY_CONTENT="$(cat "$SSH_PUBLIC_KEY_PATH")"
 ATTEMPT=0
 
 notify_success() {
-	osascript -e 'display notification "OracleのVM作成に成功しました" with title "GOATask" sound name "Glass"' 2>/dev/null
-	afplay /System/Library/Sounds/Glass.aiff 2>/dev/null
+	if command -v osascript >/dev/null 2>&1; then
+		osascript -e 'display notification "OracleのVM作成に成功しました" with title "GOATask" sound name "Glass"' 2>/dev/null
+		afplay /System/Library/Sounds/Glass.aiff 2>/dev/null
+	elif command -v powershell.exe >/dev/null 2>&1; then
+		# WSL上ではWindows側のpowershell.exeを呼び出してメッセージボックスを表示する
+		powershell.exe -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show('OracleのVM作成に成功しました','GOATask')" >/dev/null 2>&1 &
+	elif command -v notify-send >/dev/null 2>&1; then
+		notify-send "GOATask" "OracleのVM作成に成功しました" 2>/dev/null
+	fi
 }
 
 while true; do
