@@ -1,0 +1,17 @@
+[Unit]
+Description=GOATask backend
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=goatask
+WorkingDirectory=/opt/goatask
+EnvironmentFile=/opt/goatask/deploy/.env
+ExecStart=/opt/goatask/backend/server
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

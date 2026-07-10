@@ -11,6 +11,10 @@ frontend/.vite/
 # Personal import data (not part of the app)
 import-data/
 
+# Production secrets
+deploy/.env
+key/
+
 # Editor / OS
 .DS_Store
 .idea/
