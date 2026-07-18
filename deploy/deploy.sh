@@ -7,7 +7,7 @@ git pull
 
 cd frontend
 npm install
-npm run build
+VITE_API_BASE= npm run build
 cd ..
 
 cd backend
