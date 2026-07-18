@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# Ampere A1 (Always Free) の空き容量が出るまでインスタンス作成をリトライするスクリプト。
+# Always Free x86 Micro (VM.Standard.E2.1.Micro) の空き容量が出るまでインスタンス作成をリトライするスクリプト。
+# Ampere A1 (ARM) は東京リージョンで空きが出なかったため、確実性優先でx86 Microへ変更(2026-07-17)。
 # 「Out of host capacity」系のエラーの間はリトライを続け、それ以外のエラーは即停止する。
 set -uo pipefail
 
 COMPARTMENT_ID="ocid1.tenancy.oc1..aaaaaaaacl6atrd23i4cu7a5746v2x35fgr6abilauenjpe5apaelr6nod4a"
 AVAILABILITY_DOMAIN="Jtan:AP-TOKYO-1-AD-1"
 SUBNET_ID="ocid1.subnet.oc1.ap-tokyo-1.aaaaaaaaxvnrecl6mf2curw7fsynwfuqntuidhziibdkfuvb46nex4nb5goa"
-IMAGE_ID="ocid1.image.oc1.ap-tokyo-1.aaaaaaaac6xgrmnpr676gm356kgsf2lr23e2e5ik6oigfuno3ybz3nul5riq"
+IMAGE_ID="ocid1.image.oc1.ap-tokyo-1.aaaaaaaaoscw5alszu4h62xmlf2d3vusfpyyfxpooqxouff5wyc4w5g7e5bq"
 DISPLAY_NAME="goatask-vm"
-OCPUS=1
-MEMORY_GB=6
 SSH_PUBLIC_KEY_PATH="$HOME/.ssh/id_ed25519.pub"
 RETRY_INTERVAL_SECONDS=60
 
@@ -36,8 +35,7 @@ while true; do
 	OUTPUT="$(oci compute instance launch \
 		--compartment-id "$COMPARTMENT_ID" \
 		--availability-domain "$AVAILABILITY_DOMAIN" \
-		--shape "VM.Standard.A1.Flex" \
-		--shape-config "{\"ocpus\":$OCPUS,\"memoryInGBs\":$MEMORY_GB}" \
+		--shape "VM.Standard.E2.1.Micro" \
 		--subnet-id "$SUBNET_ID" \
 		--image-id "$IMAGE_ID" \
 		--display-name "$DISPLAY_NAME" \
