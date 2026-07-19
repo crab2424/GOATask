@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# goatask権限で実行するビルド専用スクリプト。goataskはsudo権限を持たないため、
+# サービス再起動は呼び出し側(deploy/ci_deploy.shなど、sudo権限を持つユーザー)が別途行う。
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -13,6 +15,3 @@ cd ..
 cd backend
 go build -o server ./cmd/server
 cd ..
-
-sudo systemctl restart goatask
-sudo systemctl status goatask --no-pager
