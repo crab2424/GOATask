@@ -44,6 +44,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const [active, setActive] = useState<ActiveDialog>(null);
   const [inputValue, setInputValue] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const composingRef = useRef(false);
 
   const confirmDialog = useCallback((opts: ConfirmOptions) => {
     return new Promise<boolean>((resolve) => {
@@ -96,11 +97,23 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder={active.opts.placeholder}
+                onCompositionStart={() => {
+                  composingRef.current = true;
+                }}
+                onCompositionEnd={() => {
+                  // Safari は compositionend 後の確定 Enter keydown で isComposing が
+                  // false になるため、フラグ解除を1フレーム遅らせて確定 Enter を無視する
+                  requestAnimationFrame(() => {
+                    composingRef.current = false;
+                  });
+                }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.nativeEvent.isComposing && inputValue.trim()) {
+                  const composing =
+                    composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229;
+                  if (e.key === "Enter" && !composing && inputValue.trim()) {
                     close(inputValue);
                   }
-                  if (e.key === "Escape") close(null);
+                  if (e.key === "Escape" && !composing) close(null);
                 }}
                 className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
               />
