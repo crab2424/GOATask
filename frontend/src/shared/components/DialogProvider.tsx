@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
   type ReactNode,
@@ -64,6 +65,13 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     setActive(null);
   };
 
+  useEffect(() => {
+    if (active?.kind === "prompt") {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [active]);
+
   return (
     <DialogContext.Provider value={{ confirmDialog, promptDialog }}>
       {children}
@@ -84,16 +92,14 @@ export function DialogProvider({ children }: { children: ReactNode }) {
             )}
             {active.kind === "prompt" && (
               <input
-                ref={(el) => {
-                  inputRef.current = el;
-                  el?.focus();
-                  el?.select();
-                }}
+                ref={inputRef}
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder={active.opts.placeholder}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && inputValue.trim()) close(inputValue);
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing && inputValue.trim()) {
+                    close(inputValue);
+                  }
                   if (e.key === "Escape") close(null);
                 }}
                 className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
