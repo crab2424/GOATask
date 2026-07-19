@@ -179,11 +179,6 @@ export function renderMemoEditor(s: EditorState, a: EditorActions) {
         >
           {s.saving ? (s.selected ? "更新中..." : "作成中...") : s.selected ? "更新" : "作成"}
         </button>
-        {s.justSaved && (
-          <span className="save-flash flex items-center gap-1 text-sm font-medium text-green-600">
-            ✓ 保存しました
-          </span>
-        )}
         {s.selected && (
           <button
             type="button"
@@ -192,6 +187,11 @@ export function renderMemoEditor(s: EditorState, a: EditorActions) {
           >
             削除
           </button>
+        )}
+        {s.justSaved && (
+          <span className="save-flash flex items-center gap-1 text-sm font-medium text-green-600">
+            ✓ 保存しました
+          </span>
         )}
         {s.selected && (
           <div ref={s.exportRef} className="relative ml-auto">
