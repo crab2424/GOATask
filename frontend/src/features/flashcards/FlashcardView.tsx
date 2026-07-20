@@ -38,7 +38,7 @@ import {
   type Card,
 } from "../../api/decks";
 
-export function FlashcardView() {
+export function FlashcardView({ onStudyStateChange }: { onStudyStateChange?: (active: boolean) => void } = {}) {
   const queryClient = useQueryClient();
   const { confirmDialog, promptDialog } = useDialogs();
   const decksQuery = useQuery({ queryKey: ["decks"], queryFn: listDecks });
@@ -96,6 +96,10 @@ export function FlashcardView() {
     | "front_desc"
   >("created_asc");
   const [sortOpen, setSortOpen] = useState(false);
+
+  useEffect(() => {
+    onStudyStateChange?.(screen === "study");
+  }, [onStudyStateChange, screen]);
 
   const reloadDecks = async () => {
     await queryClient.invalidateQueries({ queryKey: ["decks"] });

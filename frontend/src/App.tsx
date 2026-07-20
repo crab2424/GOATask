@@ -37,6 +37,7 @@ function App() {
   const [openTaskId, setOpenTaskId] = useState<number | null>(null);
   const [showMore, setShowMore] = useState(false);
   const [hideBottomNav, setHideBottomNav] = useState(false);
+  const [flashcardStudyActive, setFlashcardStudyActive] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const isMobile = useIsMobile();
   const { theme, setTheme } = useTheme();
@@ -77,7 +78,16 @@ function App() {
     window.localStorage.setItem(STARTUP_MODE_KEY, nextMode);
   };
 
-  const changeMode = (nextMode: Mode) => {
+  const changeMode = async (nextMode: Mode) => {
+    if (mode === "flashcards" && flashcardStudyActive && nextMode !== "flashcards") {
+      const shouldLeave = await confirmDialog({
+        title: "単語テストを中断しますか？",
+        message: "回答済みの結果は保存されています。別のモードへ移動しますか？",
+        confirmLabel: "移動する",
+        cancelLabel: "テストを続ける",
+      });
+      if (!shouldLeave) return;
+    }
     setMode(nextMode);
     setCalendarDate(null);
   };
@@ -88,7 +98,7 @@ function App() {
       {mode === "tasks" && <TaskView initialTaskId={openTaskId} onInitialTaskHandled={() => setOpenTaskId(null)} />}
       {mode === "calendar" && <CalendarView key={calendarDate ?? "calendar"} initialDate={calendarDate} />}
       {mode === "memos" && <MemoView />}
-      {mode === "flashcards" && <FlashcardView />}
+      {mode === "flashcards" && <FlashcardView onStudyStateChange={setFlashcardStudyActive} />}
       {mode === "calculator" && <CalculatorView onKeyboardVisibleChange={setHideBottomNav} />}
       {mode === "settings" && <SettingsView username={authState.user.username} health={health} theme={theme} onThemeChange={setTheme} startupMode={startupMode} onStartupModeChange={changeStartupMode} onLogout={handleLogout} />}
     </Suspense>
