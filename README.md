@@ -91,6 +91,8 @@ npm run dev
 | POST | `/api/files/:id/shares` | 7日間有効な読み取りURLを発行 |
 | DELETE | `/api/files/:id` | Object Storageとメタデータを即時削除 |
 
+画面の「ファイル」モードから、一覧・アップロード・共有リンクのコピー／表示・削除を操作できます。
+
 ## 今後の実装予定
 
 - [ ] カレンダー（FullCalendar）

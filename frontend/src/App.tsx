@@ -17,11 +17,12 @@ const FlashcardView = lazy(() => import("./features/flashcards/FlashcardView").t
 const SettingsView = lazy(() => import("./features/settings/SettingsView").then((module) => ({ default: module.SettingsView })));
 const CalendarView = lazy(() => import("./features/calendar/CalendarView").then((module) => ({ default: module.CalendarView })));
 const CalculatorView = lazy(() => import("./features/calculator/CalculatorView").then((module) => ({ default: module.CalculatorView })));
+const FilesView = lazy(() => import("./features/files/FilesView").then((module) => ({ default: module.FilesView })));
 
 const NAV_COLLAPSED_KEY = "goatask:navCollapsed";
 const STARTUP_MODE_KEY = "goatask:startupMode";
 
-const STARTUP_MODES: Mode[] = ["home", "tasks", "calendar", "memos", "flashcards", "calculator"];
+const STARTUP_MODES: Mode[] = ["home", "tasks", "calendar", "memos", "flashcards", "calculator", "files"];
 
 function loadStartupMode(): Mode {
   const value = window.localStorage.getItem(STARTUP_MODE_KEY);
@@ -100,6 +101,7 @@ function App() {
       {mode === "memos" && <MemoView />}
       {mode === "flashcards" && <FlashcardView onStudyStateChange={setFlashcardStudyActive} />}
       {mode === "calculator" && <CalculatorView onKeyboardVisibleChange={setHideBottomNav} />}
+      {mode === "files" && <FilesView />}
       {mode === "settings" && <SettingsView username={authState.user.username} health={health} theme={theme} onThemeChange={setTheme} startupMode={startupMode} onStartupModeChange={changeStartupMode} onLogout={handleLogout} />}
     </Suspense>
   );
