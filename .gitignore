@@ -9,7 +9,8 @@ frontend/dist/
 frontend/.vite/
 
 # Personal import data (not part of the app)
-import-data/
+import-data
+memory/
 
 # Production secrets
 deploy/.env
