@@ -38,8 +38,33 @@ function zip(entries: { name: string; data: Uint8Array }[]): Uint8Array {
   return out;
 }
 
-export function exportFolderMemos(memos: Memo[], folders: Folder[], folderId: number | null, format: FolderExportFormat) {
-  const selected = memos.filter((memo) => (memo.folder_id ?? null) === folderId);
+export function exportFolderMemos(
+  memos: Memo[],
+  folders: Folder[],
+  folderId: number | null,
+  format: FolderExportFormat,
+  includeChildren = false,
+) {
+  const childMap = new Map<number | null, number[]>();
+  for (const folder of folders) {
+    const parent = folder.parent_id ?? null;
+    const children = childMap.get(parent) ?? [];
+    children.push(folder.id);
+    childMap.set(parent, children);
+  }
+  const folderIds = new Set<number | null>([folderId]);
+  if (includeChildren) {
+    const queue = [folderId];
+    while (queue.length) {
+      const parent = queue.shift()!;
+      for (const child of childMap.get(parent) ?? []) {
+        if (folderIds.has(child)) continue;
+        folderIds.add(child);
+        queue.push(child);
+      }
+    }
+  }
+  const selected = memos.filter((memo) => folderIds.has(memo.folder_id ?? null));
   const folderName = folderId === null ? "root" : sanitizeFilename(folders.find((f) => f.id === folderId)?.name ?? "folder");
   if (format !== "zip") {
     const separator = "\n\n---\n\n";

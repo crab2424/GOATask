@@ -164,6 +164,87 @@ export function MemoView() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [replaceOpen, setReplaceOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [replaceText, setReplaceText] = useState("");
+  const [activeMatch, setActiveMatch] = useState(0);
+  const pendingSelection = useRef<{ start: number; end: number } | null>(null);
+
+  const matchPositions = useMemo(() => {
+    if (!searchQuery) return [];
+    const positions: number[] = [];
+    let from = 0;
+    while (from <= content.length - searchQuery.length) {
+      const index = content.indexOf(searchQuery, from);
+      if (index < 0) break;
+      positions.push(index);
+      from = index + Math.max(searchQuery.length, 1);
+    }
+    return positions;
+  }, [content, searchQuery]);
+
+  useEffect(() => {
+    const textarea = document.getElementById("memo-content-editor") as HTMLTextAreaElement | null;
+    if (!pendingSelection.current || !textarea) return;
+    const { start, end } = pendingSelection.current;
+    pendingSelection.current = null;
+    textarea.focus();
+    textarea.setSelectionRange(start, end);
+  }, [content]);
+
+  const selectMatch = (direction: 1 | -1) => {
+    const textarea = document.getElementById("memo-content-editor") as HTMLTextAreaElement | null;
+    if (!matchPositions.length || !textarea) return;
+    const currentStart = textarea.selectionStart;
+    let index = Math.min(activeMatch, matchPositions.length - 1);
+    if (direction > 0 && matchPositions[index] <= currentStart && currentStart < matchPositions[index] + searchQuery.length) {
+      index = (index + 1) % matchPositions.length;
+    } else if (direction < 0) {
+      index = (index - 1 + matchPositions.length) % matchPositions.length;
+    } else if (matchPositions[index] < currentStart) {
+      index = matchPositions.findIndex((position) => position >= currentStart);
+      if (index < 0) index = 0;
+    }
+    setActiveMatch(index);
+    const start = matchPositions[index];
+    textarea.focus();
+    textarea.setSelectionRange(start, start + searchQuery.length);
+  };
+
+  const replaceCurrent = () => {
+    if (!matchPositions.length) return;
+    const index = Math.min(activeMatch, matchPositions.length - 1);
+    const start = matchPositions[index];
+    const nextContent = content.slice(0, start) + replaceText + content.slice(start + searchQuery.length);
+    pendingSelection.current = { start, end: start + replaceText.length };
+    setContent(nextContent);
+    setActiveMatch(Math.min(index, Math.max(0, matchPositions.length - 2)));
+  };
+
+  const replaceAll = () => {
+    if (!matchPositions.length) return;
+    const nextContent = content.split(searchQuery).join(replaceText);
+    pendingSelection.current = { start: 0, end: 0 };
+    setContent(nextContent);
+    setActiveMatch(0);
+  };
+
+  useEffect(() => {
+    if (!showEditor) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key !== "f" && key !== "h") return;
+      event.preventDefault();
+      setSearchOpen(true);
+      if (key === "h") setReplaceOpen(true);
+      window.setTimeout(() => document.getElementById("memo-search-input")?.focus(), 0);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [showEditor]);
 
   // 保存完了表示は2秒で自動的に消す
   useEffect(() => {
@@ -635,8 +716,6 @@ export function MemoView() {
     setShowEditor(false);
   };
 
-  const [showEditor, setShowEditor] = useState(false);
-
   const openNewMemoForm = () => {
     startNew(currentFolderId);
     setShowEditor(true);
@@ -663,10 +742,6 @@ export function MemoView() {
     const timer = window.setTimeout(() => setFocusMemoId(null), 1600);
     return () => window.clearTimeout(timer);
   }, [focusMemoId, currentFolderId, memos]);
-
-  useEffect(() => {
-    setShowEditor(selectedId !== null);
-  }, [selectedId]);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -1209,6 +1284,8 @@ export function MemoView() {
                 {selected ? "メモを編集" : "新しいメモ"}
               </h1>
             </div>
+            {/* Refs are intentionally passed to the editor renderer for popup anchoring. */}
+            {/* eslint-disable-next-line react-hooks/refs */}
             {renderMemoEditor(
               {
                 title,
@@ -1225,6 +1302,12 @@ export function MemoView() {
                 selected,
                 saving,
                 justSaved,
+                searchOpen,
+                replaceOpen,
+                searchQuery,
+                replaceText,
+                matchCount: matchPositions.length,
+                activeMatch: Math.min(activeMatch, Math.max(0, matchPositions.length - 1)),
               },
               {
                 setTitle,
@@ -1237,6 +1320,17 @@ export function MemoView() {
                 setColorOpen,
                 onSubmit,
                 onDelete,
+                setSearchOpen,
+                setReplaceOpen,
+                setSearchQuery: (value) => {
+                  setSearchQuery(value);
+                  setActiveMatch(0);
+                },
+                setReplaceText,
+                findNext: () => selectMatch(1),
+                findPrevious: () => selectMatch(-1),
+                replaceCurrent,
+                replaceAll,
               },
             )}
           </>
@@ -1439,17 +1533,24 @@ export function MemoView() {
             ＋ サブフォルダ追加
           </ContextMenuItem>
           <ContextMenuSubmenu label="メモを一括保存">
-            {(["md", "txt", "zip"] as FolderExportFormat[]).map((format) => (
-              <ContextMenuItem
-                key={format}
-                onClick={() => {
-                  const folderId = ctxMenu.folderId;
-                  folderMenu.close();
-                  exportFolderMemos(memos, folders, folderId, format);
-                }}
+            {([false, true] as const).map((includeChildren) => (
+              <ContextMenuSubmenu
+                key={String(includeChildren)}
+                label={includeChildren ? "子フォルダを含む" : "直下のメモのみ"}
               >
-                .{format} 形式
-              </ContextMenuItem>
+                {(["md", "txt", "zip"] as FolderExportFormat[]).map((format) => (
+                  <ContextMenuItem
+                    key={format}
+                    onClick={() => {
+                      const folderId = ctxMenu.folderId;
+                      folderMenu.close();
+                      exportFolderMemos(memos, folders, folderId, format, includeChildren);
+                    }}
+                  >
+                    .{format} 形式
+                  </ContextMenuItem>
+                ))}
+              </ContextMenuSubmenu>
             ))}
           </ContextMenuSubmenu>
           <ContextMenuItem

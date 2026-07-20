@@ -21,6 +21,12 @@ interface EditorState {
   saving: boolean;
   /** 保存直後の完了表示（一定時間で消える） */
   justSaved: boolean;
+  searchOpen: boolean;
+  replaceOpen: boolean;
+  searchQuery: string;
+  replaceText: string;
+  matchCount: number;
+  activeMatch: number;
 }
 
 interface EditorActions {
@@ -34,6 +40,14 @@ interface EditorActions {
   setColorOpen: (v: boolean) => void;
   onSubmit: (e: FormEvent) => void;
   onDelete: () => void;
+  setSearchOpen: (v: boolean) => void;
+  setReplaceOpen: (v: boolean) => void;
+  setSearchQuery: (v: string) => void;
+  setReplaceText: (v: string) => void;
+  findNext: () => void;
+  findPrevious: () => void;
+  replaceCurrent: () => void;
+  replaceAll: () => void;
 }
 
 export function renderMemoEditor(s: EditorState, a: EditorActions) {
@@ -156,7 +170,49 @@ export function renderMemoEditor(s: EditorState, a: EditorActions) {
         }}
         className="mb-2 w-full rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
       />
+      {(s.searchOpen || s.replaceOpen) && (
+        <div className="mb-2 rounded border border-slate-200 bg-slate-50 p-2 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              id="memo-search-input"
+              value={s.searchQuery}
+              onChange={(e) => a.setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (e.shiftKey) a.findPrevious();
+                  else a.findNext();
+                }
+                if (e.key === "Escape") a.setSearchOpen(false);
+              }}
+              placeholder="検索"
+              aria-label="本文を検索"
+              className="min-w-[12rem] flex-1 rounded border border-slate-300 bg-white px-2 py-1 focus:border-slate-500 focus:outline-none"
+            />
+            {s.replaceOpen && (
+              <input
+                value={s.replaceText}
+                onChange={(e) => a.setReplaceText(e.target.value)}
+                placeholder="置換後"
+                aria-label="置換後の文字列"
+                className="min-w-[12rem] flex-1 rounded border border-slate-300 bg-white px-2 py-1 focus:border-slate-500 focus:outline-none"
+              />
+            )}
+            <button type="button" onClick={a.findPrevious} className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100" title="前へ">↑</button>
+            <button type="button" onClick={a.findNext} className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100" title="次へ">↓</button>
+            {s.replaceOpen && <>
+              <button type="button" onClick={a.replaceCurrent} disabled={!s.matchCount} className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100 disabled:opacity-50">置換</button>
+              <button type="button" onClick={a.replaceAll} disabled={!s.matchCount} className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100 disabled:opacity-50">すべて置換</button>
+            </>}
+            <span className="text-xs text-slate-500" aria-live="polite">
+              {s.matchCount ? `${s.activeMatch + 1} / ${s.matchCount}` : "一致なし"}
+            </span>
+            <button type="button" onClick={() => { a.setSearchOpen(false); a.setReplaceOpen(false); }} className="rounded px-1 text-slate-500 hover:bg-slate-200" aria-label="検索を閉じる">×</button>
+          </div>
+        </div>
+      )}
       <textarea
+        id="memo-content-editor"
         value={s.content}
         onChange={(e) => a.setContent(e.target.value)}
         placeholder="内容（プレーンテキスト）"
