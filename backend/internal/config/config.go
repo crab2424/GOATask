@@ -32,8 +32,8 @@ func Load() *Config {
 		StaticDir:                 getEnv("STATIC_DIR", ""),
 		SignupInviteCode:          getEnv("SIGNUP_INVITE_CODE", ""),
 		OCIRegion:                 getEnv("OCI_REGION", "ap-tokyo-1"),
-		OCIObjectStorageNamespace: getEnv("OCI_OBJECT_STORAGE_NAMESPACE", ""),
-		OCIBucketName:             getEnv("OCI_BUCKET_NAME", ""),
+		OCIObjectStorageNamespace: getEnv("OCI_OBJECT_STORAGE_NAMESPACE", "nrskptzjyhtw"),
+		OCIBucketName:             getEnv("OCI_BUCKET_NAME", "goatask-files"),
 		OCICompartmentID:          getEnv("OCI_COMPARTMENT_ID", ""),
 		FileMaxBytes:              getInt64Env("FILE_MAX_BYTES", 50*1024*1024),
 	}

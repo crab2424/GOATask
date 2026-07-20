@@ -49,7 +49,7 @@ go run ./cmd/server
 
 #### ファイル共有を有効にする場合
 
-OCI CLIの設定（`~/.oci/config`）を用意したうえで、次の環境変数を設定します。未設定の場合、ファイル共有APIは登録されません。
+OCI CLIの設定（`~/.oci/config`）を実行ユーザーから読み取れる状態にしたうえで、次の環境変数を設定します。バケット名とnamespaceは今回作成したバケットの値が既定値です。
 
 ```bash
 export OCI_REGION=ap-tokyo-1
