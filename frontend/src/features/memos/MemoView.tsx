@@ -73,8 +73,9 @@ import {
   reorderIds,
   useTouchCardReorder,
 } from "../../shared/lib/cardReorder";
-import { ContextMenu, ContextMenuItem } from "../../shared/components/ContextMenu";
+import { ContextMenu, ContextMenuItem, ContextMenuSubmenu } from "../../shared/components/ContextMenu";
 import { useContextMenu } from "../../shared/components/useContextMenu";
+import { exportFolderMemos, type FolderExportFormat } from "./utils/exportFolder";
 
 const MEMO_DEFAULT_DOT_COLOR = "#cbd5e1"; // slate-300, 暫定色
 const FOLDER_EXPANDED_KEY = "goatask-folder-expanded";
@@ -101,7 +102,7 @@ type DropTarget =
 
 export function MemoView() {
   const queryClient = useQueryClient();
-  const { confirmDialog, promptDialog } = useDialogs();
+  const { confirmDialog, promptDialog, choiceDialog } = useDialogs();
   const memosQuery = useQuery({ queryKey: ["memos"], queryFn: listMemos });
   const foldersQuery = useQuery({ queryKey: ["folders"], queryFn: listFolders });
   const memos = useMemo(() => memosQuery.data ?? [], [memosQuery.data]);
@@ -186,6 +187,7 @@ export function MemoView() {
     FOLDER_MENU_W,
     FOLDER_MENU_H,
   );
+  const rootMenu = useContextMenu<{ parentId: number | null }>(190, 90);
   const memoMenu = useContextMenu<{ memoId: number }>(MEMO_MENU_W, MEMO_MENU_H);
   const ctxMenu = folderMenu.menu;
   const memoCtxMenu = memoMenu.menu;
@@ -209,6 +211,11 @@ export function MemoView() {
   const toggleMemoCtxMenu = (x: number, y: number, memoId: number) => {
     folderMenu.close();
     memoMenu.toggle(x, y, { memoId }, (curr) => curr.memoId === memoId);
+  };
+  const openRootCtxMenu = (x: number, y: number, parentId: number | null) => {
+    folderMenu.close();
+    memoMenu.close();
+    rootMenu.open(x, y, { parentId });
   };
 
   const hoverExpand = useHoverExpand(
@@ -789,10 +796,19 @@ export function MemoView() {
     ]
       .filter(Boolean)
       .join("\n");
-    if (!(await confirmDialog({ title: `フォルダ「${f.name}」を削除しますか？`, message: msg, confirmLabel: "削除", danger: true }))) return;
+    const moveTo = await choiceDialog({
+      title: `フォルダ「${f.name}」を削除しますか？`,
+      message: `${msg}\n\n直下のメモの移動先を選択してください。`,
+      options: [
+        { value: "parent", label: `親フォルダ（${parentLabel}）へ移動` },
+        { value: "unassigned", label: "未分類へ移動" },
+      ],
+    });
+    if (!moveTo) return;
+    if (!(await confirmDialog({ title: `フォルダ「${f.name}」を削除しますか？`, message: "この操作は元に戻せません。", confirmLabel: "削除", danger: true }))) return;
     try {
       if (currentFolderId === f.id) setCurrentFolderId(f.parent_id ?? null);
-      await deleteFolder(f.id);
+      await deleteFolder(f.id, moveTo as "parent" | "unassigned");
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1064,7 +1080,14 @@ export function MemoView() {
   }, [treeQuery, folders, memos]);
 
   const treeContent = (
-    <div onKeyDown={handleTreeKeyDown}>
+    <div
+      onKeyDown={handleTreeKeyDown}
+      onContextMenu={(e) => {
+        if (e.target !== e.currentTarget) return;
+        e.preventDefault();
+        openRootCtxMenu(e.clientX, e.clientY, currentFolderId);
+      }}
+    >
       <TreeSearch
         query={treeQuery}
         onQueryChange={setTreeQuery}
@@ -1083,6 +1106,10 @@ export function MemoView() {
             <li role="treeitem">
               <button
                 onClick={() => navigateTo(null)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  openRootCtxMenu(e.clientX, e.clientY, null);
+                }}
                 data-tree-node="root"
                 className={`w-full rounded px-2 py-1.5 text-left text-sm ${
                   currentFolderId === null
@@ -1411,6 +1438,20 @@ export function MemoView() {
           >
             ＋ サブフォルダ追加
           </ContextMenuItem>
+          <ContextMenuSubmenu label="メモを一括保存">
+            {(["md", "txt", "zip"] as FolderExportFormat[]).map((format) => (
+              <ContextMenuItem
+                key={format}
+                onClick={() => {
+                  const folderId = ctxMenu.folderId;
+                  folderMenu.close();
+                  exportFolderMemos(memos, folders, folderId, format);
+                }}
+              >
+                .{format} 形式
+              </ContextMenuItem>
+            ))}
+          </ContextMenuSubmenu>
           <ContextMenuItem
             onClick={() => {
               favorites.toggle(ctxMenu.folderId);
@@ -1439,6 +1480,29 @@ export function MemoView() {
             }}
           >
             🗑 削除
+          </ContextMenuItem>
+        </ContextMenu>
+      )}
+      {rootMenu.menu && (
+        <ContextMenu x={rootMenu.menu.x} y={rootMenu.menu.y} menuRef={rootMenu.ref}>
+          <ContextMenuItem
+            onClick={() => {
+              const parentId = rootMenu.menu?.parentId ?? null;
+              rootMenu.close();
+              if (parentId !== currentFolderId) navigateTo(parentId);
+              startNew(parentId);
+            }}
+          >
+            ＋ メモ作成
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => {
+              const parentId = rootMenu.menu?.parentId ?? null;
+              rootMenu.close();
+              onCreateFolder(parentId);
+            }}
+          >
+            ＋ フォルダ作成
           </ContextMenuItem>
         </ContextMenu>
       )}

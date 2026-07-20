@@ -121,6 +121,12 @@ func (h *ProjectHandler) delete(c echo.Context) error {
 	if err := h.DB.Where("user_id = ?", uid).First(&p, id).Error; err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "project not found")
 	}
+	var req struct{ MoveTo string `json:"move_to"` }
+	_ = c.Bind(&req)
+	if req.MoveTo == "" { req.MoveTo = "unassigned" }
+	if req.MoveTo != "parent" && req.MoveTo != "unassigned" {
+		return echo.NewHTTPError(http.StatusBadRequest, "move_to must be 'parent' or 'unassigned'")
+	}
 	tx := h.DB.Begin()
 	if tx.Error != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, tx.Error.Error())
@@ -130,8 +136,10 @@ func (h *ProjectHandler) delete(c echo.Context) error {
 		tx.Rollback()
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	var destination interface{} = nil
+	if req.MoveTo == "parent" { destination = p.ParentID }
 	if err := tx.Model(&model.Task{}).Where("project_id = ?", p.ID).
-		Update("project_id", nil).Error; err != nil {
+		Update("project_id", destination).Error; err != nil {
 		tx.Rollback()
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}

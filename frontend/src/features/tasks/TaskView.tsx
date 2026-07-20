@@ -191,7 +191,7 @@ interface TaskViewProps {
 
 export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps = {}) {
   const queryClient = useQueryClient();
-  const { confirmDialog, promptDialog } = useDialogs();
+  const { confirmDialog, promptDialog, choiceDialog } = useDialogs();
   const tasksQuery = useQuery({ queryKey: ["tasks"], queryFn: listTasks });
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const tasks = useMemo(() => tasksQuery.data ?? [], [tasksQuery.data]);
@@ -255,6 +255,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
   const [editStartDate, setEditStartDate] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
   const [editProjectId, setEditProjectId] = useState<number | null>(null);
+  const editPanelRef = useRef<HTMLDivElement | null>(null);
 
   const [showDone, setShowDone] = useState(false);
   const [tidied, setTidied] = useState<boolean>(() => {
@@ -288,6 +289,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     PROJECT_MENU_W,
     PROJECT_MENU_H,
   );
+  const rootMenu = useContextMenu<{ parentId: number | null }>(190, 90);
   const taskMenu = useContextMenu<{ taskId: number }>(TASK_MENU_W, TASK_MENU_H);
   const ctxMenu = projectMenu.menu;
   const taskCtxMenu = taskMenu.menu;
@@ -299,6 +301,11 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
   const toggleProjectCtxMenu = (x: number, y: number, projectId: number) => {
     taskMenu.close();
     projectMenu.toggle(x, y, { projectId }, (curr) => curr.projectId === projectId);
+  };
+  const openRootCtxMenu = (x: number, y: number, parentId: number | null) => {
+    projectMenu.close();
+    taskMenu.close();
+    rootMenu.open(x, y, { parentId });
   };
 
   const hoverExpand = useHoverExpand(
@@ -405,6 +412,19 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
       due_date: editDueDate,
     });
   }, [editingId, editTitle, editDescription, editStartDate, editDueDate]);
+
+  useEffect(() => {
+    if (editingId === null) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!editPanelRef.current?.contains(target)) cancelEdit();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+    // cancelEdit only changes local edit state; the active editing id controls
+    // registration and avoids capturing a stale task id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId]);
 
   useEffect(() => {
     if (focusTaskId === null) return;
@@ -976,12 +996,21 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     ]
       .filter(Boolean)
       .join("\n");
-    if (!(await confirmDialog({ title: `プロジェクト「${p.name}」を削除しますか？`, message: msg, confirmLabel: "削除", danger: true }))) return;
+    const moveTo = await choiceDialog({
+      title: `プロジェクト「${p.name}」を削除しますか？`,
+      message: `${msg}\n\n直下のタスクの移動先を選択してください。`,
+      options: [
+        { value: "parent", label: `親プロジェクト（${parentLabel}）へ移動` },
+        { value: "unassigned", label: "未分類へ移動" },
+      ],
+    });
+    if (!moveTo) return;
+    if (!(await confirmDialog({ title: `プロジェクト「${p.name}」を削除しますか？`, message: "この操作は元に戻せません。", confirmLabel: "削除", danger: true }))) return;
     try {
       if (currentProjectId === p.id) {
         setCurrentProjectId(p.parent_id ?? null);
       }
-      await deleteProject(p.id);
+      await deleteProject(p.id, moveTo as "parent" | "unassigned");
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1179,7 +1208,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
           <span className="pointer-events-none absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-blue-500" />
         )}
         {editingId === t.id ? (
-          <div className="flex-1">
+          <div ref={editPanelRef} className="flex-1">
             <input
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
@@ -1435,7 +1464,14 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
   }, [treeQuery, projects, tasks]);
 
   const treeContent = (
-    <div onKeyDown={handleTreeKeyDown}>
+    <div
+      onKeyDown={handleTreeKeyDown}
+      onContextMenu={(e) => {
+        if (e.target !== e.currentTarget) return;
+        e.preventDefault();
+        openRootCtxMenu(e.clientX, e.clientY, currentProjectId);
+      }}
+    >
       <TreeSearch
         query={treeQuery}
         onQueryChange={setTreeQuery}
@@ -1454,6 +1490,10 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
             <li role="treeitem">
               <button
                 onClick={() => navigateTo(null)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  openRootCtxMenu(e.clientX, e.clientY, null);
+                }}
                 data-tree-node="root"
                 className={`w-full rounded px-2 py-1.5 text-left text-sm ${
                   currentProjectId === null
@@ -1880,6 +1920,29 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
             }}
           >
             🗑 削除
+          </ContextMenuItem>
+        </ContextMenu>
+      )}
+      {rootMenu.menu && (
+        <ContextMenu x={rootMenu.menu.x} y={rootMenu.menu.y} menuRef={rootMenu.ref}>
+          <ContextMenuItem
+            onClick={() => {
+              const parentId = rootMenu.menu?.parentId ?? null;
+              rootMenu.close();
+              setCurrentProjectId(parentId);
+              setShowNewTaskForm(true);
+            }}
+          >
+            ＋ タスク作成
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => {
+              const parentId = rootMenu.menu?.parentId ?? null;
+              rootMenu.close();
+              onCreateProjectIn(parentId);
+            }}
+          >
+            ＋ プロジェクト作成
           </ContextMenuItem>
         </ContextMenu>
       )}

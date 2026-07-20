@@ -25,12 +25,23 @@ export interface PromptOptions {
   confirmLabel?: string;
   cancelLabel?: string;
 }
+export interface ChoiceOption {
+  value: string;
+  label: string;
+}
+export interface ChoiceOptions {
+  title: string;
+  message?: string;
+  options: ChoiceOption[];
+  cancelLabel?: string;
+}
 
 interface DialogContextValue {
   /** window.confirm の代替。OKで true */
   confirmDialog: (opts: ConfirmOptions) => Promise<boolean>;
   /** window.prompt の代替。キャンセルで null */
   promptDialog: (opts: PromptOptions) => Promise<string | null>;
+  choiceDialog: (opts: ChoiceOptions) => Promise<string | null>;
 }
 
 const DialogContext = createContext<DialogContextValue | null>(null);
@@ -38,6 +49,7 @@ const DialogContext = createContext<DialogContextValue | null>(null);
 type ActiveDialog =
   | { kind: "confirm"; opts: ConfirmOptions; resolve: (v: boolean) => void }
   | { kind: "prompt"; opts: PromptOptions; resolve: (v: string | null) => void }
+  | { kind: "choice"; opts: ChoiceOptions; resolve: (v: string | null) => void }
   | null;
 
 export function DialogProvider({ children }: { children: ReactNode }) {
@@ -59,6 +71,12 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const choiceDialog = useCallback((opts: ChoiceOptions) => {
+    return new Promise<string | null>((resolve) => {
+      setActive({ kind: "choice", opts, resolve });
+    });
+  }, []);
+
   const close = (result: boolean | string | null) => {
     if (!active) return;
     if (active.kind === "confirm") active.resolve(result === true);
@@ -74,7 +92,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   }, [active]);
 
   return (
-    <DialogContext.Provider value={{ confirmDialog, promptDialog }}>
+    <DialogContext.Provider value={{ confirmDialog, promptDialog, choiceDialog }}>
       {children}
       {active && (
         <div
@@ -118,6 +136,19 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                 className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
               />
             )}
+            {active.kind === "choice" && (
+              <div className="grid gap-2">
+                {active.opts.options.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => close(option.value)}
+                    className="rounded border border-slate-300 px-3 py-2 text-left text-sm hover:bg-slate-100"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => close(null)}
@@ -127,14 +158,14 @@ export function DialogProvider({ children }: { children: ReactNode }) {
               </button>
               <button
                 onClick={() => close(active.kind === "prompt" ? inputValue : true)}
-                disabled={active.kind === "prompt" && !inputValue.trim()}
+                disabled={active.kind !== "confirm" && active.kind !== "prompt"}
                 className={`rounded px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 ${
                   active.kind === "confirm" && active.opts.danger
                     ? "bg-red-600 hover:bg-red-700"
                     : "bg-slate-900 hover:bg-slate-700"
                 }`}
               >
-                {active.opts.confirmLabel ?? "OK"}
+                {active.kind === "choice" ? "選択" : active.opts.confirmLabel ?? "OK"}
               </button>
             </div>
           </div>

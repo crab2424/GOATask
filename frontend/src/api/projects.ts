@@ -42,9 +42,11 @@ export async function updateProject(
   return res.json();
 }
 
-export async function deleteProject(id: number): Promise<void> {
+export async function deleteProject(id: number, moveTo: "parent" | "unassigned" = "unassigned"): Promise<void> {
   const res = await apiFetch(`/api/projects/${id}`, {
     method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ move_to: moveTo }),
   });
   if (!res.ok) throw new Error(`deleteProject failed: ${res.status}`);
 }

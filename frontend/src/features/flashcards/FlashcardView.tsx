@@ -401,18 +401,16 @@ export function FlashcardView() {
     beginStudy(setupOrder === "random" ? shuffle(studyCards) : studyCards);
   };
 
-  const flushResults = (results: StudyResult[]) => {
-    if (!selectedDeck || results.length === 0) return;
+  // 回答単位で保存する。モード切替ではこの画面がアンマウントされるため、
+  // 学習終了時の一括保存だけに依存すると途中結果が失われる。
+  const saveStudyAnswer = (card: Card, correct: boolean) => {
+    if (!selectedDeck) return;
     const deckId = selectedDeck.id;
-    Promise.allSettled(
-      results.map((r) => answerCard(deckId, r.card.id, r.correct)),
-    ).then((outcomes) => {
-      const failed = outcomes.filter((o) => o.status === "rejected").length;
-      if (failed > 0) {
-        setError(`統計の保存に失敗しました（${failed}件）`);
-      }
-      reloadDeck(deckId).catch(() => {});
-    });
+    answerCard(deckId, card.id, correct)
+      .then(() => reloadDeck(deckId).catch(() => {}))
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : String(e));
+      });
   };
 
   const onToggleStudyMark = () => {
@@ -435,10 +433,11 @@ export function FlashcardView() {
 
   const onAnswer = (correct: boolean) => {
     const card = studyCards[studyIndex];
+    if (!card) return;
+    saveStudyAnswer(card, correct);
     const next = [...studyResults, { card, correct }];
     setStudyResults(next);
     if (studyIndex + 1 >= studyCards.length) {
-      flushResults(next);
       setScreen("result");
     } else {
       setStudyIndex(studyIndex + 1);
@@ -458,8 +457,7 @@ export function FlashcardView() {
         showBack={showBack}
         direction={studyDirection}
         onStop={async () => {
-          if (!(await confirmDialog({ title: "学習を中断しますか？", message: "ここまでの回答は記録されます。", confirmLabel: "中断" }))) return;
-          flushResults(studyResults);
+          if (!(await confirmDialog({ title: "学習を中断しますか？", message: "回答済みの結果は保存されています。", confirmLabel: "中断" }))) return;
           setScreen("cards");
         }}
         onToggleMark={onToggleStudyMark}

@@ -42,9 +42,11 @@ export async function updateFolder(
   return res.json();
 }
 
-export async function deleteFolder(id: number): Promise<void> {
+export async function deleteFolder(id: number, moveTo: "parent" | "unassigned" = "unassigned"): Promise<void> {
   const res = await apiFetch(`/api/folders/${id}`, {
     method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ move_to: moveTo }),
   });
   if (!res.ok) throw new Error(`deleteFolder failed: ${res.status}`);
 }
