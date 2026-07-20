@@ -47,6 +47,19 @@ go run ./cmd/server
 - ポート: `8080`
 - ヘルスチェック: <http://localhost:8080/health>
 
+#### ファイル共有を有効にする場合
+
+OCI CLIの設定（`~/.oci/config`）を用意したうえで、次の環境変数を設定します。未設定の場合、ファイル共有APIは登録されません。
+
+```bash
+export OCI_REGION=ap-tokyo-1
+export OCI_OBJECT_STORAGE_NAMESPACE=nrskptzjyhtw
+export OCI_BUCKET_NAME=goatask-files
+export FILE_MAX_BYTES=52428800
+```
+
+バケットは非公開のまま使用し、共有時に7日間有効なObject StorageのPre-Authenticated Request（読み取り専用URL）を発行します。
+
 ### 3. フロントエンドを起動
 
 ```bash
@@ -68,6 +81,15 @@ npm run dev
 | GET    | `/api/tasks/:id` | タスク取得     |
 | PUT    | `/api/tasks/:id` | タスク更新     |
 | DELETE | `/api/tasks/:id` | タスク削除     |
+
+ファイル共有API（認証必須）：
+
+| Method | Path | 説明 |
+| ------ | ---- | ---- |
+| GET | `/api/files` | 自分のファイル一覧 |
+| POST | `/api/files` | multipartの`file`フィールドでアップロード |
+| POST | `/api/files/:id/shares` | 7日間有効な読み取りURLを発行 |
+| DELETE | `/api/files/:id` | Object Storageとメタデータを即時削除 |
 
 ## 今後の実装予定
 

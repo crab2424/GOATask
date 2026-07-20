@@ -6,26 +6,36 @@ import (
 )
 
 type Config struct {
-	AppPort    string
-	DBHost     string
-	DBPort     string
-	DBUser     string
-	DBPassword string
-	DBName     string
-	StaticDir  string
-	SignupInviteCode string
+	AppPort                   string
+	DBHost                    string
+	DBPort                    string
+	DBUser                    string
+	DBPassword                string
+	DBName                    string
+	StaticDir                 string
+	SignupInviteCode          string
+	OCIRegion                 string
+	OCIObjectStorageNamespace string
+	OCIBucketName             string
+	OCICompartmentID          string
+	FileMaxBytes              int64
 }
 
 func Load() *Config {
 	return &Config{
-		AppPort:    getEnv("PORT", getEnv("APP_PORT", "8080")),
-		DBHost:     getEnv("DB_HOST", "localhost"),
-		DBPort:     getEnv("DB_PORT", "5432"),
-		DBUser:     getEnv("DB_USER", "goatask"),
-		DBPassword: getEnv("DB_PASSWORD", "goatask_dev"),
-		DBName:     getEnv("DB_NAME", "goatask"),
-		StaticDir:  getEnv("STATIC_DIR", ""),
-		SignupInviteCode: getEnv("SIGNUP_INVITE_CODE", ""),
+		AppPort:                   getEnv("PORT", getEnv("APP_PORT", "8080")),
+		DBHost:                    getEnv("DB_HOST", "localhost"),
+		DBPort:                    getEnv("DB_PORT", "5432"),
+		DBUser:                    getEnv("DB_USER", "goatask"),
+		DBPassword:                getEnv("DB_PASSWORD", "goatask_dev"),
+		DBName:                    getEnv("DB_NAME", "goatask"),
+		StaticDir:                 getEnv("STATIC_DIR", ""),
+		SignupInviteCode:          getEnv("SIGNUP_INVITE_CODE", ""),
+		OCIRegion:                 getEnv("OCI_REGION", "ap-tokyo-1"),
+		OCIObjectStorageNamespace: getEnv("OCI_OBJECT_STORAGE_NAMESPACE", ""),
+		OCIBucketName:             getEnv("OCI_BUCKET_NAME", ""),
+		OCICompartmentID:          getEnv("OCI_COMPARTMENT_ID", ""),
+		FileMaxBytes:              getInt64Env("FILE_MAX_BYTES", 50*1024*1024),
 	}
 }
 
@@ -44,4 +54,16 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func getInt64Env(key string, fallback int64) int64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	var n int64
+	if _, err := fmt.Sscanf(v, "%d", &n); err != nil || n <= 0 {
+		return fallback
+	}
+	return n
 }

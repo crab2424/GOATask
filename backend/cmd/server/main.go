@@ -53,6 +53,13 @@ func main() {
 	handler.NewCalendarHandler(conn).Register(protected)
 	handler.NewBackupHandler(conn).Register(protected)
 	handler.NewSettingsHandler(conn).Register(protected)
+	if cfg.OCIObjectStorageNamespace != "" && cfg.OCIBucketName != "" {
+		storage, err := handler.NewObjectStorage(cfg)
+		if err != nil {
+			panic(err)
+		}
+		handler.NewFileHandler(conn, storage, cfg.FileMaxBytes).Register(protected)
+	}
 
 	if cfg.StaticDir != "" {
 		e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
