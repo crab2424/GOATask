@@ -5,17 +5,19 @@ import (
 	"strconv"
 
 	"github.com/crab2424/goatask/backend/internal/auth"
+	"github.com/crab2424/goatask/backend/internal/events"
 	"github.com/crab2424/goatask/backend/internal/model"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
 
 type MemoHandler struct {
-	DB *gorm.DB
+	DB  *gorm.DB
+	Hub *events.Hub
 }
 
-func NewMemoHandler(db *gorm.DB) *MemoHandler {
-	return &MemoHandler{DB: db}
+func NewMemoHandler(db *gorm.DB, hub *events.Hub) *MemoHandler {
+	return &MemoHandler{DB: db, Hub: hub}
 }
 
 func (h *MemoHandler) Register(g *echo.Group) {
@@ -51,6 +53,7 @@ func (h *MemoHandler) reorder(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		}
 	}
+	publish(h.Hub, uid, "memo.updated", 0, originID(c))
 	return c.NoContent(http.StatusNoContent)
 }
 
@@ -67,6 +70,7 @@ func (h *MemoHandler) create(c echo.Context) error {
 	if err := h.DB.Create(&m).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "memo.created", m.ID, originID(c))
 	return c.JSON(http.StatusCreated, m)
 }
 
@@ -100,6 +104,7 @@ func (h *MemoHandler) update(c echo.Context) error {
 	if err := h.DB.Save(&m).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "memo.updated", m.ID, originID(c))
 	return c.JSON(http.StatusOK, m)
 }
 
@@ -116,5 +121,6 @@ func (h *MemoHandler) delete(c echo.Context) error {
 	if res.RowsAffected == 0 {
 		return echo.NewHTTPError(http.StatusNotFound, "memo not found")
 	}
+	publish(h.Hub, uid, "memo.deleted", uint(id), originID(c))
 	return c.NoContent(http.StatusNoContent)
 }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/crab2424/goatask/backend/internal/auth"
+	"github.com/crab2424/goatask/backend/internal/events"
 	"github.com/crab2424/goatask/backend/internal/model"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
@@ -16,11 +17,12 @@ import (
 const maxSettingsBytes = 64 * 1024
 
 type SettingsHandler struct {
-	DB *gorm.DB
+	DB  *gorm.DB
+	Hub *events.Hub
 }
 
-func NewSettingsHandler(db *gorm.DB) *SettingsHandler {
-	return &SettingsHandler{DB: db}
+func NewSettingsHandler(db *gorm.DB, hub *events.Hub) *SettingsHandler {
+	return &SettingsHandler{DB: db, Hub: hub}
 }
 
 func (h *SettingsHandler) Register(g *echo.Group) {
@@ -60,5 +62,6 @@ func (h *SettingsHandler) put(c echo.Context) error {
 	}).Create(&setting).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "settings.updated", 0, originID(c))
 	return c.JSONBlob(http.StatusOK, body)
 }

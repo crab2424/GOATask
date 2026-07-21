@@ -5,17 +5,19 @@ import (
 	"strconv"
 
 	"github.com/crab2424/goatask/backend/internal/auth"
+	"github.com/crab2424/goatask/backend/internal/events"
 	"github.com/crab2424/goatask/backend/internal/model"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
 
 type DeckHandler struct {
-	DB *gorm.DB
+	DB  *gorm.DB
+	Hub *events.Hub
 }
 
-func NewDeckHandler(db *gorm.DB) *DeckHandler {
-	return &DeckHandler{DB: db}
+func NewDeckHandler(db *gorm.DB, hub *events.Hub) *DeckHandler {
+	return &DeckHandler{DB: db, Hub: hub}
 }
 
 func (h *DeckHandler) Register(g *echo.Group) {
@@ -69,6 +71,7 @@ func (h *DeckHandler) create(c echo.Context) error {
 	if err := h.DB.Create(&d).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "deck.created", d.ID, originID(c))
 	return c.JSON(http.StatusCreated, d)
 }
 
@@ -105,6 +108,7 @@ func (h *DeckHandler) update(c echo.Context) error {
 	if err := h.DB.Save(&d).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "deck.updated", d.ID, originID(c))
 	return c.JSON(http.StatusOK, d)
 }
 
@@ -121,6 +125,7 @@ func (h *DeckHandler) delete(c echo.Context) error {
 	if err := h.DB.Select("Cards").Delete(&d).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "deck.deleted", d.ID, originID(c))
 	return c.NoContent(http.StatusNoContent)
 }
 
@@ -160,6 +165,7 @@ func (h *DeckHandler) createCard(c echo.Context) error {
 	if err := h.DB.Create(&card).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "card.created", card.ID, originID(c))
 	return c.JSON(http.StatusCreated, card)
 }
 
@@ -207,6 +213,8 @@ func (h *DeckHandler) importCards(c echo.Context) error {
 		}
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	// bulk importは1件ずつIDを配るより、リスト全体更新の合図で十分。
+	publish(h.Hub, uid, "card.created", 0, originID(c))
 	return c.JSON(http.StatusCreated, created)
 }
 
@@ -234,6 +242,7 @@ func (h *DeckHandler) updateCard(c echo.Context) error {
 	if err := h.DB.Save(&card).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "card.updated", card.ID, originID(c))
 	return c.JSON(http.StatusOK, card)
 }
 
@@ -261,6 +270,9 @@ func (h *DeckHandler) bulkDeleteCards(c echo.Context) error {
 	if res.Error != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, res.Error.Error())
 	}
+	if res.RowsAffected > 0 {
+		publish(h.Hub, uid, "card.deleted", 0, originID(c))
+	}
 	return c.JSON(http.StatusOK, map[string]int64{"deleted": res.RowsAffected})
 }
 
@@ -280,6 +292,7 @@ func (h *DeckHandler) deleteCard(c echo.Context) error {
 	if err := h.DB.Where("deck_id = ? AND id = ?", deckID, cardID).Delete(&model.Card{}).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "card.deleted", uint(cardID), originID(c))
 	return c.NoContent(http.StatusNoContent)
 }
 
@@ -316,6 +329,7 @@ func (h *DeckHandler) answer(c echo.Context) error {
 	if err := h.DB.Save(&card).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "card.updated", card.ID, originID(c))
 	return c.JSON(http.StatusOK, card)
 }
 
@@ -348,6 +362,7 @@ func (h *DeckHandler) toggleMark(c echo.Context) error {
 	if err := h.DB.Save(&card).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "card.updated", card.ID, originID(c))
 	return c.JSON(http.StatusOK, card)
 }
 
@@ -373,5 +388,6 @@ func (h *DeckHandler) resetStats(c echo.Context) error {
 	if err := h.DB.Save(&card).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "card.updated", card.ID, originID(c))
 	return c.JSON(http.StatusOK, card)
 }

@@ -5,17 +5,19 @@ import (
 	"strconv"
 
 	"github.com/crab2424/goatask/backend/internal/auth"
+	"github.com/crab2424/goatask/backend/internal/events"
 	"github.com/crab2424/goatask/backend/internal/model"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
 
 type ProjectHandler struct {
-	DB *gorm.DB
+	DB  *gorm.DB
+	Hub *events.Hub
 }
 
-func NewProjectHandler(db *gorm.DB) *ProjectHandler {
-	return &ProjectHandler{DB: db}
+func NewProjectHandler(db *gorm.DB, hub *events.Hub) *ProjectHandler {
+	return &ProjectHandler{DB: db, Hub: hub}
 }
 
 func (h *ProjectHandler) Register(g *echo.Group) {
@@ -60,6 +62,7 @@ func (h *ProjectHandler) create(c echo.Context) error {
 	if err := h.DB.Create(&p).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "project.created", p.ID, originID(c))
 	return c.JSON(http.StatusCreated, p)
 }
 
@@ -108,6 +111,7 @@ func (h *ProjectHandler) update(c echo.Context) error {
 	if err := h.DB.Save(&p).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "project.updated", p.ID, originID(c))
 	return c.JSON(http.StatusOK, p)
 }
 
@@ -150,6 +154,10 @@ func (h *ProjectHandler) delete(c echo.Context) error {
 	if err := tx.Commit().Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	// プロジェクト削除は所属タスクのproject_idも変わるので両方通知する。
+	origin := originID(c)
+	publish(h.Hub, uid, "project.deleted", p.ID, origin)
+	publish(h.Hub, uid, "task.updated", 0, origin)
 	return c.NoContent(http.StatusNoContent)
 }
 

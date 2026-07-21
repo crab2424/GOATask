@@ -7,14 +7,20 @@ import (
 	"time"
 
 	"github.com/crab2424/goatask/backend/internal/auth"
+	"github.com/crab2424/goatask/backend/internal/events"
 	"github.com/crab2424/goatask/backend/internal/model"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
 
-type CalendarHandler struct{ DB *gorm.DB }
+type CalendarHandler struct {
+	DB  *gorm.DB
+	Hub *events.Hub
+}
 
-func NewCalendarHandler(db *gorm.DB) *CalendarHandler { return &CalendarHandler{DB: db} }
+func NewCalendarHandler(db *gorm.DB, hub *events.Hub) *CalendarHandler {
+	return &CalendarHandler{DB: db, Hub: hub}
+}
 
 func (h *CalendarHandler) Register(g *echo.Group) {
 	g.GET("/calendar", h.list)
@@ -87,6 +93,7 @@ func (h *CalendarHandler) createNote(c echo.Context) error {
 	if err := h.DB.Create(&note).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, note.UserID, "calendar.created", note.ID, originID(c))
 	return c.JSON(http.StatusCreated, note)
 }
 
@@ -105,20 +112,23 @@ func (h *CalendarHandler) updateNote(c echo.Context) error {
 	if err := h.DB.Save(&note).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, note.UserID, "calendar.updated", note.ID, originID(c))
 	return c.JSON(http.StatusOK, note)
 }
 
 func (h *CalendarHandler) deleteNote(c echo.Context) error {
+	uid := auth.UserID(c)
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
-	result := h.DB.Where("id = ? AND user_id = ?", id, auth.UserID(c)).Delete(&model.CalendarNote{})
+	result := h.DB.Where("id = ? AND user_id = ?", id, uid).Delete(&model.CalendarNote{})
 	if result.Error != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, result.Error.Error())
 	}
 	if result.RowsAffected == 0 {
 		return echo.NewHTTPError(http.StatusNotFound, "calendar note not found")
 	}
+	publish(h.Hub, uid, "calendar.deleted", uint(id), originID(c))
 	return c.NoContent(http.StatusNoContent)
 }

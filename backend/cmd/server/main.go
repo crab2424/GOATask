@@ -50,13 +50,13 @@ func main() {
 	protected := api.Group("", auth.RequireAuth(conn))
 	handler.NewEventsHandler(hub).Register(protected)
 	handler.NewTaskHandler(conn, hub).Register(protected)
-	handler.NewMemoHandler(conn).Register(protected)
-	handler.NewFolderHandler(conn).Register(protected)
-	handler.NewDeckHandler(conn).Register(protected)
-	handler.NewProjectHandler(conn).Register(protected)
-	handler.NewCalendarHandler(conn).Register(protected)
-	handler.NewBackupHandler(conn).Register(protected)
-	handler.NewSettingsHandler(conn).Register(protected)
+	handler.NewMemoHandler(conn, hub).Register(protected)
+	handler.NewFolderHandler(conn, hub).Register(protected)
+	handler.NewDeckHandler(conn, hub).Register(protected)
+	handler.NewProjectHandler(conn, hub).Register(protected)
+	handler.NewCalendarHandler(conn, hub).Register(protected)
+	handler.NewBackupHandler(conn, hub).Register(protected)
+	handler.NewSettingsHandler(conn, hub).Register(protected)
 	if cfg.OCIObjectStorageNamespace != "" && cfg.OCIBucketName != "" {
 		storage, err := handler.NewObjectStorage(cfg)
 		if err != nil {
@@ -64,7 +64,7 @@ func main() {
 			// take down the task application behind the reverse proxy.
 			e.Logger.Warnf("file sharing disabled: %v", err)
 		} else {
-			handler.NewFileHandler(conn, storage, cfg.FileMaxBytes, cfg.FileMaxUserBytes).Register(protected)
+			handler.NewFileHandler(conn, storage, cfg.FileMaxBytes, cfg.FileMaxUserBytes, hub).Register(protected)
 		}
 	}
 

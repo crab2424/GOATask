@@ -7,17 +7,19 @@ import (
 	"time"
 
 	"github.com/crab2424/goatask/backend/internal/auth"
+	"github.com/crab2424/goatask/backend/internal/events"
 	"github.com/crab2424/goatask/backend/internal/model"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
 
 type BackupHandler struct {
-	DB *gorm.DB
+	DB  *gorm.DB
+	Hub *events.Hub
 }
 
-func NewBackupHandler(db *gorm.DB) *BackupHandler {
-	return &BackupHandler{DB: db}
+func NewBackupHandler(db *gorm.DB, hub *events.Hub) *BackupHandler {
+	return &BackupHandler{DB: db, Hub: hub}
 }
 
 func (h *BackupHandler) Register(g *echo.Group) {
@@ -186,6 +188,11 @@ func (h *BackupHandler) importData(c echo.Context) error {
 			return err
 		}
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	// インポートで広範囲のデータが入れ替わったので、関連する全種別を通知して他端末をリロードさせる。
+	origin := originID(c)
+	for _, kind := range []string{"task.updated", "memo.updated", "folder.updated", "deck.updated", "card.updated", "project.updated", "calendar.updated"} {
+		publish(h.Hub, uid, kind, 0, origin)
 	}
 	return c.JSON(http.StatusOK, res)
 }

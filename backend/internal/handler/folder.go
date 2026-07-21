@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/crab2424/goatask/backend/internal/auth"
+	"github.com/crab2424/goatask/backend/internal/events"
 	"github.com/crab2424/goatask/backend/internal/model"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
@@ -13,11 +14,12 @@ import (
 const maxNestingDepth = 10
 
 type FolderHandler struct {
-	DB *gorm.DB
+	DB  *gorm.DB
+	Hub *events.Hub
 }
 
-func NewFolderHandler(db *gorm.DB) *FolderHandler {
-	return &FolderHandler{DB: db}
+func NewFolderHandler(db *gorm.DB, hub *events.Hub) *FolderHandler {
+	return &FolderHandler{DB: db, Hub: hub}
 }
 
 func (h *FolderHandler) Register(g *echo.Group) {
@@ -62,6 +64,7 @@ func (h *FolderHandler) create(c echo.Context) error {
 	if err := h.DB.Create(&f).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "folder.created", f.ID, originID(c))
 	return c.JSON(http.StatusCreated, f)
 }
 
@@ -110,6 +113,7 @@ func (h *FolderHandler) update(c echo.Context) error {
 	if err := h.DB.Save(&f).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "folder.updated", f.ID, originID(c))
 	return c.JSON(http.StatusOK, f)
 }
 
@@ -155,6 +159,10 @@ func (h *FolderHandler) delete(c echo.Context) error {
 	if err := tx.Commit().Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	// フォルダ削除は子フォルダとメモの所属も動くので、両方のリスナに通知する。
+	origin := originID(c)
+	publish(h.Hub, uid, "folder.deleted", f.ID, origin)
+	publish(h.Hub, uid, "memo.updated", 0, origin)
 	return c.NoContent(http.StatusNoContent)
 }
 

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/crab2424/goatask/backend/internal/auth"
+	"github.com/crab2424/goatask/backend/internal/events"
 	"github.com/crab2424/goatask/backend/internal/model"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
@@ -25,10 +26,11 @@ type FileHandler struct {
 	Storage     *ObjectStorage
 	MaxFileSize int64
 	MaxUserSize int64
+	Hub         *events.Hub
 }
 
-func NewFileHandler(db *gorm.DB, storage *ObjectStorage, maxFileSize, maxUserSize int64) *FileHandler {
-	return &FileHandler{DB: db, Storage: storage, MaxFileSize: maxFileSize, MaxUserSize: maxUserSize}
+func NewFileHandler(db *gorm.DB, storage *ObjectStorage, maxFileSize, maxUserSize int64, hub *events.Hub) *FileHandler {
+	return &FileHandler{DB: db, Storage: storage, MaxFileSize: maxFileSize, MaxUserSize: maxUserSize, Hub: hub}
 }
 
 func (h *FileHandler) Register(g *echo.Group) {
@@ -90,11 +92,13 @@ func (h *FileHandler) upload(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadGateway, "object storage upload failed")
 	}
-	record := model.SharedFile{UserID: auth.UserID(c), ObjectName: objectName, OriginalFilename: filename, ContentType: contentType, Size: file.Size, ETag: etag}
+	uid := auth.UserID(c)
+	record := model.SharedFile{UserID: uid, ObjectName: objectName, OriginalFilename: filename, ContentType: contentType, Size: file.Size, ETag: etag}
 	if err := h.DB.Create(&record).Error; err != nil {
 		_ = h.Storage.Delete(c.Request().Context(), objectName)
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "file.created", record.ID, originID(c))
 	return c.JSON(http.StatusCreated, record)
 }
 
@@ -118,6 +122,7 @@ func (h *FileHandler) createShare(c echo.Context) error {
 		_ = h.Storage.DeleteReadShare(c.Request().Context(), parID)
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, file.UserID, "file.updated", file.ID, originID(c))
 	return c.JSON(http.StatusCreated, map[string]any{"id": share.ID, "url": url, "expires_at": expiresAt})
 }
 
@@ -144,6 +149,7 @@ func (h *FileHandler) delete(c echo.Context) error {
 	if err := h.DB.Delete(&file).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, file.UserID, "file.deleted", file.ID, originID(c))
 	return c.NoContent(http.StatusNoContent)
 }
 
