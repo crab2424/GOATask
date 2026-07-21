@@ -49,7 +49,7 @@ func main() {
 
 	protected := api.Group("", auth.RequireAuth(conn))
 	handler.NewEventsHandler(hub).Register(protected)
-	handler.NewTaskHandler(conn).Register(protected)
+	handler.NewTaskHandler(conn, hub).Register(protected)
 	handler.NewMemoHandler(conn).Register(protected)
 	handler.NewFolderHandler(conn).Register(protected)
 	handler.NewDeckHandler(conn).Register(protected)

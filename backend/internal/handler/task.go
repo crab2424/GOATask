@@ -6,17 +6,19 @@ import (
 	"strings"
 
 	"github.com/crab2424/goatask/backend/internal/auth"
+	"github.com/crab2424/goatask/backend/internal/events"
 	"github.com/crab2424/goatask/backend/internal/model"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
 
 type TaskHandler struct {
-	DB *gorm.DB
+	DB  *gorm.DB
+	Hub *events.Hub
 }
 
-func NewTaskHandler(db *gorm.DB) *TaskHandler {
-	return &TaskHandler{DB: db}
+func NewTaskHandler(db *gorm.DB, hub *events.Hub) *TaskHandler {
+	return &TaskHandler{DB: db, Hub: hub}
 }
 
 func (h *TaskHandler) Register(g *echo.Group) {
@@ -68,6 +70,7 @@ func (h *TaskHandler) create(c echo.Context) error {
 	}).First(&t, t.ID).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "task.created", t.ID, originID(c))
 	return c.JSON(http.StatusCreated, t)
 }
 
@@ -115,6 +118,7 @@ func (h *TaskHandler) update(c echo.Context) error {
 	}).First(&t, t.ID).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "task.updated", t.ID, originID(c))
 	return c.JSON(http.StatusOK, t)
 }
 
@@ -131,6 +135,7 @@ func (h *TaskHandler) delete(c echo.Context) error {
 	if err := h.DB.Select("Subtasks").Delete(&t).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "task.deleted", t.ID, originID(c))
 	return c.NoContent(http.StatusNoContent)
 }
 
@@ -179,6 +184,7 @@ func (h *TaskHandler) toggleSubtask(c echo.Context) error {
 	}).First(&t, taskID).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	publish(h.Hub, uid, "task.updated", t.ID, originID(c))
 	return c.JSON(http.StatusOK, t)
 }
 
@@ -197,6 +203,8 @@ func (h *TaskHandler) reorder(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		}
 	}
+	// 並べ替えは全体リロードで十分。ID=0で「全体変更」を示す。
+	publish(h.Hub, uid, "task.updated", 0, originID(c))
 	return c.NoContent(http.StatusNoContent)
 }
 

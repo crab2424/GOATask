@@ -10,6 +10,7 @@ import { useTheme } from "./shared/lib/useTheme";
 import { LoadingIndicator } from "./shared/components/LoadingIndicator";
 import { useDialogs } from "./shared/components/DialogProvider";
 import { serverEvents } from "./shared/lib/serverEvents";
+import { SyncBridge } from "./shared/lib/SyncBridge";
 
 const HomeView = lazy(() => import("./features/home/HomeView").then((module) => ({ default: module.HomeView })));
 const TaskView = lazy(() => import("./features/tasks/TaskView").then((module) => ({ default: module.TaskView })));
@@ -117,18 +118,21 @@ function App() {
   );
 
   return (
-    <AppShell
-      isMobile={isMobile}
-      mode={mode}
-      navCollapsed={navCollapsed}
-      showMore={showMore}
-      hideBottomNav={hideBottomNav}
-      onModeChange={changeMode}
-      onToggleNavigation={() => setNavCollapsed((value) => !value)}
-      onShowMoreChange={setShowMore}
-    >
-      {content}
-    </AppShell>
+    <>
+      <SyncBridge />
+      <AppShell
+        isMobile={isMobile}
+        mode={mode}
+        navCollapsed={navCollapsed}
+        showMore={showMore}
+        hideBottomNav={hideBottomNav}
+        onModeChange={changeMode}
+        onToggleNavigation={() => setNavCollapsed((value) => !value)}
+        onShowMoreChange={setShowMore}
+      >
+        {content}
+      </AppShell>
+    </>
   );
 }
 
