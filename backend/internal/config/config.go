@@ -18,6 +18,7 @@ type Config struct {
 	OCIObjectStorageNamespace string
 	OCIBucketName             string
 	OCICompartmentID          string
+	OCIAuthMethod             string
 	FileMaxBytes              int64
 	FileMaxUserBytes          int64
 }
@@ -36,6 +37,7 @@ func Load() *Config {
 		OCIObjectStorageNamespace: getEnv("OCI_OBJECT_STORAGE_NAMESPACE", "nrskptzjyhtw"),
 		OCIBucketName:             getEnv("OCI_BUCKET_NAME", "goatask-files"),
 		OCICompartmentID:          getEnv("OCI_COMPARTMENT_ID", ""),
+		OCIAuthMethod:             getEnv("OCI_AUTH_METHOD", "file"),
 		FileMaxBytes:              getInt64Env("FILE_MAX_BYTES", 50*1024*1024),
 		FileMaxUserBytes:          getInt64Env("FILE_MAX_USER_BYTES", 500*1024*1024),
 	}

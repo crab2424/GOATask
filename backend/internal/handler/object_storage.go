@@ -8,6 +8,7 @@ import (
 
 	"github.com/crab2424/goatask/backend/internal/config"
 	"github.com/oracle/oci-go-sdk/v65/common"
+	"github.com/oracle/oci-go-sdk/v65/common/auth"
 	"github.com/oracle/oci-go-sdk/v65/objectstorage"
 )
 
@@ -19,7 +20,16 @@ type ObjectStorage struct {
 }
 
 func NewObjectStorage(cfg *config.Config) (*ObjectStorage, error) {
-	provider := common.DefaultConfigProvider()
+	var provider common.ConfigurationProvider
+	if cfg.OCIAuthMethod == "instance_principal" {
+		p, err := auth.InstancePrincipalConfigurationProvider()
+		if err != nil {
+			return nil, fmt.Errorf("initialize OCI instance principal auth: %w", err)
+		}
+		provider = p
+	} else {
+		provider = common.DefaultConfigProvider()
+	}
 	client, err := objectstorage.NewObjectStorageClientWithConfigurationProvider(provider)
 	if err != nil {
 		return nil, fmt.Errorf("initialize OCI Object Storage client: %w", err)

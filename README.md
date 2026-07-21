@@ -61,6 +61,8 @@ export FILE_MAX_USER_BYTES=524288000
 
 バケットは非公開のまま使用し、共有時に7日間有効なObject StorageのPre-Authenticated Request（読み取り専用URL）を発行します。
 
+本番（OCI Compute上）では`OCI_AUTH_METHOD=instance_principal`を設定し、Dynamic Group + IAMポリシーでインスタンス自体に権限を付与する方式を使うため、サーバーに`~/.oci/config`や秘密鍵を配置する必要はありません。
+
 ### 3. フロントエンドを起動
 
 ```bash
