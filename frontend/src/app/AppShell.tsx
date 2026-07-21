@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { NAV_ITEMS, PRIMARY_MOBILE_ITEMS, SECONDARY_MOBILE_ITEMS, type Mode } from "./navigation";
+import { SyncIndicator } from "../shared/components/SyncIndicator";
 
 interface AppShellProps {
   children: ReactNode;
@@ -20,7 +21,10 @@ export function AppShell(props: AppShellProps) {
       <div className="flex min-h-dvh flex-col bg-slate-50 text-slate-900">
         <header className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2">
           <h1 className="text-base font-bold">GOATask</h1>
-          <button onClick={() => props.onModeChange("settings")} aria-label="設定" className={`rounded p-1.5 text-lg leading-none transition-colors ${props.mode === "settings" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100"}`}>⚙</button>
+          <div className="flex items-center gap-1">
+            <SyncIndicator compact />
+            <button onClick={() => props.onModeChange("settings")} aria-label="設定" className={`rounded p-1.5 text-lg leading-none transition-colors ${props.mode === "settings" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100"}`}>⚙</button>
+          </div>
         </header>
         <main className={`min-h-0 min-w-0 flex-1 overflow-y-auto p-3 ${props.hideBottomNav ? "pb-3" : "pb-20"}`}>{props.children}</main>
         {!props.hideBottomNav && (
@@ -39,7 +43,10 @@ export function AppShell(props: AppShellProps) {
       <nav className={`flex shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white transition-[width] duration-150 ${props.navCollapsed ? "w-14" : "w-48"}`}>
         <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-3">
           {!props.navCollapsed && <h1 className="min-w-0 truncate text-lg font-bold">GOATask</h1>}
-          <button onClick={props.onToggleNavigation} className="shrink-0 rounded p-1 text-slate-500 hover:bg-slate-100" title={props.navCollapsed ? "メニューを展開" : "メニューを畳む"} aria-label={props.navCollapsed ? "メニューを展開" : "メニューを畳む"}>{props.navCollapsed ? "›" : "‹"}</button>
+          <div className="flex shrink-0 items-center gap-1">
+            <SyncIndicator compact={props.navCollapsed} />
+            <button onClick={props.onToggleNavigation} className="shrink-0 rounded p-1 text-slate-500 hover:bg-slate-100" title={props.navCollapsed ? "メニューを展開" : "メニューを畳む"} aria-label={props.navCollapsed ? "メニューを展開" : "メニューを畳む"}>{props.navCollapsed ? "›" : "‹"}</button>
+          </div>
         </div>
         <ul className="flex-1 p-2">{NAV_ITEMS.map((item) => <li key={item.id}><button onClick={() => props.onModeChange(item.id)} title={props.navCollapsed ? item.label : undefined} className={`mb-1 flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm transition-colors ${props.mode === item.id ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"} ${props.navCollapsed ? "justify-center" : ""}`}><span className="w-5 shrink-0 text-center">{item.icon}</span>{!props.navCollapsed && <span>{item.label}</span>}</button></li>)}</ul>
         <div className="border-t border-slate-200 p-2">

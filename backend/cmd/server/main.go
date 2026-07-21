@@ -8,6 +8,7 @@ import (
 	"github.com/crab2424/goatask/backend/internal/auth"
 	"github.com/crab2424/goatask/backend/internal/config"
 	"github.com/crab2424/goatask/backend/internal/db"
+	"github.com/crab2424/goatask/backend/internal/events"
 	"github.com/crab2424/goatask/backend/internal/handler"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -44,7 +45,10 @@ func main() {
 	api := e.Group("/api")
 	handler.NewAuthHandler(conn, cfg.SignupInviteCode).Register(api)
 
+	hub := events.NewHub()
+
 	protected := api.Group("", auth.RequireAuth(conn))
+	handler.NewEventsHandler(hub).Register(protected)
 	handler.NewTaskHandler(conn).Register(protected)
 	handler.NewMemoHandler(conn).Register(protected)
 	handler.NewFolderHandler(conn).Register(protected)

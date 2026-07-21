@@ -9,6 +9,7 @@ import { useIsMobile } from "./shared/lib/useIsMobile";
 import { useTheme } from "./shared/lib/useTheme";
 import { LoadingIndicator } from "./shared/components/LoadingIndicator";
 import { useDialogs } from "./shared/components/DialogProvider";
+import { serverEvents } from "./shared/lib/serverEvents";
 
 const HomeView = lazy(() => import("./features/home/HomeView").then((module) => ({ default: module.HomeView })));
 const TaskView = lazy(() => import("./features/tasks/TaskView").then((module) => ({ default: module.TaskView })));
@@ -50,6 +51,15 @@ function App() {
   useEffect(() => {
     if (authState.status !== "authenticated") return;
     checkHealth().then((response) => setHealth(response.status)).catch(() => setHealth("接続失敗"));
+  }, [authState.status]);
+
+  useEffect(() => {
+    if (authState.status !== "authenticated") {
+      serverEvents.stop();
+      return;
+    }
+    serverEvents.start();
+    return () => { serverEvents.stop(); };
   }, [authState.status]);
 
   useEffect(() => {
