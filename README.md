@@ -56,6 +56,7 @@ export OCI_REGION=ap-tokyo-1
 export OCI_OBJECT_STORAGE_NAMESPACE=nrskptzjyhtw
 export OCI_BUCKET_NAME=goatask-files
 export FILE_MAX_BYTES=52428800
+export FILE_MAX_USER_BYTES=524288000
 ```
 
 バケットは非公開のまま使用し、共有時に7日間有効なObject StorageのPre-Authenticated Request（読み取り専用URL）を発行します。
@@ -86,12 +87,12 @@ npm run dev
 
 | Method | Path | 説明 |
 | ------ | ---- | ---- |
-| GET | `/api/files` | 自分のファイル一覧 |
+| GET | `/api/files` | 自分のファイル一覧・使用量・残容量 |
 | POST | `/api/files` | multipartの`file`フィールドでアップロード |
 | POST | `/api/files/:id/shares` | 7日間有効な読み取りURLを発行 |
 | DELETE | `/api/files/:id` | Object Storageとメタデータを即時削除 |
 
-画面の「ファイル」モードから、一覧・アップロード・共有リンクのコピー／表示・削除を操作できます。
+画面の「ファイル」モードから、一覧・アップロード・共有リンクのコピー／表示・削除を操作できます。1ファイル上限とユーザー総容量上限を超えるアップロードは拒否されます。
 
 ## 今後の実装予定
 

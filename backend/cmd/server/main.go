@@ -56,9 +56,12 @@ func main() {
 	if cfg.OCIObjectStorageNamespace != "" && cfg.OCIBucketName != "" {
 		storage, err := handler.NewObjectStorage(cfg)
 		if err != nil {
-			panic(err)
+			// File sharing is optional. A missing OCI credential/config must not
+			// take down the task application behind the reverse proxy.
+			e.Logger.Warnf("file sharing disabled: %v", err)
+		} else {
+			handler.NewFileHandler(conn, storage, cfg.FileMaxBytes, cfg.FileMaxUserBytes).Register(protected)
 		}
-		handler.NewFileHandler(conn, storage, cfg.FileMaxBytes).Register(protected)
 	}
 
 	if cfg.StaticDir != "" {

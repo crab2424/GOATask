@@ -35,7 +35,7 @@ export function FilesView() {
     },
   });
 
-  const files = filesQuery.data ?? [];
+  const files = filesQuery.data?.files ?? [];
   const handleUpload = async (file: File | undefined) => {
     if (!file) return;
     setError(null);
@@ -94,7 +94,15 @@ export function FilesView() {
       {message && <div className="rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div>}
 
       <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700">保存済みファイル（{files.length}）</div>
+        <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700">
+          <div>保存済みファイル（{files.length}）</div>
+          {filesQuery.data && (
+            <div className="mt-1 text-xs font-normal text-slate-500">
+              容量: {formatBytes(filesQuery.data.used_bytes)} / {formatBytes(filesQuery.data.max_bytes)}
+              <span className="ml-2">残り {formatBytes(filesQuery.data.remaining_bytes)}</span>
+            </div>
+          )}
+        </div>
         {filesQuery.isLoading ? <p className="p-6 text-sm text-slate-500">読み込み中…</p> : files.length === 0 ? <p className="p-6 text-sm text-slate-500">まだファイルがありません。</p> : (
           <ul className="divide-y divide-slate-100">
             {files.map((file) => (

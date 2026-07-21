@@ -56,7 +56,7 @@ func (s *ObjectStorage) Delete(ctx context.Context, objectName string) error {
 	return err
 }
 
-func (s *ObjectStorage) CreateReadShare(ctx context.Context, objectName string, expiresAt time.Time, name string) (string, error) {
+func (s *ObjectStorage) CreateReadShare(ctx context.Context, objectName string, expiresAt time.Time, name string) (string, string, error) {
 	response, err := s.client.CreatePreauthenticatedRequest(ctx, objectstorage.CreatePreauthenticatedRequestRequest{
 		NamespaceName: &s.namespace,
 		BucketName:    &s.bucket,
@@ -68,10 +68,22 @@ func (s *ObjectStorage) CreateReadShare(ctx context.Context, objectName string, 
 		},
 	})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	if response.PreauthenticatedRequest.AccessUri == nil {
-		return "", fmt.Errorf("OCI returned no pre-authenticated URL")
+	if response.PreauthenticatedRequest.AccessUri == nil || response.PreauthenticatedRequest.Id == nil {
+		return "", "", fmt.Errorf("OCI returned incomplete pre-authenticated request")
 	}
-	return fmt.Sprintf("https://objectstorage.%s.oraclecloud.com%s", s.region, *response.PreauthenticatedRequest.AccessUri), nil
+	return fmt.Sprintf("https://objectstorage.%s.oraclecloud.com%s", s.region, *response.PreauthenticatedRequest.AccessUri), *response.PreauthenticatedRequest.Id, nil
+}
+
+func (s *ObjectStorage) DeleteReadShare(ctx context.Context, parID string) error {
+	if parID == "" {
+		return nil
+	}
+	_, err := s.client.DeletePreauthenticatedRequest(ctx, objectstorage.DeletePreauthenticatedRequestRequest{
+		NamespaceName: &s.namespace,
+		BucketName:    &s.bucket,
+		ParId:         &parID,
+	})
+	return err
 }

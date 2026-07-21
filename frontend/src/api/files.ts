@@ -19,7 +19,14 @@ async function errorMessage(res: Response, operation: string): Promise<Error> {
   return new Error(`${operation} failed: ${res.status}${text ? ` ${text}` : ""}`);
 }
 
-export async function listFiles(): Promise<SharedFile[]> {
+export interface FileListResponse {
+  files: SharedFile[];
+  used_bytes: number;
+  max_bytes: number;
+  remaining_bytes: number;
+}
+
+export async function listFiles(): Promise<FileListResponse> {
   const res = await apiFetch("/api/files");
   if (!res.ok) throw await errorMessage(res, "listFiles");
   return res.json();
