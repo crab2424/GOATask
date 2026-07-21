@@ -1465,6 +1465,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
 
   const treeContent = (
     <div
+      className="min-h-full"
       onKeyDown={handleTreeKeyDown}
       onContextMenu={(e) => {
         if (e.target !== e.currentTarget) return;

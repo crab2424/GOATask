@@ -1156,6 +1156,7 @@ export function MemoView() {
 
   const treeContent = (
     <div
+      className="min-h-full"
       onKeyDown={handleTreeKeyDown}
       onContextMenu={(e) => {
         if (e.target !== e.currentTarget) return;
