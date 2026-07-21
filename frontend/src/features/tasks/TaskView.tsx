@@ -66,6 +66,10 @@ import { useContextMenu } from "../../shared/components/useContextMenu";
 import { MdText } from "../../shared/lib/mdInline";
 import { stripBulletLines } from "./utils/taskText";
 import { TaskDescriptionEditor } from "./components/TaskDescriptionEditor";
+import {
+  parseProjectMarkdown,
+  projectToMarkdown,
+} from "./utils/projectText";
 import { CardReorderControls } from "../../shared/components/CardReorderControls";
 import {
   animateCardReorder,
@@ -270,6 +274,8 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
   }, [tidied]);
   const [showNewTaskForm, setShowNewTaskForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const projectImportRef = useRef<HTMLInputElement | null>(null);
+  const [projectTransferBusy, setProjectTransferBusy] = useState(false);
 
   const [dragItem, setDragItem] = useState<DragItem>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget>(null);
@@ -1017,6 +1023,85 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     }
   };
 
+  const downloadProjectText = () => {
+    if (currentProjectId === null) return;
+    const project = projects.find((p) => p.id === currentProjectId);
+    if (!project) return;
+    const text = projectToMarkdown(project, projects, tasks);
+    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `goatask-project-${project.name.replace(/[^\p{L}\p{N}_-]+/gu, "-") || project.id}.md`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const importProjectText = async (file: File | null) => {
+    if (!file || currentProjectId === null) return;
+    setProjectTransferBusy(true);
+    setError(null);
+    try {
+      const parsed = parseProjectMarkdown(await file.text());
+      const target = projects.find((p) => p.id === currentProjectId);
+      if (!target || !parsed.project) throw new Error("対象プロジェクトが見つかりません");
+
+      // The first heading is always imported into the currently open project.
+      const projectIds = new Map<number, number>();
+      const first = parsed.projects[0];
+      if (first?.id) projectIds.set(first.id, target.id);
+      await updateProject(target.id, { name: parsed.project.name, parent_id: target.parent_id ?? null });
+
+      for (const source of parsed.projects.slice(1)) {
+        let parentId = target.id;
+        if (source.parentId && projectIds.has(source.parentId)) parentId = projectIds.get(source.parentId)!;
+        if (source.id) {
+          const existing = projects.find((p) => p.id === source.id);
+          if (existing) {
+            projectIds.set(source.id, existing.id);
+            await updateProject(existing.id, { name: source.name, parent_id: parentId });
+            continue;
+          }
+        }
+        const created = await createProject({ name: source.name, parent_id: parentId });
+        if (source.id) projectIds.set(source.id, created.id);
+      }
+
+      for (const source of parsed.tasks) {
+        const projectId = source.projectId ? (projectIds.get(source.projectId) ?? target.id) : target.id;
+        const existing = source.id ? tasks.find((t) => t.id === source.id) : undefined;
+        if (existing) {
+          await updateTask(existing.id, {
+            ...existing,
+            title: source.title,
+            description: source.description,
+            status: source.status,
+            start_date: source.start_date,
+            due_date: source.due_date,
+            project_id: projectId,
+          });
+        } else {
+          await createTask({
+            title: source.title,
+            description: source.description,
+            status: source.status,
+            start_date: source.start_date,
+            due_date: source.due_date,
+            project_id: projectId,
+          });
+        }
+      }
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "プロジェクト文章のインポートに失敗しました");
+    } finally {
+      setProjectTransferBusy(false);
+      if (projectImportRef.current) projectImportRef.current.value = "";
+    }
+  };
+
   // --- Tree rendering ---
 
   const renderTreeProject = (p: Project, depth: number): ReactElement => {
@@ -1611,6 +1696,35 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
             >
               ＋ プロジェクト
             </button>
+            {currentProjectId !== null && (
+              <>
+                <input
+                  ref={projectImportRef}
+                  type="file"
+                  accept="text/markdown,.md,text/plain,.txt"
+                  className="hidden"
+                  onChange={(e) => void importProjectText(e.target.files?.[0] ?? null)}
+                />
+                <button
+                  type="button"
+                  onClick={downloadProjectText}
+                  disabled={projectTransferBusy}
+                  className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 disabled:opacity-50"
+                  title="このプロジェクトと配下のタスクをMarkdownで保存"
+                >
+                  ↓ 文章出力
+                </button>
+                <button
+                  type="button"
+                  onClick={() => projectImportRef.current?.click()}
+                  disabled={projectTransferBusy}
+                  className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 disabled:opacity-50"
+                  title="Markdownを読み込み、このプロジェクトを更新"
+                >
+                  {projectTransferBusy ? "読み込み中..." : "↑ 文章から読込"}
+                </button>
+              </>
+            )}
           </div>
         </div>
 
