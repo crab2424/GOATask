@@ -65,6 +65,7 @@ import {
   isDescendant,
 } from "../../shared/lib/directoryTree";
 import { useHoverExpand } from "../../shared/lib/useHoverExpand";
+import { useConflictResolver, isConflictError } from "../../shared/lib/useConflictResolver";
 import { CardReorderControls } from "../../shared/components/CardReorderControls";
 import {
   animateCardReorder,
@@ -103,6 +104,7 @@ type DropTarget =
 export function MemoView() {
   const queryClient = useQueryClient();
   const { confirmDialog, promptDialog, choiceDialog } = useDialogs();
+  const resolveConflict = useConflictResolver();
   const memosQuery = useQuery({ queryKey: ["memos"], queryFn: listMemos });
   const foldersQuery = useQuery({ queryKey: ["folders"], queryFn: listFolders });
   const memos = useMemo(() => memosQuery.data ?? [], [memosQuery.data]);
@@ -156,6 +158,9 @@ export function MemoView() {
   const [folderId, setFolderId] = useState<number | null>(null);
   const [color, setColor] = useState<string>("");
   const [fontSize, setFontSize] = useState<FontSize>(DEFAULT_FONT_SIZE);
+  // メモを開いた時点のversionを凍結。SSEでmemosが更新されてもこの値は据え置き、
+  // save時に不一致なら409で衝突ダイアログに繋げる。
+  const [editingVersion, setEditingVersion] = useState<number | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportFlipUp, setExportFlipUp] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
@@ -580,7 +585,8 @@ export function MemoView() {
     if (!item) return;
     try {
       if (item.type === "memo") {
-        await updateMemo(item.id, { folder_id: targetFolderId });
+        // ドラッグ移動は瞬発的操作。衝突ダイアログは出さず最新版に強制適用する。
+        await updateMemo(item.id, { folder_id: targetFolderId }, { force: true });
         if (selectedId === item.id) setFolderId(targetFolderId);
       } else if (item.type === "folder") {
         await updateFolder(item.id, { parent_id: targetFolderId });
@@ -696,6 +702,7 @@ export function MemoView() {
     setFolderId(presetFolder);
     setColor("");
     setFontSize(DEFAULT_FONT_SIZE);
+    setEditingVersion(null);
   };
 
   const selectMemo = (m: Memo) => {
@@ -705,6 +712,7 @@ export function MemoView() {
     setFolderId(m.folder_id ?? null);
     setColor(m.color ?? "");
     setFontSize(normalizeFontSize(m.font_size));
+    setEditingVersion(m.version);
   };
 
   const backToList = () => {
@@ -749,15 +757,43 @@ export function MemoView() {
     setSaving(true);
     try {
       if (selected) {
-        const updated = await updateMemo(selected.id, {
+        const payload = {
           title: title.trim(),
           content,
           folder_id: folderId,
           color,
           font_size: fontSize,
-        });
-        await reload();
-        setSelectedId(updated.id);
+          // 編集開始時に凍結したversionを送る（selected.versionはSSEで進んでいる可能性がある）。
+          version: editingVersion ?? selected.version,
+        };
+        const doSave = async (force: boolean) => {
+          const updated = await updateMemo(selected.id, payload, { force });
+          await reload();
+          setSelectedId(updated.id);
+          setEditingVersion(updated.version);
+        };
+        try {
+          await doSave(false);
+        } catch (err) {
+          if (isConflictError(err)) {
+            const choice = await resolveConflict({ entityLabel: "メモ" });
+            if (choice === "overwrite") {
+              await doSave(true);
+            } else if (choice === "discard") {
+              // 相手の値に合わせる。SSEで最新のmemosが手元にあるので、それでフォームを初期化し直す。
+              const fresh = memos.find((m) => m.id === selected.id);
+              if (fresh) selectMemo(fresh);
+              setSaving(false);
+              return;
+            } else {
+              // cancel: 編集を継続
+              setSaving(false);
+              return;
+            }
+          } else {
+            throw err;
+          }
+        }
       } else {
         const created = await createMemo({
           title: title.trim(),
@@ -771,6 +807,7 @@ export function MemoView() {
         setFolderId(created.folder_id ?? null);
         setColor(created.color ?? "");
         setFontSize(normalizeFontSize(created.font_size));
+        setEditingVersion(created.version);
       }
       setJustSaved(true);
     } catch (e) {

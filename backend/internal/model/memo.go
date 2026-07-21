@@ -17,5 +17,7 @@ type Memo struct {
 	FontSize  string         `gorm:"type:varchar(8);default:''" json:"font_size"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
+	// Version は楽観ロック用のカウンタ。task.goと同様に扱う。
+	Version   int            `gorm:"not null;default:0" json:"version"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }

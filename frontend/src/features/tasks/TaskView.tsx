@@ -61,6 +61,7 @@ import {
   isDescendant,
 } from "../../shared/lib/directoryTree";
 import { useHoverExpand } from "../../shared/lib/useHoverExpand";
+import { useConflictResolver, isConflictError } from "../../shared/lib/useConflictResolver";
 import { ContextMenu, ContextMenuItem } from "../../shared/components/ContextMenu";
 import { useContextMenu } from "../../shared/components/useContextMenu";
 import { MdText } from "../../shared/lib/mdInline";
@@ -259,6 +260,10 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
   const [editStartDate, setEditStartDate] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
   const [editProjectId, setEditProjectId] = useState<number | null>(null);
+  // 編集開始時点のversionを凍結。SSEでtasksが最新版になっても、
+  // ユーザーの編集はこのversionに対する差分として扱われ、
+  // save時に不一致なら409で衝突ダイアログが出る。
+  const [editingVersion, setEditingVersion] = useState<number | null>(null);
   const editPanelRef = useRef<HTMLDivElement | null>(null);
 
   const [showDone, setShowDone] = useState(false);
@@ -790,7 +795,8 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
       if (item.type === "task") {
         const task = tasks.find((t) => t.id === item.id);
         if (task) {
-          await updateTask(task.id, { ...task, project_id: targetProjectId });
+          // ドラッグ&ドロップは瞬発的操作。衝突しても最新版に対して同じ移動を強制適用してよい。
+          await updateTask(task.id, { ...task, project_id: targetProjectId }, { force: true });
         }
       } else if (item.type === "project") {
         await updateProject(item.id, { parent_id: targetProjectId });
@@ -833,13 +839,14 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
   const cycleStatus = async (t: Task) => {
     const next: TaskStatus =
       t.status === "todo" ? "doing" : t.status === "doing" ? "done" : "todo";
-    await updateTask(t.id, { ...t, status: next });
+    // ステータストグルは瞬発的操作。衝突ダイアログは出さず最新版に対して強制適用する。
+    await updateTask(t.id, { ...t, status: next }, { force: true });
     await reload();
   };
 
   const toggleDone = async (t: Task) => {
     const next: TaskStatus = t.status === "done" ? "todo" : "done";
-    await updateTask(t.id, { ...t, status: next });
+    await updateTask(t.id, { ...t, status: next }, { force: true });
     await reload();
   };
 
@@ -907,6 +914,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     setEditStartDate(isoToDateInput(t.start_date));
     setEditDueDate(isoToDateInput(t.due_date));
     setEditProjectId(t.project_id ?? null);
+    setEditingVersion(t.version);
   };
 
   const cancelEdit = () => {
@@ -917,25 +925,47 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     setEditStartDate("");
     setEditDueDate("");
     setEditProjectId(null);
+    setEditingVersion(null);
   };
+
+  const resolveConflict = useConflictResolver();
 
   const saveEdit = async (t: Task) => {
     if (!editTitle.trim()) return;
     if (editStartDate && editDueDate && editStartDate > editDueDate) { setError("開始日は期限以前にしてください"); return; }
-    try {
-      await updateTask(t.id, {
-        ...t,
-        title: editTitle.trim(),
-        description: editDescription.trim(),
-        start_date: dateInputToIso(editStartDate),
-        due_date: dateInputToIso(editDueDate),
-        project_id: editProjectId,
-      });
+    // 編集開始時に凍結したversionを送る。tは最新tasksから来ているのでt.versionはSSEで進んでいる可能性がある。
+    const payload: Partial<Task> = {
+      ...t,
+      title: editTitle.trim(),
+      description: editDescription.trim(),
+      start_date: dateInputToIso(editStartDate),
+      due_date: dateInputToIso(editDueDate),
+      project_id: editProjectId,
+      version: editingVersion ?? t.version,
+    };
+    const doSave = async (force: boolean) => {
+      await updateTask(t.id, payload, { force });
       clearDraft(editDraftKey(t.id));
       cancelEdit();
       await reload();
+    };
+    try {
+      await doSave(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (isConflictError(e)) {
+        const choice = await resolveConflict({ entityLabel: "タスク" });
+        if (choice === "overwrite") {
+          try { await doSave(true); }
+          catch (err) { setError(err instanceof Error ? err.message : String(err)); }
+        } else if (choice === "discard") {
+          // サーバー最新値はSSEで既にreactQueryに入っている想定。編集を捨てて閉じる。
+          cancelEdit();
+          await reload();
+        }
+        // cancelなら何もしない (フォームの編集を継続)
+      } else {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     }
   };
 
@@ -1073,6 +1103,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
         const projectId = source.projectId ? (projectIds.get(source.projectId) ?? target.id) : target.id;
         const existing = source.id ? tasks.find((t) => t.id === source.id) : undefined;
         if (existing) {
+          // プロジェクト文章の一括インポートは意図的な上書きなので強制適用。
           await updateTask(existing.id, {
             ...existing,
             title: source.title,
@@ -1081,7 +1112,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
             start_date: source.start_date,
             due_date: source.due_date,
             project_id: projectId,
-          });
+          }, { force: true });
         } else {
           await createTask({
             title: source.title,

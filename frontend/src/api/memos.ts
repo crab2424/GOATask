@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch, throwIfConflict } from "./client";
 
 export interface Memo {
   id: number;
@@ -9,6 +9,8 @@ export interface Memo {
   font_size?: string;
   created_at: string;
   updated_at: string;
+  // 楽観ロック用のカウンタ。updateMemoで自動的に送信される。
+  version: number;
 }
 
 export interface NewMemo {
@@ -35,12 +37,18 @@ export async function createMemo(input: NewMemo): Promise<Memo> {
   return res.json();
 }
 
-export async function updateMemo(id: number, input: Partial<Memo>): Promise<Memo> {
-  const res = await apiFetch(`/api/memos/${id}`, {
+export async function updateMemo(
+  id: number,
+  input: Partial<Memo>,
+  opts: { force?: boolean } = {},
+): Promise<Memo> {
+  const qs = opts.force ? "?force=true" : "";
+  const res = await apiFetch(`/api/memos/${id}${qs}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+  await throwIfConflict<Memo>(res);
   if (!res.ok) throw new Error(`updateMemo failed: ${res.status}`);
   return res.json();
 }

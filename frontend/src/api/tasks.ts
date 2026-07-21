@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch, throwIfConflict } from "./client";
 
 export type TaskStatus = "todo" | "doing" | "done";
 
@@ -20,6 +20,8 @@ export interface Task {
   project_id?: number | null;
   created_at: string;
   updated_at: string;
+  // 楽観ロック用のカウンタ。updateTaskで自動的に送信される。
+  version: number;
   subtasks: Subtask[];
 }
 
@@ -48,12 +50,18 @@ export async function createTask(input: NewTask): Promise<Task> {
   return res.json();
 }
 
-export async function updateTask(id: number, input: Partial<Task>): Promise<Task> {
-  const res = await apiFetch(`/api/tasks/${id}`, {
+export async function updateTask(
+  id: number,
+  input: Partial<Task>,
+  opts: { force?: boolean } = {},
+): Promise<Task> {
+  const qs = opts.force ? "?force=true" : "";
+  const res = await apiFetch(`/api/tasks/${id}${qs}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+  await throwIfConflict<Task>(res);
   if (!res.ok) throw new Error(`updateTask failed: ${res.status}`);
   return res.json();
 }

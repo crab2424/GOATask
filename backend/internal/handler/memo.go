@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/crab2424/goatask/backend/internal/auth"
 	"github.com/crab2424/goatask/backend/internal/events"
@@ -97,10 +98,21 @@ func (h *MemoHandler) update(c echo.Context) error {
 	if err := h.DB.Where("user_id = ?", uid).First(&m, id).Error; err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "memo not found")
 	}
+	// task.updateと同じ楽観ロック方式。
+	currentVersion := m.Version
 	if err := c.Bind(&m); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	force := strings.EqualFold(c.QueryParam("force"), "true")
+	if !force && m.Version != currentVersion {
+		var fresh model.Memo
+		if err := h.DB.Where("user_id = ?", uid).First(&fresh, id).Error; err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		}
+		return c.JSON(http.StatusConflict, conflictResponse{Error: "version conflict", Current: fresh})
+	}
 	m.UserID = uid
+	m.Version = currentVersion + 1
 	if err := h.DB.Save(&m).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}

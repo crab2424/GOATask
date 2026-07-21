@@ -26,6 +26,10 @@ type Task struct {
 	ProjectID   *uint          `gorm:"index" json:"project_id,omitempty"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
-	Subtasks    []Subtask      `gorm:"foreignKey:TaskID;constraint:OnDelete:CASCADE" json:"subtasks"`
+	// Version は楽観ロック用のカウンタ。Update時のみ+1する。
+	// クライアントは編集開始時のversionをリクエストに載せ、サーバー現行と
+	// 一致しなければ409を返す。DBのAutoMigrateで既存行は0埋め。
+	Version   int            `gorm:"not null;default:0" json:"version"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	Subtasks  []Subtask      `gorm:"foreignKey:TaskID;constraint:OnDelete:CASCADE" json:"subtasks"`
 }

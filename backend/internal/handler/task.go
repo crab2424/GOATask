@@ -12,6 +12,14 @@ import (
 	"gorm.io/gorm"
 )
 
+// conflictResponse は409で返す共通のペイロード。
+// current にサーバー側の現行値を入れて、クライアント側の
+// 「取り込み」導線で最新をそのまま利用できるようにする。
+type conflictResponse struct {
+	Error   string      `json:"error"`
+	Current interface{} `json:"current"`
+}
+
 type TaskHandler struct {
 	DB  *gorm.DB
 	Hub *events.Hub
@@ -99,14 +107,29 @@ func (h *TaskHandler) update(c echo.Context) error {
 	if err := h.DB.Where("user_id = ?", uid).First(&t, id).Error; err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "task not found")
 	}
+	// 楽観ロック: クライアントが編集開始時に見ていたversionをbind前に控え、
+	// bind後のt.Version (= クライアント送信version) と比較する。
+	currentVersion := t.Version
 	if err := c.Bind(&t); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	force := strings.EqualFold(c.QueryParam("force"), "true")
+	if !force && t.Version != currentVersion {
+		// クライアントが古いversionで来た → サーバーの現行値を返す
+		var fresh model.Task
+		if err := h.DB.Preload("Subtasks", func(db *gorm.DB) *gorm.DB {
+			return db.Order("position ASC, id ASC")
+		}).First(&fresh, id).Error; err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		}
+		return c.JSON(http.StatusConflict, conflictResponse{Error: "version conflict", Current: fresh})
 	}
 	if t.StartDate != nil && t.DueDate != nil && t.StartDate.After(*t.DueDate) {
 		return echo.NewHTTPError(http.StatusBadRequest, "start_date must be on or before due_date")
 	}
 	t.UserID = uid
 	t.Subtasks = nil
+	t.Version = currentVersion + 1
 	if err := h.DB.Save(&t).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
