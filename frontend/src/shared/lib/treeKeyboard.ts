@@ -45,10 +45,12 @@ export function handleTreeKeyDown(e: ReactKeyboardEvent<HTMLElement>) {
       if (idx < 0) return;
       const item = active?.closest<HTMLElement>('li[role="treeitem"]');
       if (!item || item.getAttribute("aria-expanded") !== "true") return;
-      const firstChild = item.querySelector<HTMLElement>("ul [data-tree-node]");
-      if (firstChild) {
+      // 文書順で次のノードが自分の li 内にあれば、それが最初の子。
+      // （querySelector("ul [data-tree-node]") は文書全体で評価されるため自分自身にマッチしてしまう）
+      const next = nodes[idx + 1];
+      if (next && item.contains(next) && next !== active) {
         e.preventDefault();
-        firstChild.focus();
+        next.focus();
       }
       break;
     }

@@ -1190,6 +1190,15 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
 
   // --- Tree rendering ---
 
+  // roving tabindex: 現在のプロジェクト（表示中なら）だけを Tab で止まる位置にする。
+  // 現在地が折りたたまれて非表示ならルートを Tab 位置にする。
+  const currentProjectVisible =
+    currentProjectId === null ||
+    buildBreadcrumb(projects, currentProjectId)
+      .slice(0, -1)
+      .every((ancestor) => expanded.has(ancestor.id));
+  const rootTabIndex = currentProjectId === null || !currentProjectVisible ? 0 : -1;
+
   const renderTreeProject = (p: Project, depth: number): ReactElement => {
     const isOpen = expanded.has(p.id);
     const subProjects = childProjectsMap.get(p.id) ?? [];
@@ -1222,6 +1231,8 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
         count={count}
         dataTreeNode={`project:${p.id}`}
         isMobile={isMobile}
+        tabIndex={isCurrent ? 0 : -1}
+        onRename={() => void onRenameProject(p)}
         onClick={() => {
           setCurrentProjectId(p.id);
           setExpanded((prev) => {
@@ -1290,7 +1301,11 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
           />
         </span>
         <button
-          onClick={() => openTaskFromTree(t)}
+          onClick={(e) => {
+            e.currentTarget.focus();
+            openTaskFromTree(t);
+          }}
+          tabIndex={-1}
           data-tree-node={`task:${t.id}`}
           className="flex-1 truncate text-left text-slate-500 hover:text-slate-900"
         >
@@ -1661,7 +1676,11 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
           <ul role="tree" className="space-y-0.5">
             <li role="treeitem">
               <button
-                onClick={() => navigateTo(null)}
+                onClick={(e) => {
+                  e.currentTarget.focus();
+                  navigateTo(null);
+                }}
+                tabIndex={rootTabIndex}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   openRootCtxMenu(e.clientX, e.clientY, null);

@@ -1025,7 +1025,11 @@ export function MemoView() {
             />
           </span>
           <button
-            onClick={() => focusMemoFromTree(m)}
+            onClick={(e) => {
+              e.currentTarget.focus();
+              focusMemoFromTree(m);
+            }}
+            tabIndex={-1}
             className="min-w-0 flex-1 truncate text-left text-slate-600"
             data-tree-node={`memo:${m.id}`}
           >
@@ -1051,6 +1055,14 @@ export function MemoView() {
       </li>
     );
   };
+
+  // roving tabindex: 現在のフォルダ（表示中なら）だけを Tab で止まる位置にする。
+  const currentFolderVisible =
+    currentFolderId === null ||
+    buildBreadcrumb(folders, currentFolderId)
+      .slice(0, -1)
+      .every((ancestor) => expanded.has(ancestor.id));
+  const rootTabIndex = currentFolderId === null || !currentFolderVisible ? 0 : -1;
 
   const renderTreeFolder = (f: Folder, depth: number): ReactElement => {
     const isOpen = expanded.has(f.id);
@@ -1083,6 +1095,8 @@ export function MemoView() {
         count={count}
         dataTreeNode={`folder:${f.id}`}
         isMobile={isMobile}
+        tabIndex={isCurrent ? 0 : -1}
+        onRename={() => void onRenameFolder(f)}
         onClick={() => {
           setCurrentFolderId(f.id);
           setSelectedId(null);
@@ -1290,7 +1304,11 @@ export function MemoView() {
           <ul role="tree" className="space-y-0.5">
             <li role="treeitem">
               <button
-                onClick={() => navigateTo(null)}
+                onClick={(e) => {
+                  e.currentTarget.focus();
+                  navigateTo(null);
+                }}
+                tabIndex={rootTabIndex}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   openRootCtxMenu(e.clientX, e.clientY, null);

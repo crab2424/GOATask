@@ -11,8 +11,12 @@ interface DirectoryTreeRowProps {
   count: number;
   dataTreeNode: string;
   isMobile: boolean;
+  /** roving tabindex: ツリー全体で1つだけ 0、他は -1（Tab はツリーに1回で入り1回で出る） */
+  tabIndex?: number;
   onClick: () => void;
   onToggleExpand: () => void;
+  /** F2 で呼ばれるリネーム処理（省略時は F2 を無視） */
+  onRename?: () => void;
   onContextMenu: (x: number, y: number) => void;
   onMenuToggle: (x: number, y: number) => void;
   onDragStart: (e: DragEvent) => void;
@@ -34,8 +38,10 @@ export function DirectoryTreeRow({
   count,
   dataTreeNode,
   isMobile,
+  tabIndex = 0,
   onClick,
   onToggleExpand,
+  onRename,
   onContextMenu,
   onMenuToggle,
   onDragStart,
@@ -63,7 +69,13 @@ export function DirectoryTreeRow({
           type="button"
           draggable
           data-tree-node={dataTreeNode}
-          onClick={onClick}
+          tabIndex={tabIndex}
+          onClick={(e) => {
+            // Safari / Firefox(Mac) はクリックでボタンにフォーカスしないため明示的に当てる。
+            // これで「クリックしたフォルダから矢印キーで移動」が全ブラウザで動く。
+            e.currentTarget.focus();
+            onClick();
+          }}
           onKeyDown={(e) => {
             // VS Code準拠: →で閉じたフォルダを開き、←で開いたフォルダを閉じる。
             // それ以外（開いたフォルダで→、閉じたフォルダで←）は親コンテナの
@@ -76,6 +88,10 @@ export function DirectoryTreeRow({
               e.preventDefault();
               e.stopPropagation();
               onToggleExpand();
+            } else if (e.key === "F2" && onRename) {
+              e.preventDefault();
+              e.stopPropagation();
+              onRename();
             } else if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
               e.preventDefault();
               e.stopPropagation();

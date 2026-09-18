@@ -7,14 +7,23 @@ import {
   type Keybindings,
 } from "../../api/settings";
 
+/** Mac 系（macOS / iOS）か。修飾キーの解釈と表示に使う。 */
+export const IS_MAC =
+  typeof navigator !== "undefined" &&
+  /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
+
 /**
- * 設定画面で記録した "Ctrl+Shift+K" 形式の割当と KeyboardEvent を照合する。
- * 記録側 (KeybindingsSection.keyEventToBinding) と同じ正規化を行う:
- * 修飾キーは Ctrl / Cmd / Alt / Shift の順、1文字キーは大文字化。
+ * 割当文字列は "Ctrl+Shift+K" 形式。修飾キーの順は Ctrl / Control / Cmd / Alt / Shift、1文字キーは大文字。
+ *
+ * 修飾キートークンの意味（Windows と Mac で同じ設定を共有するため）:
+ * - "Ctrl"    … 主修飾キー。Windows/Linux では Ctrl、Mac では ⌘(Command)
+ * - "Control" … Mac の物理 Control キー（Mac で記録したときのみ生成される）
+ * - "Cmd"     … 旧形式（Mac で ⌘ を記録した過去の保存値）。Mac では "Ctrl" と同じ扱い
  */
 interface ParsedBinding {
-  ctrl: boolean;
-  meta: boolean;
+  primary: boolean;
+  control: boolean;
+  cmd: boolean;
   alt: boolean;
   shift: boolean;
   key: string;
@@ -26,11 +35,26 @@ function parseBinding(binding: string): ParsedBinding | null {
   if (!key) return null;
   const mods = new Set(parts);
   return {
-    ctrl: mods.has("Ctrl"),
-    meta: mods.has("Cmd"),
+    primary: mods.has("Ctrl"),
+    control: mods.has("Control"),
+    cmd: mods.has("Cmd"),
     alt: mods.has("Alt"),
     shift: mods.has("Shift"),
     key: key.length === 1 ? key.toUpperCase() : key,
+  };
+}
+
+/** 割当が要求する ctrlKey / metaKey の組を、実行中のOSに合わせて解決する。 */
+function expectedModifiers(parsed: ParsedBinding): { ctrlKey: boolean; metaKey: boolean } {
+  if (IS_MAC) {
+    return {
+      metaKey: parsed.primary || parsed.cmd,
+      ctrlKey: parsed.control,
+    };
+  }
+  return {
+    ctrlKey: parsed.primary || parsed.control,
+    metaKey: parsed.cmd,
   };
 }
 
@@ -42,13 +66,37 @@ export function matchesBinding(
   const parsed = parseBinding(binding);
   if (!parsed) return false;
   const key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
+  const expected = expectedModifiers(parsed);
   return (
     key === parsed.key &&
-    event.ctrlKey === parsed.ctrl &&
-    event.metaKey === parsed.meta &&
+    event.ctrlKey === expected.ctrlKey &&
+    event.metaKey === expected.metaKey &&
     event.altKey === parsed.alt &&
     event.shiftKey === parsed.shift
   );
+}
+
+/**
+ * KeyboardEvent を割当文字列へ変換する（設定画面の記録用）。修飾キー単体は未確定として null。
+ * Mac では ⌘ を主修飾キー "Ctrl" として記録し、物理 Control は "Control" として区別する。
+ */
+export function keyEventToBinding(
+  event: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">,
+): string | null {
+  const key = event.key;
+  if (key === "Control" || key === "Shift" || key === "Alt" || key === "Meta") return null;
+  const parts: string[] = [];
+  if (IS_MAC) {
+    if (event.metaKey) parts.push("Ctrl");
+    if (event.ctrlKey) parts.push("Control");
+  } else {
+    if (event.ctrlKey) parts.push("Ctrl");
+    if (event.metaKey) parts.push("Cmd");
+  }
+  if (event.altKey) parts.push("Alt");
+  if (event.shiftKey) parts.push("Shift");
+  parts.push(key.length === 1 ? key.toUpperCase() : key);
+  return parts.join("+");
 }
 
 /** IME変換中のキー入力か。変換中の Enter / Escape をショートカットとして扱わないために使う。 */
@@ -106,7 +154,29 @@ export function useGlobalKeydown(handler: (event: KeyboardEvent) => void, enable
   }, [enabled]);
 }
 
-/** 割当表記を表示用に短く整える（設定画面・ツールチップ用）。 */
+/** 割当表記を実行中のOS向けに整える（設定画面・ツールチップ用）。Mac では ⌘ ⌃ ⌥ ⇧ 表記。 */
 export function formatBinding(binding: string): string {
-  return binding.replace("ArrowLeft", "←").replace("ArrowRight", "→").replace("ArrowUp", "↑").replace("ArrowDown", "↓");
+  const arrows = (s: string) =>
+    s.replace("ArrowLeft", "←").replace("ArrowRight", "→").replace("ArrowUp", "↑").replace("ArrowDown", "↓");
+  if (!IS_MAC) return arrows(binding.replace("Control", "Ctrl"));
+  return arrows(
+    binding
+      .split("+")
+      .map((part) => {
+        switch (part) {
+          case "Ctrl":
+          case "Cmd":
+            return "⌘";
+          case "Control":
+            return "⌃";
+          case "Alt":
+            return "⌥";
+          case "Shift":
+            return "⇧";
+          default:
+            return part;
+        }
+      })
+      .join("+"),
+  );
 }

@@ -9,6 +9,7 @@ import {
   type UserSettings,
 } from "../../api/settings";
 import { LoadingIndicator } from "../../shared/components/LoadingIndicator";
+import { IS_MAC, formatBinding, keyEventToBinding } from "../../shared/lib/keybindings";
 
 const ACTIONS: { id: KeyAction; label: string; desc: string }[] = [
   { id: "addChecklistMarker", label: "チェック項目記号追加", desc: "タスク詳細の編集中、行頭に「- [ ] 」を挿入" },
@@ -26,9 +27,11 @@ const FIXED_SHORTCUTS: { scope: string; keys: { key: string; desc: string }[] }[
       { key: "→", desc: "フォルダを開く／開いていれば最初の子へ" },
       { key: "←", desc: "フォルダを閉じる／閉じていれば親フォルダへ" },
       { key: "Home / End", desc: "先頭／末尾へ" },
-      { key: "Enter", desc: "フォルダを選択・開閉／項目を開く" },
+      { key: "Enter / Space", desc: "フォルダを選択・開閉／項目を開く" },
+      { key: "F2", desc: "フォルダをリネーム" },
       { key: "Shift+F10", desc: "コンテキストメニューを開く（↑↓で移動、→で下位メニュー）" },
       { key: "/", desc: "ツリー検索欄へフォーカス" },
+      { key: "Tab", desc: "ツリーへ入る／出る（ツリー内は1つのタブ位置として扱う）" },
     ],
   },
   {
@@ -53,7 +56,7 @@ const FIXED_SHORTCUTS: { scope: string; keys: { key: string; desc: string }[] }[
   {
     scope: "メモ編集",
     keys: [
-      { key: "Ctrl+F / Ctrl+H", desc: "本文の検索／置換" },
+      { key: IS_MAC ? "⌘+F / ⌘+H" : "Ctrl+F / Ctrl+H", desc: "本文の検索／置換" },
     ],
   },
   {
@@ -64,19 +67,6 @@ const FIXED_SHORTCUTS: { scope: string; keys: { key: string; desc: string }[] }[
     ],
   },
 ];
-
-/** KeyboardEventを "Ctrl+Shift+K" 形式の表記へ変換する。修飾キー単体は未確定としてnull。 */
-function keyEventToBinding(event: React.KeyboardEvent): string | null {
-  const key = event.key;
-  if (key === "Control" || key === "Shift" || key === "Alt" || key === "Meta") return null;
-  const parts: string[] = [];
-  if (event.ctrlKey) parts.push("Ctrl");
-  if (event.metaKey) parts.push("Cmd");
-  if (event.altKey) parts.push("Alt");
-  if (event.shiftKey) parts.push("Shift");
-  parts.push(key.length === 1 ? key.toUpperCase() : key);
-  return parts.join("+");
-}
 
 export function KeybindingsSection() {
   const queryClient = useQueryClient();
@@ -119,6 +109,11 @@ export function KeybindingsSection() {
       <p className="text-xs text-slate-500">
         タスク・メモ・単語帳で共通に使うキー割当。全デバイスで同期されます。
         ボタンを押してから割り当てたいキーを入力してください。
+        <span className="ml-1 text-slate-400">
+          {IS_MAC
+            ? "Windows 側で設定した Ctrl は、この Mac では ⌘ として動作します（⌃ は Mac 固有のキーとして別扱い）。"
+            : "Mac 側では Ctrl が ⌘(Command) として動作します。"}
+        </span>
       </p>
       <ul className="space-y-2">
         {ACTIONS.map((action) => (
@@ -146,7 +141,7 @@ export function KeybindingsSection() {
                     : "border-slate-300 text-slate-700 hover:bg-slate-100"
                 }`}
               >
-                {capturing === action.id ? "キーを入力..." : bindingOf(action.id)}
+                {capturing === action.id ? "キーを入力..." : formatBinding(bindingOf(action.id))}
               </button>
               {bindingOf(action.id) !== DEFAULT_KEYBINDINGS[action.id] && (
                 <button
