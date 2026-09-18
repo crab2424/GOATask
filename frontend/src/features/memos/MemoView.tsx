@@ -49,6 +49,12 @@ import {
 import { UndoToast } from "../../shared/components/UndoToast";
 import { DirectoryTreeRow } from "../../shared/components/DirectoryTreeRow";
 import { handleTreeKeyDown } from "../../shared/lib/treeKeyboard";
+import {
+  isComposingEvent,
+  matchesBinding,
+  useGlobalKeydown,
+  useKeybindings,
+} from "../../shared/lib/keybindings";
 import { PRESET_COLORS, isValidColor } from "./utils/memoColor";
 import {
   DEFAULT_FONT_SIZE,
@@ -751,8 +757,12 @@ export function MemoView() {
     return () => window.clearTimeout(timer);
   }, [focusMemoId, currentFolderId, memos]);
 
-  const onSubmit = async (e: FormEvent) => {
+  const onSubmit = (e: FormEvent) => {
     e.preventDefault();
+    void saveMemo();
+  };
+
+  const saveMemo = async () => {
     if (!title.trim() || saving) return;
     setSaving(true);
     try {
@@ -816,6 +826,68 @@ export function MemoView() {
       setSaving(false);
     }
   };
+
+  // エディタに未保存の変更があるか（Escape で閉じる前の確認に使う）
+  const isEditorDirty = selected
+    ? title !== selected.title ||
+      content !== selected.content ||
+      (folderId ?? null) !== (selected.folder_id ?? null) ||
+      color !== (selected.color ?? "") ||
+      fontSize !== normalizeFontSize(selected.font_size)
+    : title.trim() !== "" || content.trim() !== "";
+
+  // --- キー割当（設定画面で変更可）: 保存 / キャンセル / 新規作成 ---
+  const keybindings = useKeybindings();
+  useGlobalKeydown((event) => {
+    if (isComposingEvent(event)) return;
+    const anyMenuOpen = folderMenu.menu || rootMenu.menu || memoMenu.menu;
+
+    if (matchesBinding(event, keybindings.save)) {
+      if (!showEditor) return;
+      event.preventDefault();
+      void saveMemo();
+      return;
+    }
+    if (matchesBinding(event, keybindings.cancel)) {
+      if (!showEditor || anyMenuOpen) return;
+      event.preventDefault();
+      // 開いているポップアップから順に閉じ、最後にエディタを閉じる
+      if (colorOpen || exportOpen) {
+        setColorOpen(false);
+        setExportOpen(false);
+        return;
+      }
+      if (searchOpen || replaceOpen) {
+        setSearchOpen(false);
+        setReplaceOpen(false);
+        return;
+      }
+      void (async () => {
+        if (
+          isEditorDirty &&
+          !(await confirmDialog({
+            title: "編集内容を破棄して一覧に戻りますか？",
+            message: "保存していない変更は失われます。",
+            confirmLabel: "破棄",
+            danger: true,
+          }))
+        ) {
+          return;
+        }
+        backToList();
+      })();
+      return;
+    }
+    if (matchesBinding(event, keybindings.createTaskItem)) {
+      // 未保存の入力があるときは上書きしない
+      if (showEditor && isEditorDirty) return;
+      event.preventDefault();
+      openNewMemoForm();
+      requestAnimationFrame(() =>
+        document.getElementById("memo-title-input")?.focus(),
+      );
+    }
+  });
 
   const performMemoDelete = async (m: Memo) => {
     try {

@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  isComposingEvent,
+  isEditableTarget,
+  matchesBinding,
+  useGlobalKeydown,
+  useKeybindings,
+} from "../../shared/lib/keybindings";
 import { parseCardsCsv, CsvParseError } from "./study/parseCardsCsv";
 import { useDialogs } from "../../shared/components/DialogProvider";
 import { CardFiltersPanel } from "./components/CardFiltersPanel";
@@ -80,6 +87,11 @@ export function FlashcardView({ onStudyStateChange }: { onStudyStateChange?: (ac
   const [importError, setImportError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
+  const cardFormRef = useRef<HTMLFormElement>(null);
+  const cardFrontRef = useRef<HTMLInputElement>(null);
+  /** Shift+クリックでの範囲選択の起点（直前に操作したカード） */
+  const [lastToggledId, setLastToggledId] = useState<number | null>(null);
+  const keybindings = useKeybindings();
 
   const [cardFilters, setCardFilters] = useState<CardFilters>(DEFAULT_FILTERS);
   const [cardFiltersOpen, setCardFiltersOpen] = useState(false);
@@ -290,12 +302,67 @@ export function FlashcardView({ onStudyStateChange }: { onStudyStateChange?: (ac
   };
 
   const toggleSelected = (id: number) => {
+    setLastToggledId(id);
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  };
+
+  /** Shift+クリック: 直前に操作したカードから id までを表示順でまとめて選択する。 */
+  const selectRangeTo = (id: number, orderedIds: number[]) => {
+    const from = lastToggledId === null ? -1 : orderedIds.indexOf(lastToggledId);
+    const to = orderedIds.indexOf(id);
+    if (from < 0 || to < 0) {
+      toggleSelected(id);
+      return;
+    }
+    const [lo, hi] = from < to ? [from, to] : [to, from];
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (let i = lo; i <= hi; i++) next.add(orderedIds[i]);
+      return next;
+    });
+  };
+
+  /** カード行（li）のキー操作: ↑↓で行移動、Space選択、Enter編集、M★、Delete削除 */
+  const onCardRowKeyDown = (e: ReactKeyboardEvent<HTMLLIElement>, c: Card) => {
+    if (isEditableTarget(e.target) && (e.target as HTMLElement).getAttribute("type") !== "checkbox") return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-card-row]"));
+      const idx = rows.indexOf(e.currentTarget);
+      const next = rows[idx + (e.key === "ArrowDown" ? 1 : -1)];
+      next?.focus();
+      return;
+    }
+    // 以下は行そのものにフォーカスがあるときだけ（内側のボタン・チェックボックスは既定動作を優先）
+    if (e.target !== e.currentTarget) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    switch (e.key) {
+      case " ":
+        e.preventDefault();
+        toggleSelected(c.id);
+        break;
+      case "Enter":
+        e.preventDefault();
+        startEditCard(c);
+        break;
+      case "m":
+      case "M":
+        e.preventDefault();
+        void onToggleMark(c);
+        break;
+      case "Delete":
+      case "Backspace":
+        e.preventDefault();
+        void onDeleteCard(c);
+        break;
+      default:
+        break;
+    }
   };
 
   const onBulkDelete = async (ids: number[]) => {
@@ -452,6 +519,82 @@ export function FlashcardView({ onStudyStateChange }: { onStudyStateChange?: (ac
   const cards = selectedDeck?.cards ?? [];
   const markedCount = cards.filter((c) => c.marked).length;
 
+  // --- キー操作 ---
+  // カード一覧: 設定画面で変更可能な 保存 / キャンセル / 項目作成。
+  // 学習画面: Space・Enter=答えを見る、←/1=不正解、→/2=正解、M=★（固定割当）。
+  useGlobalKeydown((event) => {
+    if (isComposingEvent(event)) return;
+    if (screen === "cards") {
+      const editingCard =
+        editingCardId !== null ? cards.find((c) => c.id === editingCardId) : undefined;
+      if (matchesBinding(event, keybindings.save)) {
+        if (editingCard) {
+          event.preventDefault();
+          void saveEditCard(editingCard);
+        }
+        return;
+      }
+      if (matchesBinding(event, keybindings.cancel)) {
+        if (editingCard) {
+          event.preventDefault();
+          cancelEditCard();
+        } else if (sortOpen) {
+          event.preventDefault();
+          setSortOpen(false);
+        }
+        return;
+      }
+      if (matchesBinding(event, keybindings.createTaskItem)) {
+        if (editingCard) return;
+        event.preventDefault();
+        const inCardForm = cardFormRef.current?.contains(document.activeElement);
+        if (inCardForm && cardFront.trim() && cardBack.trim()) {
+          cardFormRef.current?.requestSubmit();
+        } else {
+          cardFrontRef.current?.focus();
+        }
+      }
+      return;
+    }
+    if (screen === "study") {
+      if (isEditableTarget(event.target)) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      // フォーカス中のボタンは Enter / Space の既定動作（クリック）に任せる
+      const onButton = (event.target as HTMLElement | null)?.tagName === "BUTTON";
+      if (!studyCards[studyIndex]) return;
+      switch (event.key) {
+        case " ":
+        case "Enter":
+          if (!showBack && !onButton) {
+            event.preventDefault();
+            setShowBack(true);
+          }
+          break;
+        case "ArrowLeft":
+        case "1":
+          if (showBack) {
+            event.preventDefault();
+            onAnswer(false);
+          }
+          break;
+        case "ArrowRight":
+        case "2":
+          if (showBack) {
+            event.preventDefault();
+            onAnswer(true);
+          }
+          break;
+        case "m":
+        case "M":
+          event.preventDefault();
+          onToggleStudyMark();
+          break;
+        default:
+          break;
+      }
+    }
+  });
+
   if (screen === "study") {
     return (
       <StudyScreen
@@ -543,12 +686,14 @@ export function FlashcardView({ onStudyStateChange }: { onStudyStateChange?: (ac
         )}
 
         <form
+          ref={cardFormRef}
           onSubmit={onAddCard}
           className="mb-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
         >
           <h2 className="mb-3 text-sm font-semibold">カードを追加</h2>
           <div className="mb-2 flex flex-col gap-2 sm:flex-row">
             <input
+              ref={cardFrontRef}
               value={cardFront}
               onChange={(e) => setCardFront(e.target.value)}
               placeholder="おもて（問題）"
@@ -922,15 +1067,27 @@ export function FlashcardView({ onStudyStateChange }: { onStudyStateChange?: (ac
               return (
                 <li
                   key={c.id}
-                  className={`flex items-center justify-between rounded-lg border bg-white p-3 shadow-sm ${isSelected ? "border-slate-900 ring-1 ring-slate-300" : "border-slate-200"}`}
+                  data-card-row
+                  tabIndex={0}
+                  aria-selected={isSelected}
+                  onKeyDown={(e) => onCardRowKeyDown(e, c)}
+                  className={`flex items-center justify-between rounded-lg border bg-white p-3 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${isSelected ? "border-slate-900 ring-1 ring-slate-300" : "border-slate-200"}`}
                 >
                   <div className="flex flex-1 items-center gap-3">
                     <input
                       type="checkbox"
                       checked={isSelected}
-                      onChange={() => toggleSelected(c.id)}
+                      onChange={(e) => {
+                        // チェックボックスの change は click 由来なので shiftKey を参照できる。
+                        // Shift+クリックは直前に操作したカードからの範囲選択。
+                        if ((e.nativeEvent as MouseEvent).shiftKey) {
+                          selectRangeTo(c.id, pageCards.map((pc) => pc.id));
+                        } else {
+                          toggleSelected(c.id);
+                        }
+                      }}
                       className="h-4 w-4 cursor-pointer accent-slate-900"
-                      aria-label="選択"
+                      aria-label={`選択: ${c.front}`}
                     />
                     <button
                       onClick={() => onToggleMark(c)}

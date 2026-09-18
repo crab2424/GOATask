@@ -53,6 +53,12 @@ import { UndoToast } from "../../shared/components/UndoToast";
 import { DirectoryTreeRow } from "../../shared/components/DirectoryTreeRow";
 import { handleTreeKeyDown } from "../../shared/lib/treeKeyboard";
 import {
+  isComposingEvent,
+  matchesBinding,
+  useGlobalKeydown,
+  useKeybindings,
+} from "../../shared/lib/keybindings";
+import {
   buildBreadcrumb,
   buildChildMap,
   buildItemsByParent,
@@ -265,6 +271,8 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
   // save時に不一致なら409で衝突ダイアログが出る。
   const [editingVersion, setEditingVersion] = useState<number | null>(null);
   const editPanelRef = useRef<HTMLDivElement | null>(null);
+  const newTitleRef = useRef<HTMLInputElement | null>(null);
+  const keybindings = useKeybindings();
 
   const [showDone, setShowDone] = useState(false);
   const [tidied, setTidied] = useState<boolean>(() => {
@@ -812,8 +820,12 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
 
   // --- Task CRUD ---
 
-  const onSubmit = async (e: FormEvent) => {
+  const onSubmit = (e: FormEvent) => {
     e.preventDefault();
+    void submitNewTask();
+  };
+
+  const submitNewTask = async () => {
     if (!title.trim()) return;
     if (startDate && dueDate && startDate > dueDate) { setError("開始日は期限以前にしてください"); return; }
     try {
@@ -1132,6 +1144,49 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
       if (projectImportRef.current) projectImportRef.current.value = "";
     }
   };
+
+  // --- キー割当（設定画面で変更可）: 保存 / キャンセル / タスク項目作成 ---
+  // チェック項目記号追加は TaskDescriptionEditor 内で処理する。
+  useGlobalKeydown((event) => {
+    if (isComposingEvent(event)) return;
+    const anyMenuOpen = projectMenu.menu || rootMenu.menu || taskMenu.menu;
+    const editingTask =
+      editingId !== null ? tasks.find((task) => task.id === editingId) : undefined;
+
+    if (matchesBinding(event, keybindings.save)) {
+      if (editingTask) {
+        event.preventDefault();
+        void saveEdit(editingTask);
+      } else if (showNewTaskForm) {
+        event.preventDefault();
+        void submitNewTask();
+      }
+      return;
+    }
+    if (matchesBinding(event, keybindings.cancel)) {
+      // コンテキストメニュー表示中は useContextMenu 側の Escape 処理に任せる
+      if (anyMenuOpen) return;
+      if (editingId !== null) {
+        event.preventDefault();
+        cancelEdit();
+      } else if (showNewTaskForm) {
+        // 下書きは自動保存されているので閉じるだけ（「下書」バッジから復元できる）
+        event.preventDefault();
+        setShowNewTaskForm(false);
+      }
+      return;
+    }
+    if (matchesBinding(event, keybindings.createTaskItem)) {
+      if (editingId !== null) return;
+      event.preventDefault();
+      if (showNewTaskForm) {
+        void submitNewTask();
+      } else {
+        setShowNewTaskForm(true);
+        requestAnimationFrame(() => newTitleRef.current?.focus());
+      }
+    }
+  });
 
   // --- Tree rendering ---
 
@@ -1851,6 +1906,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
             </span>
           </div>
           <input
+            ref={newTitleRef}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="タイトル"

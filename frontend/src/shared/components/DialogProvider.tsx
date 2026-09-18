@@ -84,11 +84,34 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     setActive(null);
   };
 
+  const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+
   useEffect(() => {
-    if (active?.kind === "prompt") {
+    if (!active) return;
+    if (active.kind === "prompt") {
       inputRef.current?.focus();
       inputRef.current?.select();
+    } else if (active.kind === "confirm") {
+      // 危険操作は誤って Enter で確定しないようキャンセル側へ、通常は OK 側へフォーカス。
+      (active.opts.danger ? cancelButtonRef : confirmButtonRef).current?.focus();
+    } else {
+      cancelButtonRef.current?.focus();
     }
+  }, [active]);
+
+  // Escape で閉じる（prompt の入力欄は IME 変換中を考慮して個別処理しているので除外）。
+  useEffect(() => {
+    if (!active) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || active.kind === "prompt") return;
+      e.preventDefault();
+      e.stopPropagation();
+      close(null);
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
   return (
@@ -151,12 +174,14 @@ export function DialogProvider({ children }: { children: ReactNode }) {
             )}
             <div className="flex justify-end gap-2">
               <button
+                ref={cancelButtonRef}
                 onClick={() => close(null)}
                 className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100"
               >
                 {active.opts.cancelLabel ?? "キャンセル"}
               </button>
               <button
+                ref={confirmButtonRef}
                 onClick={() => close(active.kind === "prompt" ? inputValue : true)}
                 disabled={active.kind !== "confirm" && active.kind !== "prompt"}
                 className={`rounded px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 ${

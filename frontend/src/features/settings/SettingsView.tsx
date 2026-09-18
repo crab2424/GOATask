@@ -88,7 +88,7 @@ export function SettingsView(props: SettingsViewProps) {
       </section>
 
       <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-semibold text-slate-700">キー設定（タスクモード）</h3>
+        <h3 className="text-sm font-semibold text-slate-700">キー設定</h3>
         <KeybindingsSection />
       </section>
 

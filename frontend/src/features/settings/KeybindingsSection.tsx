@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DEFAULT_KEYBINDINGS,
@@ -11,10 +11,58 @@ import {
 import { LoadingIndicator } from "../../shared/components/LoadingIndicator";
 
 const ACTIONS: { id: KeyAction; label: string; desc: string }[] = [
-  { id: "addChecklistMarker", label: "チェック項目記号追加", desc: "編集中の行にチェック記号を挿入" },
-  { id: "createTaskItem", label: "タスク項目作成", desc: "新しいタスク項目を作成" },
-  { id: "save", label: "保存", desc: "編集内容を保存" },
-  { id: "cancel", label: "キャンセル", desc: "編集を破棄して閉じる" },
+  { id: "addChecklistMarker", label: "チェック項目記号追加", desc: "タスク詳細の編集中、行頭に「- [ ] 」を挿入" },
+  { id: "createTaskItem", label: "項目作成", desc: "タスク: 新規フォームを開く（開いていれば送信）／メモ: 新規メモ／単語帳: カード追加欄へ" },
+  { id: "save", label: "保存", desc: "編集中のタスク・メモ・カードを保存" },
+  { id: "cancel", label: "キャンセル", desc: "編集を閉じる（メモは未保存なら確認、タスクの下書きは保持）" },
+];
+
+/** 変更不可の固定キー。設定画面での一覧表示用。 */
+const FIXED_SHORTCUTS: { scope: string; keys: { key: string; desc: string }[] }[] = [
+  {
+    scope: "ディレクトリツリー（タスク・メモ）",
+    keys: [
+      { key: "↑ / ↓", desc: "前後の項目へ移動" },
+      { key: "→", desc: "フォルダを開く／開いていれば最初の子へ" },
+      { key: "←", desc: "フォルダを閉じる／閉じていれば親フォルダへ" },
+      { key: "Home / End", desc: "先頭／末尾へ" },
+      { key: "Enter", desc: "フォルダを選択・開閉／項目を開く" },
+      { key: "Shift+F10", desc: "コンテキストメニューを開く（↑↓で移動、→で下位メニュー）" },
+      { key: "/", desc: "ツリー検索欄へフォーカス" },
+    ],
+  },
+  {
+    scope: "単語帳 カード一覧（行にフォーカス時）",
+    keys: [
+      { key: "↑ / ↓", desc: "前後のカードへ移動" },
+      { key: "Space", desc: "選択の切替（チェックボックスは Shift+クリックで範囲選択）" },
+      { key: "Enter", desc: "編集" },
+      { key: "M", desc: "★マーク切替" },
+      { key: "Delete", desc: "削除（確認あり）" },
+    ],
+  },
+  {
+    scope: "単語帳 学習画面",
+    keys: [
+      { key: "Space / Enter", desc: "答えを見る" },
+      { key: "← / 1", desc: "不正解" },
+      { key: "→ / 2", desc: "正解" },
+      { key: "M", desc: "★マーク切替" },
+    ],
+  },
+  {
+    scope: "メモ編集",
+    keys: [
+      { key: "Ctrl+F / Ctrl+H", desc: "本文の検索／置換" },
+    ],
+  },
+  {
+    scope: "ダイアログ",
+    keys: [
+      { key: "Escape", desc: "閉じる（キャンセル）" },
+      { key: "Enter", desc: "フォーカス中のボタンを実行（危険操作はキャンセル側に初期フォーカス）" },
+    ],
+  },
 ];
 
 /** KeyboardEventを "Ctrl+Shift+K" 形式の表記へ変換する。修飾キー単体は未確定としてnull。 */
@@ -69,8 +117,8 @@ export function KeybindingsSection() {
   return (
     <div className="space-y-3">
       <p className="text-xs text-slate-500">
-        タスクモードのディレクトリ操作で使うキー割当。全デバイスで同期されます。
-        <span className="ml-1 text-slate-400">※キー操作機能は今後実装予定（割当のみ先行）</span>
+        タスク・メモ・単語帳で共通に使うキー割当。全デバイスで同期されます。
+        ボタンを押してから割り当てたいキーを入力してください。
       </p>
       <ul className="space-y-2">
         {ACTIONS.map((action) => (
@@ -128,6 +176,25 @@ export function KeybindingsSection() {
           </span>
         )}
       </div>
+
+      <details className="rounded border border-slate-200 px-3 py-2">
+        <summary className="cursor-pointer text-xs font-medium text-slate-600">固定のキー操作一覧</summary>
+        <div className="mt-2 space-y-3">
+          {FIXED_SHORTCUTS.map((group) => (
+            <div key={group.scope}>
+              <div className="mb-1 text-[11px] font-semibold text-slate-500">{group.scope}</div>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+                {group.keys.map((k) => (
+                  <Fragment key={k.key}>
+                    <dt className="font-mono text-slate-700">{k.key}</dt>
+                    <dd className="text-slate-500">{k.desc}</dd>
+                  </Fragment>
+                ))}
+              </dl>
+            </div>
+          ))}
+        </div>
+      </details>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
+import { formatBinding, matchesBinding, useKeybindings } from "../../../shared/lib/keybindings";
 
 interface Props {
   value: string;
@@ -31,6 +32,7 @@ export function TaskDescriptionEditor({
   className = "",
 }: Props) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
+  const keybindings = useKeybindings();
 
   useEffect(() => {
     const el = ref.current;
@@ -69,9 +71,17 @@ export function TaskDescriptionEditor({
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (matchesBinding(e, keybindings.addChecklistMarker)) {
+      e.preventDefault();
+      insertChecklistAtLineStart();
+      return;
+    }
     if (
       e.key !== "Enter" ||
       e.shiftKey ||
+      e.ctrlKey ||
+      e.metaKey ||
+      e.altKey ||
       e.nativeEvent.isComposing ||
       e.keyCode === 229
     )
@@ -135,7 +145,7 @@ export function TaskDescriptionEditor({
           type="button"
           onClick={insertChecklistAtLineStart}
           className="rounded border border-slate-300 px-2 py-0.5 hover:bg-slate-100"
-          title="チェック項目を追加 (- [ ])"
+          title={`チェック項目を追加 (- [ ]) — ${formatBinding(keybindings.addChecklistMarker)}`}
         >
           ☑ チェック項目
         </button>

@@ -159,6 +159,7 @@ export function renderMemoEditor(s: EditorState, a: EditorActions) {
         </div>
       </div>
       <input
+        id="memo-title-input"
         value={s.title}
         onChange={(e) => a.setTitle(e.target.value)}
         placeholder="タイトル"

@@ -65,14 +65,22 @@ export function DirectoryTreeRow({
           data-tree-node={dataTreeNode}
           onClick={onClick}
           onKeyDown={(e) => {
-            if (e.key === "ArrowRight") {
+            // VS Code準拠: →で閉じたフォルダを開き、←で開いたフォルダを閉じる。
+            // それ以外（開いたフォルダで→、閉じたフォルダで←）は親コンテナの
+            // handleTreeKeyDown に任せてフォーカス移動させる。
+            if (e.key === "ArrowRight" && !isOpen) {
               e.preventDefault();
               e.stopPropagation();
-              if (!isOpen) onToggleExpand();
-            } else if (e.key === "ArrowLeft") {
+              onToggleExpand();
+            } else if (e.key === "ArrowLeft" && isOpen) {
               e.preventDefault();
               e.stopPropagation();
-              if (isOpen) onToggleExpand();
+              onToggleExpand();
+            } else if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+              e.preventDefault();
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              onMenuToggle(rect.left, rect.bottom);
             }
           }}
           onContextMenu={(e) => {

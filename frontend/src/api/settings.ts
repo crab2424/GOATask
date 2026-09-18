@@ -1,6 +1,12 @@
 import { apiFetch, UnauthorizedError } from "./client";
 
-/** タスクモードのキー割当対象アクション。キー操作本体は未実装（割当の保存のみ先行）。 */
+/**
+ * 設定画面で割当を変更できるアクション。
+ * - addChecklistMarker: タスク詳細エディタでチェック記号を行頭に挿入
+ * - createTaskItem: 新規作成（タスク: フォームを開く/送信、メモ: 新規メモ、単語帳: カード追加欄）
+ * - save / cancel: 編集中のタスク・メモ・カードの保存 / 破棄
+ * 照合ロジックは shared/lib/keybindings.ts。
+ */
 export type KeyAction = "addChecklistMarker" | "createTaskItem" | "save" | "cancel";
 
 export type Keybindings = Partial<Record<KeyAction, string>>;
