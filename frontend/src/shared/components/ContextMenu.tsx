@@ -113,19 +113,23 @@ export function ContextMenuSubmenu({ label, children }: { label: string; childre
         {label} <span className="float-right text-slate-400">›</span>
       </button>
       {open && (
-        <div
-          role="menu"
-          className="absolute left-full top-0 z-50 ml-1 min-w-44 rounded border border-slate-200 bg-white py-1 text-sm shadow-lg"
-          onKeyDown={(e) => {
-            if (e.key === "ArrowLeft") {
-              e.preventDefault();
-              e.stopPropagation();
-              setOpen(false);
-              e.currentTarget.parentElement?.querySelector<HTMLButtonElement>(":scope > button")?.focus();
-            }
-          }}
-        >
-          {children}
+        // 見た目の隙間は透明な pl-1 で作る（ml だと隙間がホバー判定外になり、
+        // 親項目からサブメニューへカーソルを動かす途中で閉じてしまう）。
+        <div className="absolute left-full top-0 z-50 pl-1">
+          <div
+            role="menu"
+            className="min-w-44 rounded border border-slate-200 bg-white py-1 text-sm shadow-lg"
+            onKeyDown={(e) => {
+              if (e.key === "ArrowLeft") {
+                e.preventDefault();
+                e.stopPropagation();
+                setOpen(false);
+                e.currentTarget.closest(".group")?.querySelector<HTMLButtonElement>(":scope > button")?.focus();
+              }
+            }}
+          >
+            {children}
+          </div>
         </div>
       )}
     </div>
