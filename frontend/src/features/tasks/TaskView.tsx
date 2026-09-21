@@ -93,6 +93,7 @@ import {
   newDraftKey,
   saveDraft,
 } from "./utils/taskDraft";
+import { useShowCount } from "../../shared/lib/displayPrefs";
 
 function ProgressBar({
   value,
@@ -473,6 +474,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     [childProjectsMap],
   );
 
+  const [showCount] = useShowCount("tasks");
   const recursiveTaskCount = useMemo(() => {
     const map = new Map<number | null, number>();
     const calc = (projectId: number | null): number => {
@@ -1207,7 +1209,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     );
     const hasChildren = subProjects.length > 0 || subTasks.length > 0;
     const isCurrent = currentProjectId === p.id;
-    const count = recursiveTaskCount.get(p.id) ?? 0;
+    const count = showCount ? recursiveTaskCount.get(p.id) ?? 0 : 0;
     const isDrop = isDropTargetFor(p.id);
 
     const toggleProjectExpand = () => {
@@ -1893,8 +1895,8 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{p.name}</div>
                     <div className="text-xs text-slate-500">
-                      {totalCount > 0 && `${doneCount}/${totalCount}件完了`}
-                      {totalCount > 0 && subCount > 0 && " · "}
+                      {showCount && totalCount > 0 && `${doneCount}/${totalCount}件完了`}
+                      {showCount && totalCount > 0 && subCount > 0 && " · "}
                       {subCount > 0 && `${subCount}サブ`}
                       {totalCount === 0 && subCount === 0 && "空"}
                     </div>

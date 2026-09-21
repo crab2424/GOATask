@@ -3,6 +3,7 @@ import { KeybindingsSection } from "./KeybindingsSection";
 import { PasswordChangeForm } from "./PasswordChangeForm";
 import { NAV_ITEMS, type Mode } from "../../app/navigation";
 import type { Theme } from "../../shared/lib/useTheme";
+import { useShowCount, type CountTarget } from "../../shared/lib/displayPrefs";
 
 const THEME_OPTIONS: { id: Theme; label: string; desc: string }[] = [
   { id: "light", label: "ライト", desc: "常に明るいテーマ" },
@@ -85,6 +86,13 @@ export function SettingsView(props: SettingsViewProps) {
             ))}
           </select>
         </div>
+        <div className="space-y-1 border-t border-slate-200 pt-3">
+          <p className="text-xs font-medium text-slate-600">フォルダの件数表示（この端末のみ）</p>
+          <div className="flex gap-4">
+            <CountToggle target="tasks" label="タスク" />
+            <CountToggle target="memos" label="メモ" />
+          </div>
+        </div>
       </section>
 
       <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
@@ -102,5 +110,15 @@ export function SettingsView(props: SettingsViewProps) {
         <p className="text-xs text-slate-400">時刻通知機能の実装後に設定項目が追加されます。</p>
       </section>
     </div>
+  );
+}
+
+function CountToggle({ target, label }: { target: CountTarget; label: string }) {
+  const [show, setShow] = useShowCount(target);
+  return (
+    <label className="flex items-center gap-1.5 text-xs text-slate-700">
+      <input type="checkbox" checked={show} onChange={(event) => setShow(event.target.checked)} />
+      {label}
+    </label>
   );
 }

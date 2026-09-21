@@ -83,6 +83,7 @@ import {
 import { ContextMenu, ContextMenuItem, ContextMenuSubmenu } from "../../shared/components/ContextMenu";
 import { useContextMenu } from "../../shared/components/useContextMenu";
 import { exportFolderMemos, type FolderExportFormat } from "./utils/exportFolder";
+import { useShowCount } from "../../shared/lib/displayPrefs";
 
 const MEMO_DEFAULT_DOT_COLOR = "#cbd5e1"; // slate-300, 暫定色
 const FOLDER_EXPANDED_KEY = "goatask-folder-expanded";
@@ -389,6 +390,7 @@ export function MemoView() {
     [childFolders],
   );
 
+  const [showCount] = useShowCount("memos");
   const recursiveMemoCount = useMemo(() => {
     const map = new Map<number | null, number>();
     const calc = (id: number | null): number => {
@@ -1070,7 +1072,7 @@ export function MemoView() {
     const subMemos = memosByFolder.get(f.id) ?? [];
     const hasChildren = subFolders.length > 0 || subMemos.length > 0;
     const isCurrent = currentFolderId === f.id;
-    const count = recursiveMemoCount.get(f.id) ?? 0;
+    const count = showCount ? recursiveMemoCount.get(f.id) ?? 0 : 0;
     const isDrop = isDropTargetFor(f.id);
     const isDragging = dragItem?.type === "folder" && dragItem.id === f.id;
 
@@ -1543,8 +1545,8 @@ export function MemoView() {
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">{f.name}</div>
                         <div className="text-xs text-slate-500">
-                          {count > 0 && `${count}件`}
-                          {count > 0 && subCount > 0 && " · "}
+                          {showCount && count > 0 && `${count}件`}
+                          {showCount && count > 0 && subCount > 0 && " · "}
                           {subCount > 0 && `${subCount}サブ`}
                           {count === 0 && subCount === 0 && "空"}
                         </div>
