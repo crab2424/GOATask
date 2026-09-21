@@ -11,6 +11,7 @@ import { LoadingIndicator } from "./shared/components/LoadingIndicator";
 import { useDialogs } from "./shared/components/DialogProvider";
 import { serverEvents } from "./shared/lib/serverEvents";
 import { SyncBridge } from "./shared/lib/SyncBridge";
+import { AlarmCenter } from "./shared/components/AlarmCenter";
 
 const HomeView = lazy(() => import("./features/home/HomeView").then((module) => ({ default: module.HomeView })));
 const TaskView = lazy(() => import("./features/tasks/TaskView").then((module) => ({ default: module.TaskView })));
@@ -120,6 +121,7 @@ function App() {
   return (
     <>
       <SyncBridge />
+      <AlarmCenter />
       <AppShell
         isMobile={isMobile}
         mode={mode}

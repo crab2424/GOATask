@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { NAV_ITEMS, PRIMARY_MOBILE_ITEMS, SECONDARY_MOBILE_ITEMS, type Mode } from "./navigation";
 import { SyncIndicator } from "../shared/components/SyncIndicator";
+import { AlarmMuteButton } from "../shared/components/AlarmMuteButton";
 
 interface AppShellProps {
   children: ReactNode;
@@ -23,6 +24,7 @@ export function AppShell(props: AppShellProps) {
           <h1 className="text-base font-bold">GOATask</h1>
           <div className="flex items-center gap-1">
             <SyncIndicator compact />
+            <AlarmMuteButton variant="icon" />
             <button onClick={() => props.onModeChange("settings")} aria-label="設定" className={`rounded p-1.5 text-lg leading-none transition-colors ${props.mode === "settings" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100"}`}>⚙</button>
           </div>
         </header>
@@ -50,6 +52,7 @@ export function AppShell(props: AppShellProps) {
         </div>
         <ul className="flex-1 p-2">{NAV_ITEMS.map((item) => <li key={item.id}><button onClick={() => props.onModeChange(item.id)} title={props.navCollapsed ? item.label : undefined} className={`mb-1 flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm transition-colors ${props.mode === item.id ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"} ${props.navCollapsed ? "justify-center" : ""}`}><span className="w-5 shrink-0 text-center">{item.icon}</span>{!props.navCollapsed && <span>{item.label}</span>}</button></li>)}</ul>
         <div className="border-t border-slate-200 p-2">
+          <AlarmMuteButton variant="row" collapsed={props.navCollapsed} />
           <button onClick={() => props.onModeChange("settings")} title={props.navCollapsed ? "設定" : undefined} className={`flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm transition-colors ${props.mode === "settings" ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"} ${props.navCollapsed ? "justify-center" : ""}`}><span className="w-5 shrink-0 text-center">⚙</span>{!props.navCollapsed && <span>設定</span>}</button>
         </div>
       </nav>

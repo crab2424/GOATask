@@ -1,6 +1,7 @@
 import { BackupView } from "../backup/BackupView";
 import { KeybindingsSection } from "./KeybindingsSection";
 import { PasswordChangeForm } from "./PasswordChangeForm";
+import { AlarmSection } from "./AlarmSection";
 import { NAV_ITEMS, type Mode } from "../../app/navigation";
 import type { Theme } from "../../shared/lib/useTheme";
 import { useShowCount, type CountTarget } from "../../shared/lib/displayPrefs";
@@ -107,7 +108,7 @@ export function SettingsView(props: SettingsViewProps) {
 
       <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-slate-700">通知</h3>
-        <p className="text-xs text-slate-400">時刻通知機能の実装後に設定項目が追加されます。</p>
+        <AlarmSection />
       </section>
     </div>
   );
