@@ -52,6 +52,36 @@ declare module "react" {
   }
 }
 
+// 連立（cases）の左上セル先頭でBackspaceしたとき、{ごと連立を消せるようにする。
+// MathLive既定は配列の先頭セルから外へ消す手段がなく何も起きない。
+// 空なら即削除、中身があれば誤消去を避けるため一旦選択（もう一度Backspaceで削除）にする。
+// model/atomはMathLive内部API（非公開）に依存する。バージョン更新時は要確認。
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function deleteCasesFromInside(el: MathfieldElement): boolean {
+  const model = (el as any)._mathfield?.model;
+  if (!model || !model.selectionIsCollapsed) return false;
+  const atom = model.at(model.position);
+  const cases = atom?.parent;
+  if (!cases || cases.type !== "array" || cases.environmentName !== "cases") return false;
+  const cell = atom.parentBranch;
+  if (!Array.isArray(cell) || cell[0] !== 0 || cell[1] !== 0 || !atom.isFirstSibling) return false;
+  const left = cases.leftSibling;
+  const isEmpty = (cases.children as { type: string }[]).every(
+    (a) => a.type === "first" || a.type === "placeholder",
+  );
+  if (isEmpty) {
+    model.deferNotifications({ content: true, selection: true, type: "deleteContentBackward" }, () => {
+      const pos = model.offsetOf(left);
+      cases.parent.removeChild(cases);
+      model.position = pos;
+    });
+  } else {
+    model.setSelection(model.offsetOf(left), model.offsetOf(cases));
+  }
+  return true;
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function MathField(
   { value, readOnly = false, onChange, onSubmit, className = "", ariaLabel },
   ref,
@@ -92,6 +122,16 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
     el.smartFence = true;
     // MathLive の既定インライン省略記法は電卓の意図と衝突しやすいので絞る
     el.inlineShortcuts = {};
+    // 仮想キーボードの⌫は el.executeCommand 経由で届くので、連立の内側削除をここでも差し込む。
+    const originalExecuteCommand = el.executeCommand.bind(el);
+    el.executeCommand = ((...args: unknown[]) => {
+      const sel = args.length === 1 ? args[0] : args;
+      const isBackspace =
+        sel === "deleteBackward" ||
+        (Array.isArray(sel) && sel[0] === "performWithFeedback" && sel[1] === "deleteBackward");
+      if (isBackspace && !el.readOnly && deleteCasesFromInside(el)) return true;
+      return (originalExecuteCommand as (...a: unknown[]) => boolean)(...args);
+    }) as typeof el.executeCommand;
     // MathLive既定のshift+[Quote]（text/mathモード切替）は、JIS配列でも「en-intl」と誤判定され
     // Shift+: （＝*）で発火してしまう。電卓にtextモードは不要なのでモード切替系は全て外す。
     el.keybindings = el.keybindings.filter(
@@ -188,6 +228,16 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.isComposing || e.key === "Process") {
         rejectEvent(e);
+        return;
+      }
+      if (e.key === "Backspace" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !el.readOnly) {
+        if (deleteCasesFromInside(el)) rejectEvent(e);
+        return;
+      }
+      // 物理キーの「/」は÷（\\div）。分数は専用キーで入力する。
+      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey && !el.readOnly) {
+        rejectEvent(e);
+        el.insert("\\div", { focus: true });
         return;
       }
       // 物理キーの「*」は×（\times）として入力する（MathLive既定は\cdot）。

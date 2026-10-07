@@ -86,3 +86,8 @@ body {
     animation: none;
   }
 }
+
+/* 電卓の数式入力欄: 分数の空スロット(上の四角)が枠の上端からはみ出さないよう上下に余白を取る */
+math-field {
+  padding-block: 0.35em;
+}
