@@ -37,8 +37,8 @@ const LAYOUT_BASIC: VirtualKeyboardLayout = {
       { latex: "4", width: W }, { latex: "5", width: W }, { latex: "6", width: W }, { latex: "\\times", width: W }
     ],
     [
-      { label: "{#0}<sup>2</sup>", insert: "^2", width: W },
-      { label: "x", variants:["y", "z"], shift: "y", width: W },
+      { latex: "#@^2", insert: "^2", width: W },
+      { latex: "x", variants:["y", "z"], shift: "y", width: W },
       { latex: "1", width: W }, { latex: "2", width: W }, { latex: "3", width: W }, { latex: "-", width: W }],
     [
       { latex: "\\pi", width: W }, { latex: "%", width: W }, { latex: "0", width: W },
@@ -58,7 +58,7 @@ const LAYOUT_FUNCTIONS: VirtualKeyboardLayout = {
       { latex: "\\tan", insert: "\\tan(", width: W },
       { latex: "\\log", insert: "\\log(", width: W },
       { latex: "\\ln", insert: "\\ln(", width: W },
-      { label: "e<sup>x</sup>", insert: "\\exp(", width: W },
+      { latex: "e^x", insert: "\\exp(", width: W },
     ],
     [
       { latex: "\\sin^{-1}", insert: "\\arcsin(", class: "small", width: W },

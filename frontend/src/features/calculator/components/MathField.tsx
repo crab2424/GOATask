@@ -92,6 +92,11 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
     el.smartFence = true;
     // MathLive の既定インライン省略記法は電卓の意図と衝突しやすいので絞る
     el.inlineShortcuts = {};
+    // MathLive既定のshift+[Quote]（text/mathモード切替）は、JIS配列でも「en-intl」と誤判定され
+    // Shift+: （＝*）で発火してしまう。電卓にtextモードは不要なのでモード切替系は全て外す。
+    el.keybindings = el.keybindings.filter(
+      (b) => !(Array.isArray(b.command) && b.command[0] === "switchMode"),
+    );
     // 括弧の暗黙補完（\left ... \right の自動追加）はさせず、素の () を保つ
     window.mathVirtualKeyboard?.hide();
     // window.mathVirtualKeyboardはdocument直下に生きるグローバルシングルトンで、
@@ -183,6 +188,12 @@ export const MathField = forwardRef<MathFieldHandle, MathFieldProps>(function Ma
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.isComposing || e.key === "Process") {
         rejectEvent(e);
+        return;
+      }
+      // 物理キーの「*」は×（\times）として入力する（MathLive既定は\cdot）。
+      if (e.key === "*" && !e.ctrlKey && !e.metaKey && !e.altKey && !el.readOnly) {
+        rejectEvent(e);
+        el.insert("\\times", { focus: true });
         return;
       }
       if (e.key.length === 1 && hasDisallowedText(e.key)) {
