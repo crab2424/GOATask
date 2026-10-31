@@ -1415,6 +1415,15 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
               <label className="flex items-center gap-2 text-sm text-slate-600">
                 開始日
                 <input type="date" value={editStartDate} onChange={(e) => setEditStartDate(e.target.value)} className="rounded border border-slate-300 px-2 py-1 focus:border-slate-500 focus:outline-none" />
+                {editStartDate && (
+                  <button
+                    type="button"
+                    onClick={() => setEditStartDate("")}
+                    className="text-xs text-slate-500 hover:text-slate-800"
+                  >
+                    クリア
+                  </button>
+                )}
               </label>
               <label className="flex items-center gap-2 text-sm text-slate-600">
                 期限
@@ -1945,6 +1954,15 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
             <label className="flex items-center gap-2 text-sm text-slate-600">
               開始日（任意）
               <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded border border-slate-300 px-2 py-1 focus:border-slate-500 focus:outline-none" />
+              {startDate && (
+                <button
+                  type="button"
+                  onClick={() => setStartDate("")}
+                  className="text-xs text-slate-500 hover:text-slate-800"
+                >
+                  クリア
+                </button>
+              )}
             </label>
             <label className="flex items-center gap-2 text-sm text-slate-600">
               期限（任意）
@@ -1954,6 +1972,15 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
                 onChange={(e) => setDueDate(e.target.value)}
                 className="rounded border border-slate-300 px-2 py-1 focus:border-slate-500 focus:outline-none"
               />
+              {dueDate && (
+                <button
+                  type="button"
+                  onClick={() => setDueDate("")}
+                  className="text-xs text-slate-500 hover:text-slate-800"
+                >
+                  クリア
+                </button>
+              )}
             </label>
           </div>
           <div className="flex gap-2">
