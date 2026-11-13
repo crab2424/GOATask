@@ -299,8 +299,12 @@ func (h *DeckHandler) deleteCard(c echo.Context) error {
 	if err := h.ownsDeck(uid, deckID); err != nil {
 		return err
 	}
-	if err := h.DB.Where("deck_id = ? AND id = ?", deckID, cardID).Delete(&model.Card{}).Error; err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	res := h.DB.Where("deck_id = ? AND id = ?", deckID, cardID).Delete(&model.Card{})
+	if res.Error != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, res.Error.Error())
+	}
+	if res.RowsAffected == 0 {
+		return echo.NewHTTPError(http.StatusNotFound, "card not found")
 	}
 	publish(h.Hub, uid, "card.deleted", uint(cardID), originID(c))
 	return c.NoContent(http.StatusNoContent)

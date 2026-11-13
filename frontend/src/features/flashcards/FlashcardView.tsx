@@ -51,7 +51,14 @@ export function FlashcardView({ onStudyStateChange }: { onStudyStateChange?: (ac
   const decksQuery = useQuery({ queryKey: ["decks"], queryFn: listDecks });
   const decks = decksQuery.data ?? [];
   const [screen, setScreen] = useState<Screen>("decks");
-  const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null);
+  // 開いているデッキ。state には選択時点のコピーを持つが、表示には一覧クエリの
+  // 最新版を優先して使う（別端末での変更がカード画面にも反映されるように）。
+  const [selectedDeckState, setSelectedDeck] = useState<Deck | null>(null);
+  const selectedDeck = selectedDeckState
+    ? (decks.find((d) => d.id === selectedDeckState.id) ?? selectedDeckState)
+    : null;
+  // 学習中に送った回答の保存リクエスト。学習を終えるときに完了を待ってから再取得する。
+  const pendingAnswers = useRef<Promise<unknown>[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const [newDeckName, setNewDeckName] = useState("");
@@ -477,11 +484,22 @@ export function FlashcardView({ onStudyStateChange }: { onStudyStateChange?: (ac
   const saveStudyAnswer = (card: Card, correct: boolean) => {
     if (!selectedDeck) return;
     const deckId = selectedDeck.id;
-    answerCard(deckId, card.id, correct)
-      .then(() => reloadDeck(deckId).catch(() => {}))
-      .catch((e) => {
+    // 1問ごとに全デッキ・全カードを取り直すと枚数が多いとき重いので、
+    // ここでは保存だけ行い、再取得は学習を終えるとき(refreshAfterStudy)にまとめる。
+    pendingAnswers.current.push(
+      answerCard(deckId, card.id, correct).catch((e) => {
         setError(e instanceof Error ? e.message : String(e));
-      });
+      }),
+    );
+  };
+
+  /** 送信済みの回答がすべて保存されてから、デッキの統計を取り直す。 */
+  const refreshAfterStudy = () => {
+    if (!selectedDeck) return;
+    const deckId = selectedDeck.id;
+    const pending = pendingAnswers.current;
+    pendingAnswers.current = [];
+    void Promise.allSettled(pending).then(() => reloadDeck(deckId).catch(() => {}));
   };
 
   const onToggleStudyMark = () => {
@@ -509,6 +527,7 @@ export function FlashcardView({ onStudyStateChange }: { onStudyStateChange?: (ac
     const next = [...studyResults, { card, correct }];
     setStudyResults(next);
     if (studyIndex + 1 >= studyCards.length) {
+      refreshAfterStudy();
       setScreen("result");
     } else {
       setStudyIndex(studyIndex + 1);
@@ -605,6 +624,7 @@ export function FlashcardView({ onStudyStateChange }: { onStudyStateChange?: (ac
         direction={studyDirection}
         onStop={async () => {
           if (!(await confirmDialog({ title: "学習を中断しますか？", message: "回答済みの結果は保存されています。", confirmLabel: "中断" }))) return;
+          refreshAfterStudy();
           setScreen("cards");
         }}
         onToggleMark={onToggleStudyMark}
