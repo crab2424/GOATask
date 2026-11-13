@@ -625,8 +625,13 @@ export function MemoView({ onDirtyChange }: MemoViewProps = {}) {
     try {
       if (item.type === "memo") {
         // ドラッグ移動は瞬発的操作。衝突ダイアログは出さず最新版に強制適用する。
-        await updateMemo(item.id, { folder_id: targetFolderId }, { force: true });
-        if (selectedId === item.id) setFolderId(targetFolderId);
+        const moved = await updateMemo(item.id, { folder_id: targetFolderId }, { force: true });
+        if (selectedId === item.id) {
+          setFolderId(targetFolderId);
+          // 自分の移動で version が進むので、開いているエディタの基準も合わせる
+          // （合わせないと次の保存で「別の端末で更新」と誤検出される）
+          setEditingVersion(moved.version);
+        }
       } else if (item.type === "folder") {
         await updateFolder(item.id, { parent_id: targetFolderId });
       }
@@ -839,8 +844,10 @@ export function MemoView({ onDirtyChange }: MemoViewProps = {}) {
             if (choice === "overwrite") {
               await doSave(true);
             } else if (choice === "discard") {
-              // 相手の値に合わせる。SSEで最新のmemosが手元にあるので、それでフォームを初期化し直す。
-              const fresh = memos.find((m) => m.id === selected.id);
+              // 相手の値に合わせる。409応答に入っているサーバーの最新値でフォームを初期化し直す
+              // （手元のキャッシュはSSEが届いていないと古いままのことがある）。
+              const fresh =
+                (err.current as Memo | undefined) ?? memos.find((m) => m.id === selected.id);
               if (fresh) selectMemo(fresh);
               setSaving(false);
               return;
