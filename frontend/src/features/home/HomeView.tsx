@@ -158,7 +158,8 @@ export function HomeView({
   const onToggleDone = async (t: Task) => {
     try {
       const next: TaskStatus = t.status === "done" ? "todo" : "done";
-      await updateTask(t.id, { ...t, status: next });
+      // status だけを送り、サーバーの最新版に適用する（古い内容での上書きと衝突エラーを避ける）
+      await updateTask(t.id, { status: next }, { force: true });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["tasks"] }),
         queryClient.invalidateQueries({ queryKey: ["calendar"] }),

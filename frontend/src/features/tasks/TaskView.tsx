@@ -813,8 +813,9 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
       if (item.type === "task") {
         const task = tasks.find((t) => t.id === item.id);
         if (task) {
-          // ドラッグ&ドロップは瞬発的操作。衝突しても最新版に対して同じ移動を強制適用してよい。
-          await updateTask(task.id, { ...task, project_id: targetProjectId }, { force: true });
+          // ドラッグ&ドロップは瞬発的操作。変える項目だけを送り、サーバーの最新版に適用する
+          // （手元の古いタスク全体を送ると、別端末の編集を上書きしてしまう）。
+          await updateTask(task.id, { project_id: targetProjectId }, { force: true });
         }
       } else if (item.type === "project") {
         await updateProject(item.id, { parent_id: targetProjectId });
@@ -861,15 +862,23 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
   const cycleStatus = async (t: Task) => {
     const next: TaskStatus =
       t.status === "todo" ? "doing" : t.status === "doing" ? "done" : "todo";
-    // ステータストグルは瞬発的操作。衝突ダイアログは出さず最新版に対して強制適用する。
-    await updateTask(t.id, { ...t, status: next }, { force: true });
-    await reload();
+    // ステータストグルは瞬発的操作。status だけを送り、サーバーの最新版に適用する。
+    try {
+      await updateTask(t.id, { status: next }, { force: true });
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const toggleDone = async (t: Task) => {
     const next: TaskStatus = t.status === "done" ? "todo" : "done";
-    await updateTask(t.id, { ...t, status: next }, { force: true });
-    await reload();
+    try {
+      await updateTask(t.id, { status: next }, { force: true });
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const onToggleSubtask = async (taskId: number, sub: Subtask) => {

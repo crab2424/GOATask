@@ -1,6 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useServerEvents } from "./useServerEvents";
+import { useServerEventConnection, useServerEvents } from "./useServerEvents";
 import { refreshBus } from "./refreshBus";
 
 // サーバーイベント種別 -> 影響を受けるReact QueryのqueryKey群。
@@ -49,6 +49,21 @@ export function SyncBridge() {
       for (const key of keys) queryClient.invalidateQueries({ queryKey: key });
     });
   }, [queryClient]);
+
+  // SSEが切れていた間のイベントは届かないので、再接続できたら全体を再取得する
+  // （タブを裏に回して戻ったとき・ネットワーク復帰時に別端末の変更を取り込む）。
+  const connection = useServerEventConnection();
+  const hasConnected = useRef(false);
+  const missedEvents = useRef(false);
+  useEffect(() => {
+    if (connection === "open") {
+      if (missedEvents.current) refreshBus.requestRefresh();
+      hasConnected.current = true;
+      missedEvents.current = false;
+    } else if (hasConnected.current) {
+      missedEvents.current = true;
+    }
+  }, [connection]);
 
   return null;
 }
