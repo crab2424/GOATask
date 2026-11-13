@@ -19,6 +19,7 @@ export async function login(username: string, password: string): Promise<AuthUse
     body: JSON.stringify({ username, password }),
   });
   if (res.status === 401) throw new Error("ユーザー名またはパスワードが違います");
+  if (res.status === 429) throw new Error("ログインの失敗が続いたため、一時的に受け付けを止めています。10分ほど待ってからやり直してください");
   if (!res.ok) throw new Error(`login failed: ${res.status}`);
   return res.json();
 }

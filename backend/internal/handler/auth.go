@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/crab2424/goatask/backend/internal/auth"
@@ -16,10 +17,11 @@ import (
 type AuthHandler struct {
 	DB               *gorm.DB
 	SignupInviteCode string
+	limiter          *loginLimiter
 }
 
 func NewAuthHandler(db *gorm.DB, signupInviteCode string) *AuthHandler {
-	return &AuthHandler{DB: db, SignupInviteCode: signupInviteCode}
+	return &AuthHandler{DB: db, SignupInviteCode: signupInviteCode, limiter: newLoginLimiter()}
 }
 
 func (h *AuthHandler) Register(g *echo.Group) {
@@ -98,17 +100,27 @@ func (h *AuthHandler) login(c echo.Context) error {
 	if req.Username == "" || req.Password == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "username and password required")
 	}
+	limitKey := strings.ToLower(req.Username) + "|" + c.RealIP()
+	if h.limiter.blocked(limitKey) {
+		return echo.NewHTTPError(http.StatusTooManyRequests, "too many failed attempts; try again later")
+	}
 
 	var user model.User
 	if err := h.DB.Where("username = ?", req.Username).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			h.limiter.fail(limitKey)
 			return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
 		}
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+		h.limiter.fail(limitKey)
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid credentials")
 	}
+	h.limiter.reset(limitKey)
+	// 期限切れのセッションは、そのセッションでアクセスされない限り残り続けるので、
+	// ログインのついでに掃除する（失敗しても支障はないので結果は見ない）。
+	h.DB.Where("expires_at < ?", time.Now()).Delete(&model.Session{})
 
 	sid, err := auth.NewSessionID()
 	if err != nil {
