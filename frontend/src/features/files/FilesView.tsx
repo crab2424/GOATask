@@ -19,6 +19,10 @@ export function FilesView() {
   const { confirmDialog } = useDialogs();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 直近に発行した共有リンク。クリップボードや新規タブがブラウザに止められても
+  // ここから取り出せるよう、画面に表示する。
+  const [shareInfo, setShareInfo] = useState<{ filename: string; url: string; expiresAt: string } | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
   const filesQuery = useQuery({ queryKey: ["files"], queryFn: listFiles });
   const uploadMutation = useMutation({
     mutationFn: uploadFile,
@@ -54,13 +58,14 @@ export function FilesView() {
     setMessage(null);
     try {
       const share = await createFileShare(file.id);
+      setShareInfo({ filename: file.filename, url: share.url, expiresAt: share.expires_at });
+      setShareCopied(false);
       try {
         await navigator.clipboard.writeText(share.url);
         setMessage(`共有リンクをコピーしました（${formatDate(share.expires_at)}まで）`);
       } catch {
         setMessage(`共有リンクを発行しました（${formatDate(share.expires_at)}まで）`);
       }
-      window.open(share.url, "_blank", "noopener,noreferrer");
     } catch (err) {
       setError(err instanceof Error ? err.message : "共有リンクの発行に失敗しました");
     }
@@ -72,6 +77,7 @@ export function FilesView() {
     setMessage(null);
     try {
       await deleteMutation.mutateAsync(file.id);
+      setShareInfo((info) => (info?.filename === file.filename ? null : info));
     } catch (err) {
       setError(err instanceof Error ? err.message : "削除に失敗しました");
     }
@@ -92,6 +98,40 @@ export function FilesView() {
 
       {(error || filesQuery.error) && <div className="rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error ?? (filesQuery.error instanceof Error ? filesQuery.error.message : "ファイル一覧の取得に失敗しました")}</div>}
       {message && <div className="rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div>}
+      {shareInfo && (
+        <div className="space-y-2 rounded border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">
+          <div className="flex items-start justify-between gap-2">
+            <p className="min-w-0 break-words text-slate-700">
+              <span className="font-semibold">{shareInfo.filename}</span> の共有リンク
+              <span className="ml-1 text-xs text-slate-500">（{formatDate(shareInfo.expiresAt)}まで有効）</span>
+            </p>
+            <button onClick={() => setShareInfo(null)} aria-label="共有リンクの表示を閉じる" className="shrink-0 rounded px-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">×</button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              readOnly
+              value={shareInfo.url}
+              onFocus={(event) => event.currentTarget.select()}
+              aria-label="共有リンクのURL"
+              className="min-w-0 flex-1 rounded border border-slate-300 bg-slate-50 px-2 py-1.5 font-mono text-xs text-slate-700"
+            />
+            <button
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(shareInfo.url);
+                  setShareCopied(true);
+                } catch {
+                  setError("コピーできませんでした。URLを選択して手動でコピーしてください。");
+                }
+              }}
+              className="shrink-0 rounded border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              {shareCopied ? "コピーしました" : "コピー"}
+            </button>
+            <a href={shareInfo.url} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">開く</a>
+          </div>
+        </div>
+      )}
 
       <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700">
