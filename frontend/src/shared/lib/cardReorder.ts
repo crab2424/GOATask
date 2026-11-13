@@ -126,6 +126,15 @@ export function useTouchCardReorder(
     },
     [],
   );
+  // 並べ替え中は画面スクロールを止める。React の onTouchMove は passive リスナーとして
+  // 登録され preventDefault が効かないため、document に non-passive で直接登録する。
+  useEffect(() => {
+    const blockScroll = (e: globalThis.TouchEvent) => {
+      if (activeIdRef.current !== null && e.cancelable) e.preventDefault();
+    };
+    document.addEventListener("touchmove", blockScroll, { passive: false });
+    return () => document.removeEventListener("touchmove", blockScroll);
+  }, []);
 
   const bind = (id: number) => ({
     onTouchStart: (e: TouchEvent<HTMLElement>) => {
