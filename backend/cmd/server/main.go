@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -28,6 +30,18 @@ func main() {
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	// 本文サイズの上限。アップロード上限＋フォーム部品分の余裕(1MB)を超える本文は
+	// 読み込む前に 413 で断る（上限チェックの前に全体を受け取ってしまうのを防ぐ）。
+	e.Use(middleware.BodyLimit(fmt.Sprintf("%dK", cfg.FileMaxBytes/1024+1024)))
+	// 500 番台の詳細（DBのエラー文など）は利用者に返さず、ログにだけ残す。
+	e.HTTPErrorHandler = func(err error, c echo.Context) {
+		var he *echo.HTTPError
+		if errors.As(err, &he) && he.Code >= http.StatusInternalServerError && he.Code != http.StatusBadGateway {
+			c.Logger().Errorf("%s %s: %v", c.Request().Method, c.Request().URL.Path, he.Message)
+			err = echo.NewHTTPError(he.Code, "internal server error")
+		}
+		e.DefaultHTTPErrorHandler(err, c)
+	}
 	origins := []string{"http://localhost:5173"}
 	if v := os.Getenv("CORS_ORIGINS"); v != "" {
 		origins = strings.Split(v, ",")
