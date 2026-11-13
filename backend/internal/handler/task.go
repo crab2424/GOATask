@@ -222,7 +222,7 @@ func (h *TaskHandler) reorder(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	for i, id := range req.IDs {
-		if err := h.DB.Model(&model.Task{}).Where("id = ? AND user_id = ?", id, uid).Update("position", i).Error; err != nil {
+		if err := h.DB.Model(&model.Task{}).Where("id = ? AND user_id = ?", id, uid).UpdateColumn("position", i).Error; err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		}
 	}
