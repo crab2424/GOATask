@@ -67,6 +67,10 @@ func (h *MemoHandler) create(c echo.Context) error {
 	if m.Title == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "title is required")
 	}
+	if !ownsRow(h.DB, &model.Folder{}, uid, m.FolderID) {
+		return echo.NewHTTPError(http.StatusBadRequest, "folder not found")
+	}
+	m.ID = 0
 	m.UserID = uid
 	if err := h.DB.Create(&m).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -100,8 +104,13 @@ func (h *MemoHandler) update(c echo.Context) error {
 	}
 	// task.updateと同じ楽観ロック方式。
 	currentVersion := m.Version
+	prevFolderID := m.FolderID
 	if err := c.Bind(&m); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	m.ID = uint(id)
+	if !sameID(prevFolderID, m.FolderID) && !ownsRow(h.DB, &model.Folder{}, uid, m.FolderID) {
+		return echo.NewHTTPError(http.StatusBadRequest, "folder not found")
 	}
 	force := strings.EqualFold(c.QueryParam("force"), "true")
 	if !force && m.Version != currentVersion {

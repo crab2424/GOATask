@@ -65,6 +65,11 @@ func (h *TaskHandler) create(c echo.Context) error {
 	if t.StartDate != nil && t.DueDate != nil && t.StartDate.After(*t.DueDate) {
 		return echo.NewHTTPError(http.StatusBadRequest, "start_date must be on or before due_date")
 	}
+	if !ownsRow(h.DB, &model.Project{}, uid, t.ProjectID) {
+		return echo.NewHTTPError(http.StatusBadRequest, "project not found")
+	}
+	// 本文の id は信用しない（既存行の上書きや主キー衝突を防ぐ）
+	t.ID = 0
 	t.UserID = uid
 	t.Subtasks = nil
 	if err := h.DB.Create(&t).Error; err != nil {
@@ -110,8 +115,14 @@ func (h *TaskHandler) update(c echo.Context) error {
 	// 楽観ロック: クライアントが編集開始時に見ていたversionをbind前に控え、
 	// bind後のt.Version (= クライアント送信version) と比較する。
 	currentVersion := t.Version
+	prevProjectID := t.ProjectID
 	if err := c.Bind(&t); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	// 本文に id があっても、更新対象は URL で所有を確認した行に固定する
+	t.ID = uint(id)
+	if !sameID(prevProjectID, t.ProjectID) && !ownsRow(h.DB, &model.Project{}, uid, t.ProjectID) {
+		return echo.NewHTTPError(http.StatusBadRequest, "project not found")
 	}
 	force := strings.EqualFold(c.QueryParam("force"), "true")
 	if !force && t.Version != currentVersion {

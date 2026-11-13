@@ -58,6 +58,7 @@ func (h *ProjectHandler) create(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "これ以上深い階層は作成できません")
 		}
 	}
+	p.ID = 0
 	p.UserID = uid
 	if err := h.DB.Create(&p).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -79,6 +80,7 @@ func (h *ProjectHandler) update(c echo.Context) error {
 	if err := c.Bind(&p); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	p.ID = uint(id)
 	if p.Name == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "name is required")
 	}

@@ -66,6 +66,7 @@ func (h *DeckHandler) create(c echo.Context) error {
 	if d.Name == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "name is required")
 	}
+	d.ID = 0
 	d.UserID = uid
 	d.Cards = nil
 	if err := h.DB.Create(&d).Error; err != nil {
@@ -103,6 +104,10 @@ func (h *DeckHandler) update(c echo.Context) error {
 	if err := c.Bind(&d); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	if d.Name == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "name is required")
+	}
+	d.ID = uint(id)
 	d.UserID = uid
 	d.Cards = nil
 	if err := h.DB.Save(&d).Error; err != nil {
@@ -161,6 +166,7 @@ func (h *DeckHandler) createCard(c echo.Context) error {
 	if card.Front == "" || card.Back == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "front and back are required")
 	}
+	card.ID = 0
 	card.DeckID = uint(deckID)
 	if err := h.DB.Create(&card).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -238,6 +244,10 @@ func (h *DeckHandler) updateCard(c echo.Context) error {
 	if err := c.Bind(&card); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	if card.Front == "" || card.Back == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "front and back are required")
+	}
+	card.ID = uint(cardID)
 	card.DeckID = uint(deckID)
 	if err := h.DB.Save(&card).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())

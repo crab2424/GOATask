@@ -60,6 +60,7 @@ func (h *FolderHandler) create(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "これ以上深い階層は作成できません")
 		}
 	}
+	f.ID = 0
 	f.UserID = uid
 	if err := h.DB.Create(&f).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -81,6 +82,7 @@ func (h *FolderHandler) update(c echo.Context) error {
 	if err := c.Bind(&f); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	f.ID = uint(id)
 	if f.Name == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "name is required")
 	}
