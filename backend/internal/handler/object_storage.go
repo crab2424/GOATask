@@ -57,12 +57,25 @@ func (s *ObjectStorage) Put(ctx context.Context, objectName string, body io.Read
 	return *response.ETag, nil
 }
 
+// isNotFound はOCIが「対象が存在しない」(404)を返したかを判定する。
+func isNotFound(err error) bool {
+	if serviceErr, ok := common.IsServiceError(err); ok {
+		return serviceErr.GetHTTPStatusCode() == 404
+	}
+	return false
+}
+
+// Delete はオブジェクトを削除する。既に存在しない場合は成功として扱う
+// （途中で失敗した削除をやり直せるようにするため）。
 func (s *ObjectStorage) Delete(ctx context.Context, objectName string) error {
 	_, err := s.client.DeleteObject(ctx, objectstorage.DeleteObjectRequest{
 		NamespaceName: &s.namespace,
 		BucketName:    &s.bucket,
 		ObjectName:    &objectName,
 	})
+	if isNotFound(err) {
+		return nil
+	}
 	return err
 }
 
@@ -95,5 +108,9 @@ func (s *ObjectStorage) DeleteReadShare(ctx context.Context, parID string) error
 		BucketName:    &s.bucket,
 		ParId:         &parID,
 	})
+	// 期限切れ等で既に消えている共有リンクは失効済みとして扱う
+	if isNotFound(err) {
+		return nil
+	}
 	return err
 }

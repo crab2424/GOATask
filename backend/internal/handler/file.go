@@ -131,9 +131,8 @@ func (h *FileHandler) delete(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := h.Storage.Delete(c.Request().Context(), file.ObjectName); err != nil {
-		return echo.NewHTTPError(http.StatusBadGateway, "object storage deletion failed")
-	}
+	// 共有リンクの失効 → 実体の削除 → DB の順に進める。どの段階も「既に無い」を成功として
+	// 扱うので、途中で失敗しても同じ操作をやり直せば最後まで進む。
 	var shares []model.FileShare
 	if err := h.DB.Where("file_id = ?", file.ID).Find(&shares).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -142,6 +141,9 @@ func (h *FileHandler) delete(c echo.Context) error {
 		if err := h.Storage.DeleteReadShare(c.Request().Context(), share.PARID); err != nil {
 			return echo.NewHTTPError(http.StatusBadGateway, "shared link revocation failed")
 		}
+	}
+	if err := h.Storage.Delete(c.Request().Context(), file.ObjectName); err != nil {
+		return echo.NewHTTPError(http.StatusBadGateway, "object storage deletion failed")
 	}
 	if err := h.DB.Where("file_id = ?", file.ID).Delete(&model.FileShare{}).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
