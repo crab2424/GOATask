@@ -433,17 +433,25 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     });
   }, [editingId, editTitle, editDescription, editStartDate, editDueDate]);
 
+  // 編集パネルの外をクリック（タップ）したら編集を閉じる。判定本体は cancelEdit より
+  // 後ろで定義し、常に最新の編集内容を見られるよう ref 経由で呼ぶ。
+  // pointerdown ではなく click で判定するのは、スクロール操作やスクロールバーの
+  // ドラッグ、パネル内から始めた範囲選択を「外側クリック」と誤認しないため。
+  const outsideClickRef = useRef<(event: MouseEvent) => void>(() => {});
+  const pointerDownInsideRef = useRef(false);
   useEffect(() => {
     if (editingId === null) return;
     const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!editPanelRef.current?.contains(target)) cancelEdit();
+      pointerDownInsideRef.current =
+        editPanelRef.current?.contains(event.target as Node) ?? false;
     };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-    // cancelEdit only changes local edit state; the active editing id controls
-    // registration and avoids capturing a stale task id.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const onClick = (event: MouseEvent) => outsideClickRef.current(event);
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("click", onClick, true);
+    };
   }, [editingId]);
 
   useEffect(() => {
@@ -941,6 +949,52 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     setEditProjectId(null);
     setEditingVersion(null);
   };
+
+  // 編集フォームに未保存の変更があるか（枠外クリックで閉じる前の確認に使う）
+  const editingTaskNow =
+    editingId !== null ? tasks.find((task) => task.id === editingId) : undefined;
+  const isEditDirty =
+    !!editingTaskNow &&
+    (editTitle !== editingTaskNow.title ||
+      editDescription !== editingTaskNow.description ||
+      editStartDate !== isoToDateInput(editingTaskNow.start_date) ||
+      editDueDate !== isoToDateInput(editingTaskNow.due_date) ||
+      editProjectId !== (editingTaskNow.project_id ?? null));
+  const discardPromptOpenRef = useRef(false);
+
+  const handleOutsideClick = (event: MouseEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (!target || pointerDownInsideRef.current) return;
+    if (editPanelRef.current?.contains(target)) return;
+    // 確認ダイアログ・アラーム通知・ドロワー上の操作は「枠外クリック」に数えない
+    if (target.closest('[role="dialog"], [role="alertdialog"]')) return;
+    if (!isEditDirty) {
+      cancelEdit();
+      return;
+    }
+    // 変更があるときは、クリック先の動作（別タスクを開く等）を止めて確認する
+    event.preventDefault();
+    event.stopPropagation();
+    if (discardPromptOpenRef.current) return;
+    discardPromptOpenRef.current = true;
+    void (async () => {
+      try {
+        const discard = await confirmDialog({
+          title: "編集内容を破棄しますか？",
+          message: "保存していない変更は失われます。",
+          confirmLabel: "破棄",
+          cancelLabel: "編集を続ける",
+          danger: true,
+        });
+        if (discard) cancelEdit();
+      } finally {
+        discardPromptOpenRef.current = false;
+      }
+    })();
+  };
+  useEffect(() => {
+    outsideClickRef.current = handleOutsideClick;
+  });
 
   const resolveConflict = useConflictResolver();
 
