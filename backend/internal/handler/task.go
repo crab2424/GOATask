@@ -201,6 +201,12 @@ func (h *TaskHandler) toggleSubtask(c echo.Context) error {
 	if err := reconcileParentStatus(h.DB, uint(taskID)); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	// 詳細欄のマーカーとステータスが変わるので version を進める。
+	// 進めないと、別端末で編集中だった古い詳細が衝突検出なしに上書きしてしまう。
+	if err := h.DB.Model(&model.Task{}).Where("id = ?", taskID).
+		UpdateColumn("version", gorm.Expr("version + 1")).Error; err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
 	var t model.Task
 	if err := h.DB.Preload("Subtasks", func(db *gorm.DB) *gorm.DB {
 		return db.Order("position ASC, id ASC")
@@ -304,7 +310,10 @@ func syncDescriptionCheckboxMarker(description string, position int, text string
 	if line.RawIndex >= len(rawLines) {
 		return description, false
 	}
-	newLine := marker + text
+	// 行頭の字下げは保ったまま、マーカーだけを書き換える
+	raw := rawLines[line.RawIndex]
+	indent := raw[:len(raw)-len(strings.TrimLeft(raw, " \t"))]
+	newLine := indent + marker + text
 	if rawLines[line.RawIndex] == newLine {
 		return description, false
 	}
