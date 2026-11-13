@@ -33,11 +33,13 @@ interface MathFieldProps {
 
 // 電卓Editorの物理入力は半角ASCIIのみ許可する。
 // 全角英数・全角記号・かな等のIME入力は MathLive に渡す前に破棄する。
-const NON_ASCII_RE = /[^\x00-\x7F]/;
+const NON_ASCII_RE = /[\u0080-\uFFFF]/;
 
 // React 19 は未宣言のカスタム要素を JSX で使うと型エラーになるため、
 // mathfield 用の最小プロパティ宣言を追加する。
 declare module "react" {
+  // JSX の要素型を拡張するには namespace 構文が必須
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace JSX {
     interface IntrinsicElements {
       "math-field": React.DetailedHTMLProps<

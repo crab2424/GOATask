@@ -50,7 +50,7 @@ interface EditorActions {
   replaceAll: () => void;
 }
 
-export function renderMemoEditor(s: EditorState, a: EditorActions) {
+function renderMemoEditor(s: EditorState, a: EditorActions) {
   return (
     <form
       onSubmit={a.onSubmit}
@@ -299,4 +299,9 @@ export function renderMemoEditor(s: EditorState, a: EditorActions) {
       </div>
     </form>
   );
+}
+
+/** renderMemoEditor のコンポーネント版。ref（ポップアップの基準位置）を props として渡すために使う。 */
+export function MemoEditor({ state, actions }: { state: EditorState; actions: EditorActions }) {
+  return renderMemoEditor(state, actions);
 }

@@ -61,7 +61,7 @@ import {
   normalizeFontSize,
   type FontSize,
 } from "./utils/memoFontSize";
-import { renderMemoEditor } from "./components/MemoEditor";
+import { MemoEditor } from "./components/MemoEditor";
 import {
   buildBreadcrumb,
   buildChildMap,
@@ -1453,10 +1453,8 @@ export function MemoView({ onDirtyChange }: MemoViewProps = {}) {
                 {selected ? "メモを編集" : "新しいメモ"}
               </h1>
             </div>
-            {/* Refs are intentionally passed to the editor renderer for popup anchoring. */}
-            {/* eslint-disable-next-line react-hooks/refs */}
-            {renderMemoEditor(
-              {
+            <MemoEditor
+              state={{
                 title,
                 content,
                 folderId,
@@ -1477,8 +1475,8 @@ export function MemoView({ onDirtyChange }: MemoViewProps = {}) {
                 replaceText,
                 matchCount: matchPositions.length,
                 activeMatch: Math.min(activeMatch, Math.max(0, matchPositions.length - 1)),
-              },
-              {
+              }}
+              actions={{
                 setTitle,
                 setContent,
                 setFolderId,
@@ -1500,8 +1498,8 @@ export function MemoView({ onDirtyChange }: MemoViewProps = {}) {
                 findPrevious: () => selectMatch(-1),
                 replaceCurrent,
                 replaceAll,
-              },
-            )}
+              }}
+            />
           </>
         ) : (
           <>
