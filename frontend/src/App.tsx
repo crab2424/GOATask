@@ -42,6 +42,7 @@ function App() {
   const [showMore, setShowMore] = useState(false);
   const [hideBottomNav, setHideBottomNav] = useState(false);
   const [flashcardStudyActive, setFlashcardStudyActive] = useState(false);
+  const [memoDirty, setMemoDirty] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const isMobile = useIsMobile();
   const { theme, setTheme } = useTheme();
@@ -101,6 +102,16 @@ function App() {
       });
       if (!shouldLeave) return;
     }
+    if (mode === "memos" && memoDirty && nextMode !== "memos") {
+      const shouldLeave = await confirmDialog({
+        title: "編集中のメモを破棄しますか？",
+        message: "保存していない変更は失われます。",
+        confirmLabel: "破棄して移動",
+        cancelLabel: "編集を続ける",
+        danger: true,
+      });
+      if (!shouldLeave) return;
+    }
     setMode(nextMode);
     setCalendarDate(null);
   };
@@ -110,7 +121,7 @@ function App() {
       {mode === "home" && <HomeView onOpenCalendar={(date) => { setCalendarDate(date); setMode("calendar"); }} onOpenTask={(taskId) => { setOpenTaskId(taskId); setMode("tasks"); }} />}
       {mode === "tasks" && <TaskView initialTaskId={openTaskId} onInitialTaskHandled={() => setOpenTaskId(null)} />}
       {mode === "calendar" && <CalendarView key={calendarDate ?? "calendar"} initialDate={calendarDate} />}
-      {mode === "memos" && <MemoView />}
+      {mode === "memos" && <MemoView onDirtyChange={setMemoDirty} />}
       {mode === "flashcards" && <FlashcardView onStudyStateChange={setFlashcardStudyActive} />}
       {mode === "calculator" && <CalculatorView onKeyboardVisibleChange={setHideBottomNav} />}
       {mode === "files" && <FilesView />}

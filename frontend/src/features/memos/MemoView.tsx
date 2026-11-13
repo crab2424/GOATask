@@ -108,7 +108,12 @@ type DropTarget =
   | { kind: "reorder"; memoId: number; before: boolean }
   | null;
 
-export function MemoView() {
+interface MemoViewProps {
+  /** エディタに未保存の変更があるかを親へ通知する（モード切替前の確認用）。 */
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+export function MemoView({ onDirtyChange }: MemoViewProps = {}) {
   const queryClient = useQueryClient();
   const { confirmDialog, promptDialog, choiceDialog } = useDialogs();
   const resolveConflict = useConflictResolver();
@@ -379,6 +384,32 @@ export function MemoView() {
   }, [currentFolderId]);
 
   const selected = memos.find((m) => m.id === selectedId) ?? null;
+
+  // エディタに未保存の変更があるか（エディタを閉じる・別の場所へ移る前の確認に使う）
+  const isEditorDirty = selected
+    ? title !== selected.title ||
+      content !== selected.content ||
+      (folderId ?? null) !== (selected.folder_id ?? null) ||
+      color !== (selected.color ?? "") ||
+      fontSize !== normalizeFontSize(selected.font_size)
+    : title.trim() !== "" || content.trim() !== "";
+  const hasUnsavedEdits = showEditor && isEditorDirty;
+
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedEdits);
+  }, [onDirtyChange, hasUnsavedEdits]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+
+  /** 未保存の変更があれば破棄してよいか確認する。破棄してよければ true。 */
+  const confirmDiscard = async (): Promise<boolean> => {
+    if (!hasUnsavedEdits) return true;
+    return confirmDialog({
+      title: "編集内容を破棄しますか？",
+      message: "保存していない変更は失われます。",
+      confirmLabel: "破棄",
+      danger: true,
+    });
+  };
 
   const childFolders = useMemo(() => buildChildMap(folders), [folders]);
   const memosByFolder = useMemo(
@@ -665,14 +696,23 @@ export function MemoView() {
 
   // --- Navigation ---
 
-  const navigateTo = (id: number | null) => {
+  // フォルダを移動する。エディタは閉じる（開いたままだと selectedId だけ外れて
+  // 「新規メモ」扱いになり、保存時に複製が作られてしまう）。
+  const navigateNow = (id: number | null) => {
     setCurrentFolderId(id);
     setSelectedId(null);
+    setShowEditor(false);
     if (id !== null) {
       setExpanded((prev) => expandAncestors(folders, prev, id));
       recent.push(id);
     }
     setTreeOpen(false);
+  };
+
+  /** 未保存の変更があれば確認してからフォルダを移動する。 */
+  const navigateTo = async (id: number | null) => {
+    if (!(await confirmDiscard())) return;
+    navigateNow(id);
   };
 
   useEffect(() => {
@@ -688,7 +728,7 @@ export function MemoView() {
       id,
       name: f.name,
       isCurrent: currentFolderId === id,
-      onClick: () => navigateTo(id),
+      onClick: () => void navigateTo(id),
       onToggleFavorite: () => favorites.toggle(id),
       starred: favorites.has(id),
     };
@@ -732,6 +772,12 @@ export function MemoView() {
     setShowEditor(false);
   };
 
+  /** 未保存の変更があれば確認してから一覧に戻る。 */
+  const closeEditor = async () => {
+    if (!(await confirmDiscard())) return;
+    backToList();
+  };
+
   const openNewMemoForm = () => {
     startNew(currentFolderId);
     setShowEditor(true);
@@ -742,9 +788,10 @@ export function MemoView() {
     setShowEditor(true);
   };
 
-  const focusMemoFromTree = (m: Memo) => {
+  const focusMemoFromTree = async (m: Memo) => {
+    if (!(await confirmDiscard())) return;
     const parentId = m.folder_id ?? null;
-    if (parentId !== currentFolderId) navigateTo(parentId);
+    if (parentId !== currentFolderId) navigateNow(parentId);
     setShowEditor(false);
     setSelectedId(null);
     setFocusMemoId(m.id);
@@ -829,15 +876,6 @@ export function MemoView() {
     }
   };
 
-  // エディタに未保存の変更があるか（Escape で閉じる前の確認に使う）
-  const isEditorDirty = selected
-    ? title !== selected.title ||
-      content !== selected.content ||
-      (folderId ?? null) !== (selected.folder_id ?? null) ||
-      color !== (selected.color ?? "") ||
-      fontSize !== normalizeFontSize(selected.font_size)
-    : title.trim() !== "" || content.trim() !== "";
-
   // --- キー割当（設定画面で変更可）: 保存 / キャンセル / 新規作成 ---
   const keybindings = useKeybindings();
   useGlobalKeydown((event) => {
@@ -864,20 +902,7 @@ export function MemoView() {
         setReplaceOpen(false);
         return;
       }
-      void (async () => {
-        if (
-          isEditorDirty &&
-          !(await confirmDialog({
-            title: "編集内容を破棄して一覧に戻りますか？",
-            message: "保存していない変更は失われます。",
-            confirmLabel: "破棄",
-            danger: true,
-          }))
-        ) {
-          return;
-        }
-        backToList();
-      })();
+      void closeEditor();
       return;
     }
     if (matchesBinding(event, keybindings.createTaskItem)) {
@@ -1029,7 +1054,7 @@ export function MemoView() {
           <button
             onClick={(e) => {
               e.currentTarget.focus();
-              focusMemoFromTree(m);
+              void focusMemoFromTree(m);
             }}
             tabIndex={-1}
             className="min-w-0 flex-1 truncate text-left text-slate-600"
@@ -1100,13 +1125,17 @@ export function MemoView() {
         tabIndex={isCurrent ? 0 : -1}
         onRename={() => void onRenameFolder(f)}
         onClick={() => {
-          setCurrentFolderId(f.id);
-          setSelectedId(null);
-          setExpanded((prev) => {
-            const next = expandAncestors(folders, prev, f.id);
-            if (prev.has(f.id)) next.delete(f.id);
-            return next;
-          });
+          void (async () => {
+            if (!(await confirmDiscard())) return;
+            setCurrentFolderId(f.id);
+            setSelectedId(null);
+            setShowEditor(false);
+            setExpanded((prev) => {
+              const next = expandAncestors(folders, prev, f.id);
+              if (prev.has(f.id)) next.delete(f.id);
+              return next;
+            });
+          })();
         }}
         onToggleExpand={toggleFolderExpand}
         onContextMenu={(x, y) => openFolderCtxMenu(x, y, f.id)}
@@ -1257,7 +1286,7 @@ export function MemoView() {
           icon: "📁",
           label: f.name,
           path: folderPath(f.parent_id ?? null),
-          onClick: () => navigateTo(f.id),
+          onClick: () => void navigateTo(f.id),
         });
       }
     }
@@ -1269,8 +1298,11 @@ export function MemoView() {
           label: m.title,
           path: folderPath(m.folder_id ?? null),
           onClick: () => {
-            navigateTo(m.folder_id ?? null);
-            openExistingMemo(m);
+            void (async () => {
+              if (!(await confirmDiscard())) return;
+              navigateNow(m.folder_id ?? null);
+              openExistingMemo(m);
+            })();
           },
         });
       }
@@ -1308,7 +1340,7 @@ export function MemoView() {
               <button
                 onClick={(e) => {
                   e.currentTarget.focus();
-                  navigateTo(null);
+                  void navigateTo(null);
                 }}
                 tabIndex={rootTabIndex}
                 onContextMenu={(e) => {
@@ -1369,7 +1401,7 @@ export function MemoView() {
       {/* Breadcrumb */}
         <nav className="mb-3 flex items-center gap-1.5 text-sm">
           <button
-            onClick={() => navigateTo(null)}
+            onClick={() => void navigateTo(null)}
             className={`rounded px-1.5 py-0.5 ${
               currentFolderId === null
                 ? "font-bold text-slate-900"
@@ -1382,7 +1414,7 @@ export function MemoView() {
             <Fragment key={f.id}>
               <span className="text-slate-300">/</span>
               <button
-                onClick={() => navigateTo(f.id)}
+                onClick={() => void navigateTo(f.id)}
                 className={`rounded px-1.5 py-0.5 ${
                   f.id === currentFolderId
                     ? "font-bold text-slate-900"
@@ -1405,7 +1437,7 @@ export function MemoView() {
           <>
             <div className="mb-3 flex items-center justify-between">
               <button
-                onClick={backToList}
+                onClick={() => void closeEditor()}
                 className="rounded border border-slate-300 px-3 py-1 text-sm hover:bg-slate-100"
               >
                 ← 一覧に戻る
@@ -1513,7 +1545,7 @@ export function MemoView() {
                           ? "border-blue-400 bg-blue-50 ring-2 ring-blue-400"
                           : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
                       } ${dragItem?.type === "folder" && dragItem.id === f.id ? "opacity-40" : ""}`}
-                      onClick={() => navigateTo(f.id)}
+                      onClick={() => void navigateTo(f.id)}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         openFolderCtxMenu(e.clientX, e.clientY, f.id);
@@ -1720,8 +1752,12 @@ export function MemoView() {
             onClick={() => {
               const parentId = rootMenu.menu?.parentId ?? null;
               rootMenu.close();
-              if (parentId !== currentFolderId) navigateTo(parentId);
-              startNew(parentId);
+              void (async () => {
+                if (!(await confirmDiscard())) return;
+                if (parentId !== currentFolderId) navigateNow(parentId);
+                startNew(parentId);
+                setShowEditor(true);
+              })();
             }}
           >
             ＋ メモ作成
@@ -1743,7 +1779,11 @@ export function MemoView() {
             onClick={() => {
               const m = memos.find((x) => x.id === memoCtxMenu.memoId);
               memoMenu.close();
-              if (m) openExistingMemo(m);
+              if (!m) return;
+              void (async () => {
+                if (!(await confirmDiscard())) return;
+                openExistingMemo(m);
+              })();
             }}
           >
             ✎ 編集
