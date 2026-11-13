@@ -87,10 +87,30 @@ export function ContextMenuItem({
 }
 
 /** Nested action menu. Hover opens it on desktop; tap opens it on touch devices. */
+const SUBMENU_WIDTH = 184; // min-w-44 (176px) + 余白
+
+type SubmenuPlacement = "right" | "left" | "inline";
+
+/** サブメニューを出す向きを決める。右に入らなければ左、左右どちらも無理なら親メニュー内に展開する。 */
+function submenuPlacement(wrapper: HTMLElement | null): SubmenuPlacement {
+  if (!wrapper) return "right";
+  const rect = wrapper.getBoundingClientRect();
+  if (rect.right + SUBMENU_WIDTH <= window.innerWidth) return "right";
+  if (rect.left - SUBMENU_WIDTH >= 0) return "left";
+  return "inline";
+}
+
 export function ContextMenuSubmenu({ label, children }: { label: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
+  const [placement, setPlacement] = useState<SubmenuPlacement>("right");
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const setOpen = (next: boolean | ((value: boolean) => boolean)) => {
+    // 開く直前に、画面からはみ出さない向きを測り直す
+    setPlacement(submenuPlacement(wrapperRef.current));
+    setOpenState(next);
+  };
   return (
-    <div className="group relative" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+    <div ref={wrapperRef} className="group relative" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
       <button
         type="button"
         role="menuitem"
@@ -115,10 +135,22 @@ export function ContextMenuSubmenu({ label, children }: { label: string; childre
       {open && (
         // 見た目の隙間は透明な pl-1 で作る（ml だと隙間がホバー判定外になり、
         // 親項目からサブメニューへカーソルを動かす途中で閉じてしまう）。
-        <div className="absolute left-full top-0 z-50 pl-1">
+        <div
+          className={
+            placement === "inline"
+              ? "pl-3"
+              : placement === "left"
+                ? "absolute right-full top-0 z-50 pr-1"
+                : "absolute left-full top-0 z-50 pl-1"
+          }
+        >
           <div
             role="menu"
-            className="min-w-44 rounded border border-slate-200 bg-white py-1 text-sm shadow-lg"
+            className={
+              placement === "inline"
+                ? "border-l-2 border-slate-200 text-sm"
+                : "min-w-44 rounded border border-slate-200 bg-white py-1 text-sm shadow-lg"
+            }
             onKeyDown={(e) => {
               if (e.key === "ArrowLeft") {
                 e.preventDefault();
