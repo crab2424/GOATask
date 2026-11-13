@@ -254,6 +254,9 @@ function factorIntegerQuadraticJson(json: JsonValue, variable: string | null): J
 
   const [c, b, a] = coefficients;
   if (a === 0 || b === 0 || c === 0) return null;
+  // 約数の総当たりは係数の大きさに比例して時間がかかり、Compute Engine の
+  // タイムアウトの対象外。巨大な係数では画面が固まるので試さない。
+  if (Math.abs(a) > 1_000_000 || Math.abs(c) > 1_000_000) return null;
 
   for (const m of divisors(a)) {
     const p = a / m;
