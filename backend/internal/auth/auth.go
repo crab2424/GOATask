@@ -87,6 +87,14 @@ func RequireAuth(db *gorm.DB) echo.MiddlewareFunc {
 				_ = db.Delete(&s).Error
 				return echo.NewHTTPError(http.StatusUnauthorized, "session expired")
 			}
+			// 使い続けている間は期限を延ばす（残りが半分を切ったら30日後へ更新）。
+			// 毎リクエスト書き込むと無駄なので、半分を切るまでは何もしない。
+			if time.Until(s.ExpiresAt) < SessionMaxAge/2 {
+				expires := time.Now().Add(SessionMaxAge)
+				if err := db.Model(&s).Update("expires_at", expires).Error; err == nil {
+					SetSessionCookie(c, s.ID, expires)
+				}
+			}
 			c.Set(contextUserKey, s.UserID)
 			return next(c)
 		}

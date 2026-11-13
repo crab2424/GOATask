@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { checkHealth } from "./api/tasks";
 import { AppShell } from "./app/AppShell";
 import type { Mode } from "./app/navigation";
@@ -47,6 +48,7 @@ function App() {
   const isMobile = useIsMobile();
   const { theme, setTheme } = useTheme();
   const { confirmDialog } = useDialogs();
+  const queryClient = useQueryClient();
   const [navCollapsed, setNavCollapsed] = useState(() =>
     typeof window !== "undefined" && window.localStorage.getItem(NAV_COLLAPSED_KEY) === "1",
   );
@@ -64,6 +66,12 @@ function App() {
     serverEvents.start();
     return () => { serverEvents.stop(); };
   }, [authState.status]);
+
+  // ログアウト・セッション切れ時は取得済みデータを捨てる
+  // （同じブラウザで別ユーザーがログインしたときに前のデータを見せない）
+  useEffect(() => {
+    if (authState.status === "anonymous") queryClient.clear();
+  }, [authState.status, queryClient]);
 
   useEffect(() => {
     window.localStorage.setItem(NAV_COLLAPSED_KEY, navCollapsed ? "1" : "0");

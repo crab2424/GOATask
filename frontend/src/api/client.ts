@@ -2,12 +2,21 @@ import { getClientId } from "../shared/lib/clientId";
 
 export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8080";
 
+/** セッション切れ(401)を検知したときに window へ流すイベント名。AuthProvider が購読する。 */
+export const UNAUTHORIZED_EVENT = "goatask:unauthorized";
+
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   // どのクライアントが投げたリクエストかをサーバーに伝え、SSEで同じIDのクライアントに
   // 自分の変更通知を返させないようにする。
   headers.set("X-Client-Id", getClientId());
-  return fetch(`${API_BASE}${path}`, { ...init, credentials: "include", headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...init, credentials: "include", headers });
+  // ログイン中にセッションが切れたら、ログイン画面へ戻すよう通知する。
+  // /api/auth/* の401は「未ログイン」「パスワード違い」という通常の応答なので除く。
+  if (res.status === 401 && !path.startsWith("/api/auth/")) {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
+  return res;
 }
 
 export class UnauthorizedError extends Error {
