@@ -1155,6 +1155,18 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
       const target = projects.find((p) => p.id === currentProjectId);
       if (!target || !parsed.project) throw new Error("対象プロジェクトが見つかりません");
 
+      // 文章内の id は「いま開いているプロジェクトとその配下」にあるものだけ既存データと
+      // 見なす。別環境で出力した文章を読んだとき、同じ番号の無関係なタスクや
+      // プロジェクトを書き換えないため（範囲外の id は新規作成として扱う）。
+      const scope = new Set<number>([target.id]);
+      const collectScope = (id: number) => {
+        for (const child of childProjectsMap.get(id) ?? []) {
+          scope.add(child.id);
+          collectScope(child.id);
+        }
+      };
+      collectScope(target.id);
+
       // The first heading is always imported into the currently open project.
       const projectIds = new Map<number, number>();
       const first = parsed.projects[0];
@@ -1165,7 +1177,9 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
         let parentId = target.id;
         if (source.parentId && projectIds.has(source.parentId)) parentId = projectIds.get(source.parentId)!;
         if (source.id) {
-          const existing = projects.find((p) => p.id === source.id);
+          const existing = projects.find(
+            (p) => p.id === source.id && p.id !== target.id && scope.has(p.id),
+          );
           if (existing) {
             projectIds.set(source.id, existing.id);
             await updateProject(existing.id, { name: source.name, parent_id: parentId });
@@ -1178,7 +1192,11 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
 
       for (const source of parsed.tasks) {
         const projectId = source.projectId ? (projectIds.get(source.projectId) ?? target.id) : target.id;
-        const existing = source.id ? tasks.find((t) => t.id === source.id) : undefined;
+        const existing = source.id
+          ? tasks.find(
+              (t) => t.id === source.id && t.project_id != null && scope.has(t.project_id),
+            )
+          : undefined;
         if (existing) {
           // プロジェクト文章の一括インポートは意図的な上書きなので強制適用。
           await updateTask(existing.id, {

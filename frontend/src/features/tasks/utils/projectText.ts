@@ -19,6 +19,18 @@ function attr(line: string, key: string): string | undefined {
   return line.match(new RegExp(`${key}=([^\\s>]+)`))?.[1];
 }
 
+// 詳細欄の「# 」で始まる行は、読み込み時にプロジェクト／タスクの見出しと区別できない。
+// 出力時に行頭へ "\\" を付け、読み込み時に外すことで本文として往復させる。
+// 元から "\\#" で始まる行も区別できるよう、先頭のバックスラッシュ込みで判定する。
+const HEADING_LINE = /^\\*#{1,6}\s/;
+const ESCAPED_HEADING_LINE = /^\\+#{1,6}\s/;
+function escapeDescription(description: string): string {
+  return description
+    .split("\n")
+    .map((line) => (HEADING_LINE.test(line) ? `\\${line}` : line))
+    .join("\n");
+}
+
 function metadata(kind: string, item: { id?: number; status?: string; start?: string | null; due?: string | null; parent?: number | null }) {
   const values = [`<!-- goatask:${kind}`];
   if (item.id) values.push(`id=${item.id}`);
@@ -49,12 +61,12 @@ export function projectToMarkdown(root: Project, projects: Project[], tasks: Tas
     lines.push("", `# ${project.name}`, metadata("project", { id: project.id, parent: project.parent_id }));
     for (const task of tasksByProject.get(project.id) ?? []) {
       const fields = { id: task.id, status: task.status, start: task.start_date, due: task.due_date };
-      lines.push("", `## ${task.title}`, metadata("task", fields), task.description ?? "");
+      lines.push("", `## ${task.title}`, metadata("task", fields), escapeDescription(task.description ?? ""));
     }
     for (const child of children.get(project.id) ?? []) writeProject(child, depth + 1);
   };
   for (const task of tasksByProject.get(root.id) ?? []) {
-    lines.push("", `## ${task.title}`, metadata("task", { id: task.id, status: task.status, start: task.start_date, due: task.due_date }), task.description ?? "");
+    lines.push("", `## ${task.title}`, metadata("task", { id: task.id, status: task.status, start: task.start_date, due: task.due_date }), escapeDescription(task.description ?? ""));
   }
   for (const child of children.get(root.id) ?? []) writeProject(child, 1);
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
@@ -71,6 +83,11 @@ export function parseProjectMarkdown(text: string): ProjectTextImport {
   };
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
+    // 出力時にエスケープした「\\# ...」は見出しではなく本文として戻す
+    if (ESCAPED_HEADING_LINE.test(line)) {
+      if (currentTask) currentTask.description += (currentTask.description ? "\n" : "") + line.slice(1);
+      continue;
+    }
     const projectMatch = line.match(/^#{1,6}\s+(.+)$/);
     const taskMatch = line.match(/^##\s+(.+)$/);
     if (projectMatch && !taskMatch) {
