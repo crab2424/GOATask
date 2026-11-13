@@ -85,7 +85,7 @@ func (h *FileHandler) upload(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "cannot open uploaded file")
 	}
 	defer src.Close()
-	if err := validateUploadedFile(file, src, contentType); err != nil {
+	if err := validateUploadedFile(file, src); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	etag, err := h.Storage.Put(c.Request().Context(), objectName, src, file.Size, contentType)
@@ -167,12 +167,12 @@ func maxInt64(a, b int64) int64 {
 	return b
 }
 
-func validateUploadedFile(file *multipart.FileHeader, body io.ReadSeeker, declaredType string) error {
+// validateUploadedFile は危険な拡張子と、拡張子と中身の明らかな食い違いだけを弾く。
+// ブラウザが申告するMIMEはOSや形式によって表記が揺れる（zip, heic, mov, json など）ため、
+// 中身との一致は要求しない。拡張子なしのファイル（Makefile 等）も受け付ける。
+func validateUploadedFile(file *multipart.FileHeader, body io.ReadSeeker) error {
 	filename := sanitizeFilename(file.Filename)
 	ext := strings.ToLower(filepath.Ext(filename))
-	if ext == "" {
-		return errors.New("file extension is required")
-	}
 	if blockedFileExtensions[ext] {
 		return fmt.Errorf("file type %s is not allowed", ext)
 	}
@@ -187,9 +187,6 @@ func validateUploadedFile(file *multipart.FileHeader, body io.ReadSeeker, declar
 	detected := http.DetectContentType(header[:n])
 	if !compatibleFileSignature(ext, detected) {
 		return fmt.Errorf("file content does not match extension %s (%s)", ext, detected)
-	}
-	if declaredType != "" && declaredType != "application/octet-stream" && !compatibleDeclaredType(ext, declaredType, detected) {
-		return fmt.Errorf("declared MIME type %s does not match file content %s", declaredType, detected)
 	}
 	return nil
 }
@@ -220,16 +217,6 @@ func compatibleFileSignature(ext, detected string) bool {
 	default:
 		return true
 	}
-}
-
-func compatibleDeclaredType(ext, declared, detected string) bool {
-	if strings.HasPrefix(declared, "text/") && strings.HasPrefix(detected, "text/") {
-		return true
-	}
-	if declared == detected {
-		return true
-	}
-	return ext == ".docx" || ext == ".xlsx" || ext == ".pptx"
 }
 
 func (h *FileHandler) ownedFile(c echo.Context) (model.SharedFile, error) {
