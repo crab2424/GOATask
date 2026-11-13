@@ -201,10 +201,15 @@ func (h *BackupHandler) importData(c echo.Context) error {
 
 // 削除順 = 子→親。所属ユーザーの行のみ消す。
 // 子テーブル (subtasks, cards) は親テーブル経由で user_id を絞る。
-func (h *BackupHandler) deleteUserRowsForScope(tx *gorm.DB, uid uint, scope string) error {
+//
+// カレンダーメモは、ファイルに1件も含まれないときは消さない。カレンダー機能より前に
+// 作ったバックアップ（calendar_notes を持たない）で全置換しても、既存のメモを失わないため。
+func (h *BackupHandler) deleteUserRowsForScope(tx *gorm.DB, uid uint, scope string, replaceCalendarNotes bool) error {
 	if needsScope(scope, "tasks") {
-		if err := tx.Exec("DELETE FROM calendar_notes WHERE user_id = ?", uid).Error; err != nil {
-			return err
+		if replaceCalendarNotes {
+			if err := tx.Exec("DELETE FROM calendar_notes WHERE user_id = ?", uid).Error; err != nil {
+				return err
+			}
 		}
 		if err := tx.Exec("DELETE FROM subtasks WHERE task_id IN (SELECT id FROM tasks WHERE user_id = ?)", uid).Error; err != nil {
 			return err
@@ -239,7 +244,7 @@ func (h *BackupHandler) replaceImport(tx *gorm.DB, uid uint, p *backupPayload, s
 	if !validScope(scope) {
 		return fmt.Errorf("unknown scope: %s", scope)
 	}
-	if err := h.deleteUserRowsForScope(tx, uid, scope); err != nil {
+	if err := h.deleteUserRowsForScope(tx, uid, scope, len(p.CalendarNotes) > 0); err != nil {
 		return err
 	}
 	// 元IDのまま投入。GORM の Create はゼロでない ID をそのまま使う。

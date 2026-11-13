@@ -11,8 +11,8 @@ import {
 } from "../../api/backup";
 
 const SCOPES: { id: BackupScope; label: string; desc: string }[] = [
-  { id: "all", label: "全データ", desc: "タスク・メモ・単語帳をまとめて1ファイル" },
-  { id: "tasks", label: "タスク", desc: "tasks / subtasks / projects" },
+  { id: "all", label: "全データ", desc: "タスク・メモ・単語帳をまとめて1ファイル（設定と共有ファイルは含みません）" },
+  { id: "tasks", label: "タスク", desc: "tasks / subtasks / projects / カレンダーメモ" },
   { id: "memos", label: "メモ", desc: "memos / folders" },
   { id: "decks", label: "単語帳", desc: "decks / cards" },
 ];
@@ -73,7 +73,7 @@ export function BackupView({ embedded = false }: BackupViewProps) {
       const scope = String(json.scope ?? "all");
       const version = Number(json.version ?? 0);
       const counts: Record<string, number> = {};
-      for (const k of ["tasks", "subtasks", "projects", "memos", "folders", "decks", "cards"]) {
+      for (const k of ["tasks", "subtasks", "projects", "calendar_notes", "memos", "folders", "decks", "cards"]) {
         if (Array.isArray(json[k])) counts[k] = json[k].length;
       }
       setParsed({ scope, version, counts });
@@ -118,6 +118,7 @@ export function BackupView({ embedded = false }: BackupViewProps) {
         queryClient.invalidateQueries({ queryKey: ["memos"] }),
         queryClient.invalidateQueries({ queryKey: ["folders"] }),
         queryClient.invalidateQueries({ queryKey: ["decks"] }),
+        queryClient.invalidateQueries({ queryKey: ["calendar"] }),
       ]);
     } catch (e) {
       setImportError(e instanceof Error ? e.message : "インポートに失敗しました");
@@ -132,7 +133,7 @@ export function BackupView({ embedded = false }: BackupViewProps) {
         <header>
           <h2 className="text-xl font-bold text-slate-900">バックアップ</h2>
           <p className="mt-1 text-sm text-slate-500">
-            ローカルと本番(Render)のデータをJSONファイルで往復させるためのページ。
+            ローカルと本番のデータをJSONファイルで往復させるためのページ。
           </p>
         </header>
       )}
@@ -266,7 +267,7 @@ export function BackupView({ embedded = false }: BackupViewProps) {
             </h4>
             <p className="text-xs text-slate-600">
               {mode === "replace"
-                ? "対象スコープの既存データを全削除してから投入します。実行前に現在の状態を自動でダウンロードします。"
+                ? "対象スコープの既存データを全削除してから投入します。実行前に現在の状態を自動でダウンロードします。ファイルにカレンダーメモが無い場合、既存のカレンダーメモは残します。"
                 : "既存データはそのまま、ファイル内のレコードを追加します。重複は手動で整理してください。"}
             </p>
             <div className="flex justify-end gap-2">
