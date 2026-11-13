@@ -271,6 +271,8 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
   // ユーザーの編集はこのversionに対する差分として扱われ、
   // save時に不一致なら409で衝突ダイアログが出る。
   const [editingVersion, setEditingVersion] = useState<number | null>(null);
+  // 前回閉じずに残った下書きを編集フォームへ復元したか（復元した旨の表示に使う）
+  const [draftRestored, setDraftRestored] = useState(false);
   const editPanelRef = useRef<HTMLDivElement | null>(null);
   const newTitleRef = useRef<HTMLInputElement | null>(null);
   const keybindings = useKeybindings();
@@ -419,7 +421,18 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
       setEditDescription(d.description);
       setEditStartDate(d.start_date);
       setEditDueDate(d.due_date);
+      // 保存済みの内容と違う下書きを入れたときだけ、復元したことを知らせる
+      const saved = tasks.find((task) => task.id === editingId);
+      setDraftRestored(
+        !!saved &&
+          (d.title !== saved.title ||
+            d.description !== saved.description ||
+            d.start_date !== isoToDateInput(saved.start_date) ||
+            d.due_date !== isoToDateInput(saved.due_date)),
+      );
     }
+    // 編集を開いた時点の tasks で判定すればよい
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingId]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -924,8 +937,16 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     }
   };
 
+  // ▲▼で入れ替える相手は、画面上で同じ一覧に並んでいるタスクに限る。
+  // 「完了済みを片付ける」表示中は未完了と完了済みが別の一覧になるため、
+  // 最後の未完了タスクを（畳まれて見えない）完了済みと入れ替えないようにする。
+  const reorderGroupOf = (taskId: number): Task[] => {
+    if (!tidied) return activeTasks;
+    return doneTasks.some((task) => task.id === taskId) ? doneTasks : activeTasks;
+  };
+
   const moveTask = async (taskId: number, direction: "up" | "down") => {
-    const ids = displayedTasks.map((task) => task.id);
+    const ids = reorderGroupOf(taskId).map((task) => task.id);
     const idx = ids.indexOf(taskId);
     if (idx < 0) return;
     const swapIdx = direction === "up" ? idx - 1 : idx + 1;
@@ -946,6 +967,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     setEditDueDate(isoToDateInput(t.due_date));
     setEditProjectId(t.project_id ?? null);
     setEditingVersion(t.version);
+    setDraftRestored(false);
   };
 
   const cancelEdit = () => {
@@ -957,6 +979,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     setEditDueDate("");
     setEditProjectId(null);
     setEditingVersion(null);
+    setDraftRestored(false);
   };
 
   // 編集フォームに未保存の変更があるか（枠外クリックで閉じる前の確認に使う）
@@ -1407,7 +1430,8 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
     const isEditing = editingId === t.id;
 
     const isFocused = focusTaskId === t.id;
-    const visibleIndex = displayedTasks.findIndex((task) => task.id === t.id);
+    const reorderGroup = reorderGroupOf(t.id);
+    const visibleIndex = reorderGroup.findIndex((task) => task.id === t.id);
     const reorderEnabled = !isEditing;
     const nativeIndicator =
       dropTarget?.kind === "reorder" && dropTarget.taskId === t.id
@@ -1478,6 +1502,24 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
         )}
         {editingId === t.id ? (
           <div ref={editPanelRef} className="flex-1">
+            {draftRestored && (
+              <div className="mb-2 flex flex-wrap items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
+                <span className="flex-1">前回保存せずに閉じた下書きを復元しました。</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditTitle(t.title);
+                    setEditDescription(t.description);
+                    setEditStartDate(isoToDateInput(t.start_date));
+                    setEditDueDate(isoToDateInput(t.due_date));
+                    setDraftRestored(false);
+                  }}
+                  className="shrink-0 rounded border border-amber-400 px-2 py-0.5 font-semibold hover:bg-amber-100"
+                >
+                  保存済みの内容に戻す
+                </button>
+              </div>
+            )}
             <input
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
@@ -1544,6 +1586,10 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
                 </select>
               </label>
             </div>
+            {error && (
+              // 画面上部のエラー表示は、下のほうのカードを編集中だと見えないのでここにも出す
+              <p role="alert" className="mb-2 text-sm text-rose-700">{error}</p>
+            )}
             <div className="flex gap-2">
               <button
                 onClick={() => saveEdit(t)}
@@ -1660,7 +1706,7 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
             <div data-reorder-ignore className="ml-3 flex gap-1" onClick={(e) => e.stopPropagation()}>
               <CardReorderControls
                 canMoveUp={reorderEnabled && visibleIndex > 0}
-                canMoveDown={reorderEnabled && visibleIndex < displayedTasks.length - 1}
+                canMoveDown={reorderEnabled && visibleIndex < reorderGroup.length - 1}
                 onMoveUp={() => void moveTask(t.id, "up")}
                 onMoveDown={() => void moveTask(t.id, "down")}
               />
@@ -1926,8 +1972,18 @@ export function TaskView({ initialTaskId, onInitialTaskHandled }: TaskViewProps 
         </div>
 
         {(error || queryErrorMsg) && (
-          <div className="mb-4 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {error ?? queryErrorMsg}
+          <div className="mb-4 flex items-start gap-2 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            <span className="min-w-0 flex-1 break-words">{error ?? queryErrorMsg}</span>
+            {error && (
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                aria-label="エラー表示を閉じる"
+                className="shrink-0 rounded px-1.5 text-rose-400 hover:bg-rose-100 hover:text-rose-700"
+              >
+                ×
+              </button>
+            )}
           </div>
         )}
 

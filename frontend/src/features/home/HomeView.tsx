@@ -174,7 +174,9 @@ export function HomeView({
   const todayStr = formatDate(new Date());
   const markedDates = useMemo(() => new Set(tasks.flatMap((t) => [t.start_date?.slice(0, 10), t.due_date?.slice(0, 10)].filter((d): d is string => Boolean(d)))), [tasks]);
 
-  // Once a task appears on "今日やること" (due today or doing), keep it visible
+  // 「今日やること」に出すのは期限つきのタスクのうち、期限が今日のものと進行中のもの
+  // （期限なしの進行中・期限超過の未着手は出さない仕様）。
+  // Once a task appears on "今日やること", keep it visible
   // even after its state changes — so ticking it done doesn't make the row vanish.
   const [stickyIds, setStickyIds] = useState<Set<number>>(new Set());
   useEffect(() => {
@@ -237,7 +239,7 @@ export function HomeView({
         </div>
         {todayTasks.length === 0 ? (
           <p className="text-sm text-slate-500">
-            進行中のタスクも、今日が期日のタスクもありません。
+            今日が期日のタスクも、期限つきの進行中タスクもありません。
           </p>
         ) : (
           <ul className="space-y-2">
