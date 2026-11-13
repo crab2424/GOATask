@@ -72,7 +72,7 @@ export function FilesView() {
   };
 
   const handleDelete = async (file: SharedFile) => {
-    if (!(await confirmDialog({ title: `${file.filename}を削除しますか？`, message: "共有リンクもこのファイルへのアクセスも利用できなくなります。", confirmLabel: "削除", cancelLabel: "キャンセル" }))) return;
+    if (!(await confirmDialog({ title: `${file.filename}を削除しますか？`, message: "共有リンクもこのファイルへのアクセスも利用できなくなります。", confirmLabel: "削除", cancelLabel: "キャンセル", danger: true }))) return;
     setError(null);
     setMessage(null);
     try {

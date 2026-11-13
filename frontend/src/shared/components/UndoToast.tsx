@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 interface Props {
   message: string;
@@ -14,10 +14,17 @@ export function UndoToast({
   onDismiss,
   durationMs = 6000,
 }: Props) {
+  // onDismiss は親の再描画のたびに新しい関数になることが多い。依存に入れると
+  // そのたびにタイマーが巻き戻って消えなくなるので、ref 経由で最新を呼ぶ。
+  // メッセージが変わった（別の削除が起きた）ときだけ数え直す。
+  const onDismissRef = useRef(onDismiss);
   useEffect(() => {
-    const timer = setTimeout(onDismiss, durationMs);
+    onDismissRef.current = onDismiss;
+  });
+  useEffect(() => {
+    const timer = setTimeout(() => onDismissRef.current(), durationMs);
     return () => clearTimeout(timer);
-  }, [onDismiss, durationMs]);
+  }, [message, durationMs]);
 
   return (
     <div

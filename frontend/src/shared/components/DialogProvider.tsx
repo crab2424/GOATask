@@ -58,29 +58,43 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const composingRef = useRef(false);
 
+  // 表示中のダイアログ。別のダイアログで置き換えるとき、先の呼び出し元を
+  // 待たせたままにしないよう「キャンセル」として解決するために保持する。
+  const activeRef = useRef<ActiveDialog>(null);
+  const show = useCallback((next: NonNullable<ActiveDialog>) => {
+    const prev = activeRef.current;
+    if (prev) {
+      if (prev.kind === "confirm") prev.resolve(false);
+      else prev.resolve(null);
+    }
+    activeRef.current = next;
+    setActive(next);
+  }, []);
+
   const confirmDialog = useCallback((opts: ConfirmOptions) => {
     return new Promise<boolean>((resolve) => {
-      setActive({ kind: "confirm", opts, resolve });
+      show({ kind: "confirm", opts, resolve });
     });
-  }, []);
+  }, [show]);
 
   const promptDialog = useCallback((opts: PromptOptions) => {
     return new Promise<string | null>((resolve) => {
       setInputValue(opts.defaultValue ?? "");
-      setActive({ kind: "prompt", opts, resolve });
+      show({ kind: "prompt", opts, resolve });
     });
-  }, []);
+  }, [show]);
 
   const choiceDialog = useCallback((opts: ChoiceOptions) => {
     return new Promise<string | null>((resolve) => {
-      setActive({ kind: "choice", opts, resolve });
+      show({ kind: "choice", opts, resolve });
     });
-  }, []);
+  }, [show]);
 
   const close = (result: boolean | string | null) => {
     if (!active) return;
     if (active.kind === "confirm") active.resolve(result === true);
     else active.resolve(typeof result === "string" ? result : null);
+    activeRef.current = null;
     setActive(null);
   };
 
@@ -180,18 +194,20 @@ export function DialogProvider({ children }: { children: ReactNode }) {
               >
                 {active.opts.cancelLabel ?? "キャンセル"}
               </button>
-              <button
-                ref={confirmButtonRef}
-                onClick={() => close(active.kind === "prompt" ? inputValue : true)}
-                disabled={active.kind !== "confirm" && active.kind !== "prompt"}
-                className={`rounded px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 ${
-                  active.kind === "confirm" && active.opts.danger
-                    ? "bg-red-600 hover:bg-red-700"
-                    : "bg-slate-900 hover:bg-slate-700"
-                }`}
-              >
-                {active.kind === "choice" ? "選択" : active.opts.confirmLabel ?? "OK"}
-              </button>
+              {/* 選択ダイアログは選択肢ボタン自体が確定操作なので、確定ボタンは出さない */}
+              {active.kind !== "choice" && (
+                <button
+                  ref={confirmButtonRef}
+                  onClick={() => close(active.kind === "prompt" ? inputValue : true)}
+                  className={`rounded px-3 py-1.5 text-xs font-semibold text-white ${
+                    active.kind === "confirm" && active.opts.danger
+                      ? "bg-red-600 hover:bg-red-700"
+                      : "bg-slate-900 hover:bg-slate-700"
+                  }`}
+                >
+                  {active.opts.confirmLabel ?? "OK"}
+                </button>
+              )}
             </div>
           </div>
         </div>
