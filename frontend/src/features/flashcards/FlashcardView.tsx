@@ -120,6 +120,16 @@ export function FlashcardView({ onStudyStateChange }: { onStudyStateChange?: (ac
     onStudyStateChange?.(screen === "study");
   }, [onStudyStateChange, screen]);
 
+  // 学習の途中で別モードへ移った場合も、保存が終わってから統計を取り直す
+  useEffect(() => {
+    const pending = pendingAnswers;
+    return () => {
+      void Promise.allSettled(pending.current).then(() =>
+        queryClient.invalidateQueries({ queryKey: ["decks"] }),
+      );
+    };
+  }, [queryClient]);
+
   const reloadDecks = async () => {
     await queryClient.invalidateQueries({ queryKey: ["decks"] });
     setError(null);
