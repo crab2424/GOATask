@@ -63,14 +63,13 @@ func (h *Hub) Subscribe(userID uint) (<-chan Event, func()) {
 // 送信元クライアント(OriginID)には受信側で無視させるため、
 // ここではフィルタしない（同一ユーザーの複数タブ含めて全員に配る）。
 func (h *Hub) Publish(userID uint, ev Event) {
+	// 送信はノンブロッキング(select default)なので、読みロックを持ったまま配る。
+	// ロックを外してから送ると、同時に走った unsub が close 済みのチャネルへ送信して
+	// パニックする（close は書きロック下で行うため、ここでは起きない）。
 	h.mu.RLock()
-	list := h.subs[userID]
-	// スナップショットを取ってから配信し、配信中のロック競合を減らす
-	snapshot := make([]*subscriber, len(list))
-	copy(snapshot, list)
-	h.mu.RUnlock()
+	defer h.mu.RUnlock()
 
-	for _, s := range snapshot {
+	for _, s := range h.subs[userID] {
 		select {
 		case s.ch <- ev:
 		default:
