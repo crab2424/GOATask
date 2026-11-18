@@ -1,5 +1,6 @@
 import type { FormEvent, MouseEvent, RefObject } from "react";
 import type { Memo } from "../../../api/memos";
+import { MemoContentField } from "./MemoContentField";
 import { EXPORT_FORMATS, exportMemo } from "../utils/exportMemo";
 import { PRESET_COLORS, isValidColor } from "../utils/memoColor";
 import { FONT_SIZES, fontSizePx, type FontSize } from "../utils/memoFontSize";
@@ -27,6 +28,8 @@ interface EditorState {
   replaceText: string;
   matchCount: number;
   activeMatch: number;
+  /** 本文を閲覧モード（リンク表示）で表示中か */
+  contentViewing: boolean;
 }
 
 interface EditorActions {
@@ -48,6 +51,7 @@ interface EditorActions {
   findPrevious: () => void;
   replaceCurrent: () => void;
   replaceAll: () => void;
+  setContentViewing: (v: boolean) => void;
 }
 
 /** 検索バーのボタン押下でフォーカスを奪わない（本文のフォーカス枠が外れて再付与され、チカチカするのを防ぐ） */
@@ -215,22 +219,13 @@ function renderMemoEditor(s: EditorState, a: EditorActions) {
           </div>
         </div>
       )}
-      <textarea
-        id="memo-content-editor"
-        value={s.content}
-        onChange={(e) => a.setContent(e.target.value)}
-        placeholder="内容（プレーンテキスト）"
-        rows={14}
-        style={{ fontSize: `${fontSizePx(s.fontSize)}px`, lineHeight: 1.6 }}
-        className="mb-2 w-full rounded border border-slate-300 px-3 py-2 font-mono focus:border-slate-500 focus:outline-none"
+      <MemoContentField
+        content={s.content}
+        setContent={a.setContent}
+        fontSizePx={fontSizePx(s.fontSize)}
+        viewing={s.contentViewing}
+        setViewing={a.setContentViewing}
       />
-      <div className="mb-2 text-right text-xs text-slate-500">
-        {[...s.content].length}文字 /{" "}
-        {s.content.trim() === ""
-          ? 0
-          : s.content.trim().split(/\s+/).length}
-        単語
-      </div>
       <div className="flex items-center gap-2">
         <button
           type="submit"

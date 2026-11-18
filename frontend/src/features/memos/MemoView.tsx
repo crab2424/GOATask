@@ -187,6 +187,7 @@ export function MemoView({ onDirtyChange }: MemoViewProps = {}) {
   const [searchQuery, setSearchQuery] = useState("");
   const [replaceText, setReplaceText] = useState("");
   const [activeMatch, setActiveMatch] = useState(0);
+  const [contentViewing, setContentViewing] = useState(false);
   const pendingSelection = useRef<{ start: number; end: number } | null>(null);
 
   const matchPositions = useMemo(() => {
@@ -213,7 +214,13 @@ export function MemoView({ onDirtyChange }: MemoViewProps = {}) {
 
   const selectMatch = (direction: 1 | -1) => {
     const textarea = document.getElementById("memo-content-editor") as HTMLTextAreaElement | null;
-    if (!matchPositions.length || !textarea) return;
+    if (!matchPositions.length) return;
+    if (!textarea) {
+      // 閲覧モード中は本文がtextareaでないため、編集モードに切り替えてから選択し直す
+      setContentViewing(false);
+      window.setTimeout(() => selectMatch(direction), 0);
+      return;
+    }
     const currentStart = textarea.selectionStart;
     let index = Math.min(activeMatch, matchPositions.length - 1);
     if (direction > 0 && matchPositions[index] <= currentStart && currentStart < matchPositions[index] + searchQuery.length) {
@@ -256,6 +263,7 @@ export function MemoView({ onDirtyChange }: MemoViewProps = {}) {
       if (key !== "f" && key !== "h") return;
       event.preventDefault();
       setSearchOpen(true);
+      setContentViewing(false);
       if (key === "h") setReplaceOpen(true);
       window.setTimeout(() => document.getElementById("memo-search-input")?.focus(), 0);
     };
@@ -756,6 +764,7 @@ export function MemoView({ onDirtyChange }: MemoViewProps = {}) {
     setColor("");
     setFontSize(DEFAULT_FONT_SIZE);
     setEditingVersion(null);
+    setContentViewing(false);
   };
 
   const selectMemo = (m: Memo) => {
@@ -766,6 +775,8 @@ export function MemoView({ onDirtyChange }: MemoViewProps = {}) {
     setColor(m.color ?? "");
     setFontSize(normalizeFontSize(m.font_size));
     setEditingVersion(m.version);
+    // 既存メモは閲覧モードで開く（URLをリンクとして表示）。空なら即編集できるよう編集モード
+    setContentViewing(m.content !== "");
   };
 
   const backToList = () => {
@@ -1475,6 +1486,7 @@ export function MemoView({ onDirtyChange }: MemoViewProps = {}) {
                 replaceText,
                 matchCount: matchPositions.length,
                 activeMatch: Math.min(activeMatch, Math.max(0, matchPositions.length - 1)),
+                contentViewing,
               }}
               actions={{
                 setTitle,
@@ -1498,6 +1510,7 @@ export function MemoView({ onDirtyChange }: MemoViewProps = {}) {
                 findPrevious: () => selectMatch(-1),
                 replaceCurrent,
                 replaceAll,
+                setContentViewing,
               }}
             />
           </>
