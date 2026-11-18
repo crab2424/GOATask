@@ -1,4 +1,4 @@
-import type { FormEvent, RefObject } from "react";
+import type { FormEvent, MouseEvent, RefObject } from "react";
 import type { Memo } from "../../../api/memos";
 import { EXPORT_FORMATS, exportMemo } from "../utils/exportMemo";
 import { PRESET_COLORS, isValidColor } from "../utils/memoColor";
@@ -49,6 +49,9 @@ interface EditorActions {
   replaceCurrent: () => void;
   replaceAll: () => void;
 }
+
+/** 検索バーのボタン押下でフォーカスを奪わない（本文のフォーカス枠が外れて再付与され、チカチカするのを防ぐ） */
+const keepFocus = (e: MouseEvent) => e.preventDefault();
 
 function renderMemoEditor(s: EditorState, a: EditorActions) {
   return (
@@ -199,11 +202,11 @@ function renderMemoEditor(s: EditorState, a: EditorActions) {
                 className="min-w-[12rem] flex-1 rounded border border-slate-300 bg-white px-2 py-1 focus:border-slate-500 focus:outline-none"
               />
             )}
-            <button type="button" onClick={a.findPrevious} className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100" title="前へ">↑</button>
-            <button type="button" onClick={a.findNext} className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100" title="次へ">↓</button>
+            <button type="button" onClick={a.findPrevious} onMouseDown={keepFocus} className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100" title="前へ">↑</button>
+            <button type="button" onClick={a.findNext} onMouseDown={keepFocus} className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100" title="次へ">↓</button>
             {s.replaceOpen && <>
-              <button type="button" onClick={a.replaceCurrent} disabled={!s.matchCount} className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100 disabled:opacity-50">置換</button>
-              <button type="button" onClick={a.replaceAll} disabled={!s.matchCount} className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100 disabled:opacity-50">すべて置換</button>
+              <button type="button" onClick={a.replaceCurrent} onMouseDown={keepFocus} disabled={!s.matchCount} className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100 disabled:opacity-50">置換</button>
+              <button type="button" onClick={a.replaceAll} onMouseDown={keepFocus} disabled={!s.matchCount} className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100 disabled:opacity-50">すべて置換</button>
             </>}
             <span className="text-xs text-slate-500" aria-live="polite">
               {s.matchCount ? `${s.activeMatch + 1} / ${s.matchCount}` : "一致なし"}
